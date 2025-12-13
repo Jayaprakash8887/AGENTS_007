@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { Plus, Search, Upload, MoreHorizontal, Mail, Phone, Download } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -33,7 +34,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useEmployees, useCreateEmployee } from '@/hooks/useEmployees';
+import { useEmployees, useCreateEmployee, useUpdateEmployee } from '@/hooks/useEmployees';
+import { useProjects } from '@/hooks/useProjects';
 import { EmployeeForm } from '@/components/forms/EmployeeForm';
 import { TableSkeleton } from '@/components/ui/loading-skeleton';
 import { exportToCSV, formatDate } from '@/lib/export-utils';
@@ -56,6 +58,7 @@ const roleStyles = {
 };
 
 export default function Employees() {
+  const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
   const [departmentFilter, setDepartmentFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -64,7 +67,9 @@ export default function Employees() {
   const [selectedEmployee, setSelectedEmployee] = useState<any>(null);
 
   const { data: employees, isLoading, error } = useEmployees();
+  const { data: projects } = useProjects();
   const createEmployee = useCreateEmployee();
+  const updateEmployee = useUpdateEmployee();
 
   const departments = useMemo(() => {
     if (!employees) return [];
@@ -106,6 +111,8 @@ export default function Employees() {
         department: data.department,
         designation: data.designation || data.role,
         joinDate: data.dateOfJoining || format(new Date(), 'yyyy-MM-dd'),
+        managerId: data.managerId || undefined,
+        projectIds: data.projectIds || [],
       });
       toast.success('Employee added successfully');
       setIsAddDialogOpen(false);
@@ -119,10 +126,27 @@ export default function Employees() {
     setSelectedEmployee(employee);
     setIsEditDialogOpen(true);
   };
-
   const handleUpdateEmployee = async (data: EmployeeFormData) => {
+    if (!selectedEmployee) return;
+    
     try {
-      // TODO: Implement update API call
+      await updateEmployee.mutateAsync({
+        id: selectedEmployee.id,
+        data: {
+          employeeId: data.employeeId,
+          firstName: data.firstName,
+          lastName: data.lastName,
+          email: data.email,
+          phone: data.phone || '',
+          mobile: data.mobile,
+          address: data.address || '',
+          department: data.department,
+          designation: data.designation || data.role,
+          joinDate: data.dateOfJoining || selectedEmployee.joinDate,
+          managerId: data.managerId || undefined,
+          projectIds: data.projectIds || [],
+        }
+      });
       toast.success('Employee updated successfully');
       setIsEditDialogOpen(false);
       setSelectedEmployee(null);
@@ -203,6 +227,7 @@ export default function Employees() {
               <EmployeeForm
                 departments={departments}
                 managers={managers}
+                projects={projects || []}
                 onSubmit={handleAddEmployee}
                 onCancel={() => setIsAddDialogOpen(false)}
                 isLoading={createEmployee.isPending}
@@ -222,12 +247,13 @@ export default function Employees() {
             <EmployeeForm
               departments={departments}
               managers={managers}
+              projects={projects || []}
               onSubmit={handleUpdateEmployee}
               onCancel={() => {
                 setIsEditDialogOpen(false);
                 setSelectedEmployee(null);
               }}
-              isLoading={false}
+              isLoading={updateEmployee.isPending}
               defaultValues={{
                 employeeId: selectedEmployee.employeeId,
                 firstName: selectedEmployee.firstName || selectedEmployee.name?.split(' ')[0] || '',
@@ -241,6 +267,7 @@ export default function Employees() {
                 role: selectedEmployee.role,
                 dateOfJoining: selectedEmployee.joinDate || '',
                 managerId: selectedEmployee.managerId || '',
+                projectIds: selectedEmployee.projectIds || [],
               }}
             />
           )}
@@ -341,7 +368,6 @@ export default function Employees() {
                         {employee.role}
                       </Badge>
                     </TableCell>
-                    <TableCell>{format(employee.joinDate, 'MMM d, yyyy')}</TableCell>
                     <TableCell>
                       <Badge variant="secondary" className={statusStyles[employee.status]}>
                         {employee.status.replace('_', ' ')}
@@ -355,7 +381,9 @@ export default function Employees() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem>View Details</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => navigate(`/employees/${employee.id}`)}>
+                            View Details
+                          </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleEditEmployee(employee)}>
                             Edit
                           </DropdownMenuItem>

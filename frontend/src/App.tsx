@@ -19,6 +19,7 @@ const AllowancesList = lazy(() => import('./pages/AllowancesList'));
 const AllowanceDetails = lazy(() => import('./pages/AllowanceDetails'));
 const NewAllowance = lazy(() => import('./pages/NewAllowance'));
 const Employees = lazy(() => import('./pages/Employees'));
+const EmployeeDetails = lazy(() => import('./pages/EmployeeDetails'));
 const Projects = lazy(() => import('./pages/Projects'));
 const Settlements = lazy(() => import('./pages/Settlements'));
 const Reports = lazy(() => import('./pages/Reports'));
@@ -133,6 +134,16 @@ const App = () => (
                   <Suspense fallback={<PageLoader />}>
                     <ProtectedRoute allowedRoles={['hr', 'admin']}>
                       <Employees />
+                    </ProtectedRoute>
+                  </Suspense>
+                }
+              />
+              <Route
+                path="/employees/:id"
+                element={
+                  <Suspense fallback={<PageLoader />}>
+                    <ProtectedRoute allowedRoles={['hr', 'admin']}>
+                      <EmployeeDetails />
                     </ProtectedRoute>
                   </Suspense>
                 }

@@ -68,6 +68,11 @@ async def create_employee(
     
     # Create employee with a default tenant_id for now
     # In production, this should come from authenticated user's tenant
+    # Store project_ids in employee_data JSONB field
+    emp_data = employee_data.employee_data or {}
+    if employee_data.project_ids:
+        emp_data['project_ids'] = employee_data.project_ids
+    
     employee = Employee(
         id=uuid4(),
         tenant_id=uuid4(),  # TODO: Get from authenticated user
@@ -76,10 +81,13 @@ async def create_employee(
         last_name=employee_data.last_name,
         email=employee_data.email,
         phone=employee_data.phone,
+        mobile=employee_data.mobile,
+        address=employee_data.address,
         department=employee_data.department,
         designation=employee_data.designation,
+        manager_id=UUID(employee_data.manager_id) if employee_data.manager_id else None,
         date_of_joining=employee_data.date_of_joining,
-        employee_data=employee_data.employee_data,
+        employee_data=emp_data,
         employment_status="ACTIVE"
     )
     
@@ -105,7 +113,19 @@ async def update_employee(
         )
     
     # Update fields
-    for field, value in employee_data.dict(exclude_unset=True).items():
+    update_data = employee_data.dict(exclude_unset=True)
+    
+    # Handle manager_id conversion
+    if 'manager_id' in update_data and update_data['manager_id']:
+        update_data['manager_id'] = UUID(update_data['manager_id'])
+    
+    # Store project_ids in employee_data JSONB field
+    if 'project_ids' in update_data:
+        emp_data = employee.employee_data or {}
+        emp_data['project_ids'] = update_data.pop('project_ids')
+        update_data['employee_data'] = emp_data
+    
+    for field, value in update_data.items():
         setattr(employee, field, value)
     
     db.commit()

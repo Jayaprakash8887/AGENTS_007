@@ -125,12 +125,16 @@ class EmployeeBase(BaseModel):
     last_name: str
     email: EmailStr
     phone: Optional[str] = None
+    mobile: Optional[str] = None
+    address: Optional[str] = None
     department: Optional[str] = None
     designation: Optional[str] = None
 
 
 class EmployeeCreate(EmployeeBase):
     date_of_joining: Optional[date] = None
+    manager_id: Optional[str] = None
+    project_ids: Optional[List[str]] = []
     employee_data: Dict[str, Any] = {}
 
 
@@ -139,6 +143,7 @@ class EmployeeResponse(EmployeeBase):
     manager_id: Optional[UUID] = None
     date_of_joining: Optional[date]
     employment_status: str
+    employee_data: Dict[str, Any] = {}
     created_at: datetime
     
     class Config:

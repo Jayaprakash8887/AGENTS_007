@@ -3,8 +3,14 @@ import { User, UserRole } from '@/types';
 export interface Employee extends User {
   employeeId: string;
   phone?: string;
-  joinDate: Date;
+  mobile?: string;
+  address?: string;
+  firstName?: string;
+  lastName?: string;
+  designation?: string;
+  joinDate: Date | string;
   status: 'active' | 'inactive' | 'on_leave';
+  managerId?: string;
   projectIds: string[];
 }
 

@@ -18,11 +18,32 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { employeeSchema, EmployeeFormData } from '@/lib/validations';
-import { Loader2 } from 'lucide-react';
+import { Loader2, X } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+} from '@/components/ui/command';
+
+interface Project {
+  id: string;
+  name: string;
+  code: string;
+  status: string;
+}
 
 interface EmployeeFormProps {
   departments: string[];
   managers?: { id: string; name: string }[];
+  projects?: Project[];
   onSubmit: (data: EmployeeFormData) => void;
   onCancel: () => void;
   isLoading?: boolean;
@@ -32,6 +53,7 @@ interface EmployeeFormProps {
 export function EmployeeForm({
   departments,
   managers = [],
+  projects = [],
   onSubmit,
   onCancel,
   isLoading = false,
@@ -52,6 +74,7 @@ export function EmployeeForm({
       role: 'employee',
       dateOfJoining: '',
       managerId: '',
+      projectIds: [],
       ...defaultValues,
     },
   });
@@ -238,6 +261,93 @@ export function EmployeeForm({
             )}
           />
         </div>
+
+        {projects.length > 0 && (
+          <FormField
+            control={form.control}
+            name="projectIds"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Project Allocations (Optional)</FormLabel>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <FormControl>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        className="w-full justify-between font-normal"
+                      >
+                        {field.value && field.value.length > 0
+                          ? `${field.value.length} project${field.value.length > 1 ? 's' : ''} selected`
+                          : 'Select projects'}
+                      </Button>
+                    </FormControl>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-full p-0" align="start">
+                    <Command>
+                      <CommandInput placeholder="Search projects..." />
+                      <CommandEmpty>No projects found.</CommandEmpty>
+                      <CommandGroup className="max-h-64 overflow-auto">
+                        {projects.map((project) => {
+                          const isSelected = field.value?.includes(project.id);
+                          return (
+                            <CommandItem
+                              key={project.id}
+                              onSelect={() => {
+                                const currentValues = field.value || [];
+                                const newValues = isSelected
+                                  ? currentValues.filter((id) => id !== project.id)
+                                  : [...currentValues, project.id];
+                                field.onChange(newValues);
+                              }}
+                            >
+                              <div className="flex items-center gap-2 flex-1">
+                                <div className={`w-4 h-4 border rounded flex items-center justify-center ${isSelected ? 'bg-primary border-primary' : 'border-input'}`}>
+                                  {isSelected && (
+                                    <svg className="w-3 h-3 text-primary-foreground" fill="none" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path d="M5 13l4 4L19 7"></path>
+                                    </svg>
+                                  )}
+                                </div>
+                                <span className="flex-1">{project.name}</span>
+                                <span className="text-xs text-muted-foreground">({project.code})</span>
+                              </div>
+                            </CommandItem>
+                          );
+                        })}
+                      </CommandGroup>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+                {field.value && field.value.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {field.value.map((projectId) => {
+                      const project = projects.find((p) => p.id === projectId);
+                      if (!project) return null;
+                      return (
+                        <Badge key={projectId} variant="secondary" className="gap-1">
+                          {project.code}
+                          <button
+                            type="button"
+                            className="ml-1 ring-offset-background rounded-full outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              const newValues = field.value?.filter((id) => id !== projectId) || [];
+                              field.onChange(newValues);
+                            }}
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </Badge>
+                      );
+                    })}
+                  </div>
+                )}
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
 
         {managers.length > 0 && (
           <FormField

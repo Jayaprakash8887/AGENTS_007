@@ -13,13 +13,15 @@ function mapBackendEmployee(backendEmployee: any): Employee {
     lastName: backendEmployee.last_name,
     email: backendEmployee.email,
     phone: backendEmployee.phone || '',
+    mobile: backendEmployee.mobile || '',
+    address: backendEmployee.address || '',
     department: backendEmployee.department,
     designation: backendEmployee.designation || '',
     role: mapEmployeeRole(backendEmployee.designation),
     status: mapEmploymentStatus(backendEmployee.employment_status),
     joinDate: backendEmployee.date_of_joining || '',
     managerId: backendEmployee.manager_id || undefined,
-    projectIds: [],
+    projectIds: backendEmployee.employee_data?.project_ids || [],
   };
 }
 
@@ -75,9 +77,13 @@ async function createEmployee(employee: Partial<Employee>): Promise<Employee> {
     last_name: employee.lastName,
     email: employee.email,
     phone: employee.phone,
+    mobile: employee.mobile,
+    address: employee.address,
     department: employee.department,
     designation: employee.designation,
     date_of_joining: employee.joinDate,
+    manager_id: employee.managerId || null,
+    project_ids: employee.projectIds || [],
   };
   
   const response = await fetch(`${API_BASE_URL}/employees/`, {
@@ -90,6 +96,38 @@ async function createEmployee(employee: Partial<Employee>): Promise<Employee> {
   
   if (!response.ok) {
     throw new Error('Failed to create employee');
+  }
+  
+  const data = await response.json();
+  return mapBackendEmployee(data);
+}
+
+async function updateEmployee(id: string, employee: Partial<Employee>): Promise<Employee> {
+  const backendEmployee = {
+    employee_id: employee.employeeId,
+    first_name: employee.firstName,
+    last_name: employee.lastName,
+    email: employee.email,
+    phone: employee.phone,
+    mobile: employee.mobile,
+    address: employee.address,
+    department: employee.department,
+    designation: employee.designation,
+    date_of_joining: employee.joinDate,
+    manager_id: employee.managerId || null,
+    project_ids: employee.projectIds || [],
+  };
+  
+  const response = await fetch(`${API_BASE_URL}/employees/${id}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(backendEmployee),
+  });
+  
+  if (!response.ok) {
+    throw new Error('Failed to update employee');
   }
   
   const data = await response.json();
@@ -129,6 +167,17 @@ export function useCreateEmployee() {
   
   return useMutation({
     mutationFn: createEmployee,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+    },
+  });
+}
+
+export function useUpdateEmployee() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<Employee> }) => updateEmployee(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employees'] });
     },
