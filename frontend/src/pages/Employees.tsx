@@ -112,7 +112,7 @@ export default function Employees() {
         designation: data.designation || data.role,
         joinDate: data.dateOfJoining || format(new Date(), 'yyyy-MM-dd'),
         managerId: data.managerId || undefined,
-        projectIds: data.projectIds || [],
+        projectIds: data.projectIds || '',
       });
       toast.success('Employee added successfully');
       setIsAddDialogOpen(false);
@@ -144,7 +144,7 @@ export default function Employees() {
           designation: data.designation || data.role,
           joinDate: data.dateOfJoining || selectedEmployee.joinDate,
           managerId: data.managerId || undefined,
-          projectIds: data.projectIds || [],
+          projectIds: data.projectIds || '',
         }
       });
       toast.success('Employee updated successfully');
@@ -254,6 +254,7 @@ export default function Employees() {
                 setSelectedEmployee(null);
               }}
               isLoading={updateEmployee.isPending}
+              currentEmployeeId={selectedEmployee.id}
               defaultValues={{
                 employeeId: selectedEmployee.employeeId,
                 firstName: selectedEmployee.firstName || selectedEmployee.name?.split(' ')[0] || '',
@@ -267,7 +268,7 @@ export default function Employees() {
                 role: selectedEmployee.role,
                 dateOfJoining: selectedEmployee.joinDate || '',
                 managerId: selectedEmployee.managerId || '',
-                projectIds: selectedEmployee.projectIds || [],
+                projectIds: selectedEmployee.projectIds?.[0] || '',
               }}
             />
           )}

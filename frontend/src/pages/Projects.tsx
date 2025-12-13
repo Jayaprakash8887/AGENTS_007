@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Plus, Search, FolderKanban, Users, Calendar, TrendingUp, Download } from 'lucide-react';
+import { Plus, Search, FolderKanban, Users, Calendar, TrendingUp, Download, Edit } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -19,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useProjects, useProjectStats, useCreateProject } from '@/hooks/useProjects';
+import { useProjects, useProjectStats, useCreateProject, useUpdateProject } from '@/hooks/useProjects';
 import { useEmployees } from '@/hooks/useEmployees';
 import { ProjectForm } from '@/components/forms/ProjectForm';
 import { CardSkeleton } from '@/components/ui/loading-skeleton';
@@ -35,13 +35,21 @@ const statusStyles = {
   on_hold: 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-300',
 };
 
-function ProjectCard({ project, employees }: { project: Project; employees?: { id: string; name: string }[] }) {
+function ProjectCard({ 
+  project, 
+  employees,
+  onEdit 
+}: { 
+  project: Project; 
+  employees?: { id: string; name: string }[]; 
+  onEdit: (project: Project) => void;
+}) {
   const budgetUsed = (project.spent / project.budget) * 100;
   const manager = employees?.find((e) => e.id === project.managerId);
   const isOverBudget = budgetUsed > 100;
 
   return (
-    <Card className="hover:shadow-md transition-shadow">
+    <Card className="hover:shadow-md transition-shadow group relative">
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
@@ -55,9 +63,19 @@ function ProjectCard({ project, employees }: { project: Project; employees?: { i
               </p>
             </div>
           </div>
-          <Badge variant="secondary" className={statusStyles[project.status]}>
-            {project.status.replace('_', ' ')}
-          </Badge>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+              onClick={() => onEdit(project)}
+            >
+              <Edit className="h-4 w-4" />
+            </Button>
+            <Badge variant="secondary" className={statusStyles[project.status]}>
+              {project.status.replace('_', ' ')}
+            </Badge>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -110,11 +128,14 @@ export default function Projects() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
 
   const { data: projects, isLoading, error } = useProjects();
   const { data: stats } = useProjectStats();
   const { data: employees } = useEmployees();
   const createProject = useCreateProject();
+  const updateProject = useUpdateProject();
 
   const managers = useMemo(() => {
     if (!employees) return [];
@@ -159,6 +180,35 @@ export default function Projects() {
     } catch {
       toast.error('Failed to create project');
     }
+  };
+
+  const handleEditProject = async (data: ProjectFormData) => {
+    if (!selectedProject) return;
+    
+    try {
+      await updateProject.mutateAsync({
+        id: selectedProject.id,
+        data: {
+          name: data.name,
+          code: data.code,
+          description: data.description || '',
+          budget: data.budget,
+          status: data.status || selectedProject.status,
+          startDate: data.startDate,
+          endDate: data.endDate,
+        },
+      });
+      toast.success('Project updated successfully');
+      setIsEditDialogOpen(false);
+      setSelectedProject(null);
+    } catch {
+      toast.error('Failed to update project');
+    }
+  };
+
+  const handleEditClick = (project: Project) => {
+    setSelectedProject(project);
+    setIsEditDialogOpen(true);
   };
 
   const handleExport = () => {
@@ -230,6 +280,31 @@ export default function Projects() {
                 onSubmit={handleAddProject}
                 onCancel={() => setIsAddDialogOpen(false)}
                 isLoading={createProject.isPending}
+              />
+            </DialogContent>
+          </Dialog>
+          <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+            <DialogContent className="sm:max-w-[500px]">
+              <DialogHeader>
+                <DialogTitle>Edit Project</DialogTitle>
+              </DialogHeader>
+              <ProjectForm
+                managers={managers}
+                onSubmit={handleEditProject}
+                onCancel={() => {
+                  setIsEditDialogOpen(false);
+                  setSelectedProject(null);
+                }}
+                isLoading={updateProject.isPending}
+                defaultValues={selectedProject ? {
+                  name: selectedProject.name,
+                  code: selectedProject.code,
+                  description: selectedProject.description,
+                  budget: selectedProject.budget,
+                  managerId: selectedProject.managerId,
+                  startDate: selectedProject.startDate,
+                  endDate: selectedProject.endDate,
+                } : undefined}
               />
             </DialogContent>
           </Dialog>
@@ -322,7 +397,12 @@ export default function Projects() {
         <>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {filteredProjects.map((project) => (
-              <ProjectCard key={project.id} project={project} employees={employeeMap} />
+              <ProjectCard 
+                key={project.id} 
+                project={project} 
+                employees={employeeMap}
+                onEdit={handleEditClick}
+              />
             ))}
           </div>
 

@@ -277,10 +277,12 @@ class ProjectCreate(ProjectBase):
 
 class ProjectUpdate(BaseModel):
     project_name: Optional[str] = None
+    project_code: Optional[str] = None
     description: Optional[str] = None
     budget_allocated: Optional[float] = None
     start_date: Optional[date] = None
     end_date: Optional[date] = None
+    status: Optional[str] = None
     is_active: Optional[bool] = None
 
 

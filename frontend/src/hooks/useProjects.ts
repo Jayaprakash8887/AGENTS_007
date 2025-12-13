@@ -125,6 +125,56 @@ export function useCreateProject() {
   });
 }
 
+async function updateProject(id: string, project: Partial<Project>): Promise<Project> {
+  const response = await fetch(`${API_BASE_URL}/projects/${id}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      project_code: project.code,
+      project_name: project.name,
+      description: project.description,
+      budget_allocated: project.budget,
+      start_date: project.startDate ? new Date(project.startDate).toISOString().split('T')[0] : undefined,
+      end_date: project.endDate ? new Date(project.endDate).toISOString().split('T')[0] : undefined,
+      status: project.status?.toUpperCase(),
+    }),
+  });
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to update project');
+  }
+  
+  const data = await response.json();
+  
+  return {
+    id: data.id,
+    code: data.project_code,
+    name: data.project_name,
+    description: data.description || '',
+    budget: parseFloat(data.budget_allocated || 0),
+    spent: parseFloat(data.budget_spent || 0),
+    startDate: data.start_date ? new Date(data.start_date) : new Date(),
+    endDate: data.end_date ? new Date(data.end_date) : undefined,
+    status: data.status?.toLowerCase() === 'active' ? 'active' : data.status?.toLowerCase() === 'completed' ? 'completed' : 'on_hold',
+    managerId: data.manager_id || '',
+    memberIds: [],
+  };
+}
+
+export function useUpdateProject() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<Project> }) => updateProject(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+    },
+  });
+}
+
 export function useProjectStats() {
   const { data: projects, ...rest } = useProjects();
   

@@ -77,7 +77,7 @@ export default function EmployeeDetails() {
           designation: data.designation || data.role,
           joinDate: data.dateOfJoining || employee.joinDate,
           managerId: data.managerId || undefined,
-          projectIds: data.projectIds || [],
+          projectIds: data.projectIds || '',
         }
       });
       toast.success('Employee updated successfully');
@@ -164,6 +164,7 @@ export default function EmployeeDetails() {
             onSubmit={handleUpdateEmployee}
             onCancel={() => setIsEditDialogOpen(false)}
             isLoading={updateEmployee.isPending}
+            currentEmployeeId={employee.id}
             defaultValues={{
               employeeId: employee.employeeId,
               firstName: employee.firstName || employee.name?.split(' ')[0] || '',
@@ -177,7 +178,7 @@ export default function EmployeeDetails() {
               role: employee.role,
               dateOfJoining: employee.joinDate || '',
               managerId: employee.managerId || '',
-              projectIds: employee.projectIds || [],
+              projectIds: employee.projectIds?.[0] || '',
             }}
           />
         </DialogContent>

@@ -48,6 +48,7 @@ interface EmployeeFormProps {
   onCancel: () => void;
   isLoading?: boolean;
   defaultValues?: Partial<EmployeeFormData>;
+  currentEmployeeId?: string;
 }
 
 export function EmployeeForm({
@@ -58,7 +59,13 @@ export function EmployeeForm({
   onCancel,
   isLoading = false,
   defaultValues,
+  currentEmployeeId,
 }: EmployeeFormProps) {
+  // Filter out current employee from managers list to prevent self-selection
+  const availableManagers = currentEmployeeId 
+    ? managers.filter(m => m.id !== currentEmployeeId)
+    : managers;
+
   const form = useForm<EmployeeFormData>({
     resolver: zodResolver(employeeSchema),
     defaultValues: {
@@ -74,7 +81,7 @@ export function EmployeeForm({
       role: 'employee',
       dateOfJoining: '',
       managerId: '',
-      projectIds: [],
+      projectIds: '',
       ...defaultValues,
     },
   });
@@ -268,88 +275,28 @@ export function EmployeeForm({
             name="projectIds"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Project Allocations (Optional)</FormLabel>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <FormControl>
-                      <Button
-                        variant="outline"
-                        role="combobox"
-                        className="w-full justify-between font-normal"
-                      >
-                        {field.value && field.value.length > 0
-                          ? `${field.value.length} project${field.value.length > 1 ? 's' : ''} selected`
-                          : 'Select projects'}
-                      </Button>
-                    </FormControl>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-full p-0" align="start">
-                    <Command>
-                      <CommandInput placeholder="Search projects..." />
-                      <CommandEmpty>No projects found.</CommandEmpty>
-                      <CommandGroup className="max-h-64 overflow-auto">
-                        {projects.map((project) => {
-                          const isSelected = field.value?.includes(project.id);
-                          return (
-                            <CommandItem
-                              key={project.id}
-                              onSelect={() => {
-                                const currentValues = field.value || [];
-                                const newValues = isSelected
-                                  ? currentValues.filter((id) => id !== project.id)
-                                  : [...currentValues, project.id];
-                                field.onChange(newValues);
-                              }}
-                            >
-                              <div className="flex items-center gap-2 flex-1">
-                                <div className={`w-4 h-4 border rounded flex items-center justify-center ${isSelected ? 'bg-primary border-primary' : 'border-input'}`}>
-                                  {isSelected && (
-                                    <svg className="w-3 h-3 text-primary-foreground" fill="none" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" stroke="currentColor">
-                                      <path d="M5 13l4 4L19 7"></path>
-                                    </svg>
-                                  )}
-                                </div>
-                                <span className="flex-1">{project.name}</span>
-                                <span className="text-xs text-muted-foreground">({project.code})</span>
-                              </div>
-                            </CommandItem>
-                          );
-                        })}
-                      </CommandGroup>
-                    </Command>
-                  </PopoverContent>
-                </Popover>
-                {field.value && field.value.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mt-2">
-                    {field.value.map((projectId) => {
-                      const project = projects.find((p) => p.id === projectId);
-                      if (!project) return null;
-                      return (
-                        <Badge key={projectId} variant="secondary" className="gap-1">
-                          {project.code}
-                          <button
-                            type="button"
-                            className="ml-1 ring-offset-background rounded-full outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              const newValues = field.value?.filter((id) => id !== projectId) || [];
-                              field.onChange(newValues);
-                            }}
-                          >
-                            <X className="h-3 w-3" />
-                          </button>
-                        </Badge>
-                      );
-                    })}
-                  </div>
-                )}
+                <FormLabel>Project Allocation (Optional)</FormLabel>
+                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a project" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {projects.map((project) => (
+                      <SelectItem key={project.id} value={project.id}>
+                        {project.name} ({project.code})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <FormMessage />
               </FormItem>
             )}
           />
         )}
 
-        {managers.length > 0 && (
+        {availableManagers.length > 0 && (
           <FormField
             control={form.control}
             name="managerId"
@@ -363,7 +310,7 @@ export function EmployeeForm({
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    {managers.map((manager) => (
+                    {availableManagers.map((manager) => (
                       <SelectItem key={manager.id} value={manager.id}>
                         {manager.name}
                       </SelectItem>
