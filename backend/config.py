@@ -180,6 +180,47 @@ class Settings(BaseSettings):
     ENABLE_AI_VALIDATION: bool = True
     ENABLE_LEARNING_AGENT: bool = True
     
+    # ===========================================
+    # AI ANALYSIS CONFIGURATION
+    # ===========================================
+    
+    # Scoring weights for AI analysis (must sum to 1.0)
+    AI_WEIGHT_DOCUMENT_ATTACHED: float = 0.20
+    AI_WEIGHT_DATA_COMPLETENESS: float = 0.25
+    AI_WEIGHT_OCR_CONFIDENCE: float = 0.20
+    AI_WEIGHT_AMOUNT_REASONABILITY: float = 0.15
+    AI_WEIGHT_DUPLICATE_RISK: float = 0.10
+    AI_WEIGHT_CATEGORY_MATCH: float = 0.10
+    
+    # AI recommendation thresholds
+    AI_THRESHOLD_AUTO_APPROVE: float = 90.0  # Confidence >= this: auto-approve recommended
+    AI_THRESHOLD_QUICK_REVIEW: float = 70.0  # Confidence >= this: quick review recommended
+    
+    # Category limits in INR (comma-separated key:value pairs)
+    AI_CATEGORY_LIMITS: str = "TRAVEL:50000,FOOD:5000,TEAM_LUNCH:10000,CERTIFICATION:100000,ACCOMMODATION:20000,EQUIPMENT:50000,SOFTWARE:30000,OFFICE_SUPPLIES:5000,MEDICAL:25000,MOBILE:2000,PASSPORT_VISA:15000,CONVEYANCE:3000,CLIENT_MEETING:20000,OTHER:10000"
+    
+    @property
+    def ai_scoring_weights(self) -> dict:
+        """Get AI scoring weights as dictionary"""
+        return {
+            "document_attached": self.AI_WEIGHT_DOCUMENT_ATTACHED,
+            "data_completeness": self.AI_WEIGHT_DATA_COMPLETENESS,
+            "ocr_confidence": self.AI_WEIGHT_OCR_CONFIDENCE,
+            "amount_reasonability": self.AI_WEIGHT_AMOUNT_REASONABILITY,
+            "duplicate_risk": self.AI_WEIGHT_DUPLICATE_RISK,
+            "category_match": self.AI_WEIGHT_CATEGORY_MATCH,
+        }
+    
+    @property
+    def ai_category_limits(self) -> dict:
+        """Parse category limits string into dictionary"""
+        limits = {}
+        for item in self.AI_CATEGORY_LIMITS.split(","):
+            if ":" in item:
+                key, value = item.strip().split(":")
+                limits[key.strip().upper()] = int(value.strip())
+        return limits
+    
     # Rate Limiting
     RATE_LIMIT_ENABLED: bool = True
     RATE_LIMIT_PER_MINUTE: int = 60

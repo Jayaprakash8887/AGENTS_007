@@ -10,10 +10,10 @@ async function fetchClaims(): Promise<Claim[]> {
     throw new Error('Failed to fetch claims');
   }
   const data = await response.json();
-  
+
   // Backend returns { claims: [...], total, page, page_size }
   const claimsList = data.claims || data;
-  
+
   // Transform backend response to frontend format
   return claimsList.map((claim: any) => ({
     id: claim.id,
@@ -31,8 +31,10 @@ async function fetchClaims(): Promise<Claim[]> {
     claimDate: claim.claim_date ? new Date(claim.claim_date) : new Date(),
     description: claim.description || '',
     documents: claim.documents || [],
-    aiProcessed: claim.ai_validation_score !== null,
-    aiConfidence: claim.ai_validation_score || 0,
+    aiProcessed: claim.claim_payload?.ai_analysis?.ai_confidence !== undefined,
+    aiConfidence: claim.claim_payload?.ai_analysis?.ai_confidence || 0,
+    aiRecommendation: claim.claim_payload?.ai_analysis?.ai_recommendation || 'review',
+    aiRecommendationText: claim.claim_payload?.ai_analysis?.recommendation_text || 'Manual review required',
     complianceScore: claim.compliance_score || 0,
   }));
 }
@@ -61,7 +63,7 @@ async function fetchClaimById(id: string): Promise<Claim | undefined> {
   }
   const claim = await response.json();
   const payload = claim.claim_payload || {};
-  
+
   return {
     id: claim.id,
     claimNumber: claim.claim_number,
@@ -82,8 +84,10 @@ async function fetchClaimById(id: string): Promise<Claim | undefined> {
     vendor: payload.vendor || '',
     transactionRef: payload.transaction_ref || '',
     documents: claim.documents || [],
-    aiProcessed: claim.ai_validation_score !== null,
-    aiConfidence: claim.ai_validation_score || 0,
+    aiProcessed: claim.claim_payload?.ai_analysis?.ai_confidence !== undefined,
+    aiConfidence: claim.claim_payload?.ai_analysis?.ai_confidence || 0,
+    aiRecommendation: claim.claim_payload?.ai_analysis?.ai_recommendation || 'review',
+    aiRecommendationText: claim.claim_payload?.ai_analysis?.recommendation_text || 'Manual review required',
     complianceScore: claim.compliance_score || 0,
     // Add dataSource based on whether data was auto-extracted or manual
     dataSource: {
@@ -111,11 +115,11 @@ async function updateClaimStatus(id: string, status: ClaimStatus): Promise<Claim
     },
     body: JSON.stringify({ status: status.toUpperCase() }),
   });
-  
+
   if (!response.ok) {
     throw new Error('Failed to update claim status');
   }
-  
+
   const claim = await response.json();
   return {
     id: claim.id,
@@ -132,8 +136,10 @@ async function updateClaimStatus(id: string, status: ClaimStatus): Promise<Claim
     claimDate: claim.claim_date ? new Date(claim.claim_date) : new Date(),
     description: claim.description || '',
     documents: claim.documents || [],
-    aiProcessed: claim.ai_validation_score !== null,
-    aiConfidence: claim.ai_validation_score || 0,
+    aiProcessed: claim.claim_payload?.ai_analysis?.ai_confidence !== undefined,
+    aiConfidence: claim.claim_payload?.ai_analysis?.ai_confidence || 0,
+    aiRecommendation: claim.claim_payload?.ai_analysis?.ai_recommendation || 'review',
+    aiRecommendationText: claim.claim_payload?.ai_analysis?.recommendation_text || 'Manual review required',
     complianceScore: claim.compliance_score || 0,
   };
 }
@@ -158,11 +164,11 @@ export function useClaim(id: string) {
 
 export function useClaimsByStatus(status: ClaimStatus | 'all') {
   const { data: claims, ...rest } = useClaims();
-  
-  const filteredClaims = status === 'all' 
-    ? claims 
+
+  const filteredClaims = status === 'all'
+    ? claims
     : claims?.filter(claim => claim.status === status);
-  
+
   return { data: filteredClaims, ...rest };
 }
 
@@ -172,9 +178,9 @@ export function usePendingApprovals() {
 
 export function useUpdateClaimStatus() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
-    mutationFn: ({ id, status }: { id: string; status: ClaimStatus }) => 
+    mutationFn: ({ id, status }: { id: string; status: ClaimStatus }) =>
       updateClaimStatus(id, status),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['claims'] });
@@ -230,39 +236,47 @@ async function createBatchClaims(batch: BatchClaimCreate): Promise<BatchClaimRes
     },
     body: JSON.stringify(batch),
   });
-  
+
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.detail || 'Failed to create claims');
+    // Handle both string and object error details (e.g., duplicate claim errors)
+    const errorMessage = typeof error.detail === 'object'
+      ? error.detail.message || JSON.stringify(error.detail)
+      : error.detail || 'Failed to create claims';
+    throw new Error(errorMessage);
   }
-  
+
   return response.json();
 }
 
 async function createBatchClaimsWithDocument(data: BatchClaimWithDocumentCreate): Promise<BatchClaimResponse> {
   const formData = new FormData();
   formData.append('batch_data', JSON.stringify(data.batchData));
-  
+
   if (data.file) {
     formData.append('file', data.file);
   }
-  
+
   const response = await fetch(`${API_BASE_URL}/claims/batch-with-document`, {
     method: 'POST',
     body: formData,  // No Content-Type header - browser sets it with boundary
   });
-  
+
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.detail || 'Failed to create claims');
+    // Handle both string and object error details (e.g., duplicate claim errors)
+    const errorMessage = typeof error.detail === 'object'
+      ? error.detail.message || JSON.stringify(error.detail)
+      : error.detail || 'Failed to create claims';
+    throw new Error(errorMessage);
   }
-  
+
   return response.json();
 }
 
 export function useCreateBatchClaims() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: createBatchClaims,
     onSuccess: () => {
@@ -273,7 +287,7 @@ export function useCreateBatchClaims() {
 
 export function useCreateBatchClaimsWithDocument() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: createBatchClaimsWithDocument,
     onSuccess: () => {
@@ -287,7 +301,7 @@ async function deleteClaim(claimId: string): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/claims/${claimId}`, {
     method: 'DELETE',
   });
-  
+
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.detail || 'Failed to delete claim');
@@ -296,7 +310,7 @@ async function deleteClaim(claimId: string): Promise<void> {
 
 export function useDeleteClaim() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: deleteClaim,
     onSuccess: () => {
@@ -322,12 +336,16 @@ async function updateClaim(claimId: string, data: ClaimUpdateData): Promise<Clai
     },
     body: JSON.stringify(data),
   });
-  
+
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.detail || 'Failed to update claim');
+    // Handle both string and object error details (e.g., duplicate claim errors)
+    const errorMessage = typeof error.detail === 'object'
+      ? error.detail.message || JSON.stringify(error.detail)
+      : error.detail || 'Failed to update claim';
+    throw new Error(errorMessage);
   }
-  
+
   const claim = await response.json();
   return {
     id: claim.id,
@@ -344,17 +362,19 @@ async function updateClaim(claimId: string, data: ClaimUpdateData): Promise<Clai
     claimDate: claim.claim_date ? new Date(claim.claim_date) : new Date(),
     description: claim.description || '',
     documents: claim.documents || [],
-    aiProcessed: claim.ai_validation_score !== null,
-    aiConfidence: claim.ai_validation_score || 0,
+    aiProcessed: claim.claim_payload?.ai_analysis?.ai_confidence !== undefined,
+    aiConfidence: claim.claim_payload?.ai_analysis?.ai_confidence || 0,
+    aiRecommendation: claim.claim_payload?.ai_analysis?.ai_recommendation || 'review',
+    aiRecommendationText: claim.claim_payload?.ai_analysis?.recommendation_text || 'Manual review required',
     complianceScore: claim.compliance_score || 0,
   };
 }
 
 export function useUpdateClaim() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
-    mutationFn: ({ claimId, data }: { claimId: string; data: ClaimUpdateData }) => 
+    mutationFn: ({ claimId, data }: { claimId: string; data: ClaimUpdateData }) =>
       updateClaim(claimId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['claims'] });

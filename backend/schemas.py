@@ -23,6 +23,7 @@ class ClaimCategory(str, Enum):
     RELOCATION = "RELOCATION"
     INTERNET = "INTERNET"
     MOBILE = "MOBILE"
+    CONVEYANCE = "CONVEYANCE"
 
 
 class ClaimStatus(str, Enum):

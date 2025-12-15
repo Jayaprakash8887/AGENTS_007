@@ -26,6 +26,8 @@ from schemas import (
 from config import settings
 from agents.orchestrator import process_claim_task
 from services.storage import upload_to_gcs
+from services.duplicate_detection import check_duplicate_claim, check_batch_duplicates
+from services.ai_analysis import generate_ai_analysis
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -74,6 +76,39 @@ async def create_batch_claims(
             detail=f"Employee not found: {batch.employee_id}"
         )
     
+    # Check for duplicate claims
+    claims_data = [
+        {
+            "amount": claim_item.amount,
+            "claim_date": claim_item.claim_date,
+            "transaction_ref": claim_item.transaction_ref
+        }
+        for claim_item in batch.claims
+    ]
+    
+    dup_result = await check_batch_duplicates(
+        db=db,
+        employee_id=batch.employee_id,
+        claims_data=claims_data,
+        tenant_id=UUID(settings.DEFAULT_TENANT_ID)
+    )
+    
+    # Block submission if exact duplicates found
+    if dup_result["exact_duplicates"]:
+        duplicate_indices = dup_result["exact_duplicates"]
+        duplicate_details = [
+            dup_result["duplicate_details"].get(idx, {})
+            for idx in duplicate_indices
+        ]
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "message": "Duplicate claims detected. The following claims match existing submissions.",
+                "duplicate_indices": duplicate_indices,
+                "duplicate_details": duplicate_details
+            }
+        )
+    
     created_claims = []
     claim_ids = []
     claim_numbers = []
@@ -105,6 +140,31 @@ async def create_batch_claims(
             "transaction_ref_source": claim_item.transaction_ref_source or 'manual',
             "payment_method_source": claim_item.payment_method_source or 'manual',
         }
+        
+        # Check if this specific claim is a potential duplicate (partial match)
+        is_potential_dup = idx in dup_result.get("partial_duplicates", [])
+        
+        # Generate AI analysis for this claim
+        ai_analysis = generate_ai_analysis(
+            claim_data={
+                "amount": claim_item.amount,
+                "category": category,
+                "claim_type": batch.claim_type.value,
+                "claim_date": claim_item.claim_date,
+                "description": claim_item.description,
+                "vendor": claim_item.vendor,
+                "transaction_ref": claim_item.transaction_ref,
+                "title": claim_item.title,
+                "amount_source": claim_item.amount_source,
+                "date_source": claim_item.date_source,
+                "vendor_source": claim_item.vendor_source,
+                "category_source": claim_item.category_source,
+            },
+            has_document=False,  # No document in batch endpoint
+            ocr_confidence=None,
+            is_potential_duplicate=is_potential_dup
+        )
+        claim_payload["ai_analysis"] = ai_analysis
         
         # Create claim
         new_claim = Claim(
@@ -180,6 +240,39 @@ async def create_batch_claims_with_document(
             detail=f"Employee not found: {batch.employee_id}"
         )
     
+    # Check for duplicate claims
+    claims_data = [
+        {
+            "amount": claim_item.amount,
+            "claim_date": claim_item.claim_date,
+            "transaction_ref": claim_item.transaction_ref
+        }
+        for claim_item in batch.claims
+    ]
+    
+    dup_result = await check_batch_duplicates(
+        db=db,
+        employee_id=batch.employee_id,
+        claims_data=claims_data,
+        tenant_id=UUID(settings.DEFAULT_TENANT_ID)
+    )
+    
+    # Block submission if exact duplicates found
+    if dup_result["exact_duplicates"]:
+        duplicate_indices = dup_result["exact_duplicates"]
+        duplicate_details = [
+            dup_result["duplicate_details"].get(idx, {})
+            for idx in duplicate_indices
+        ]
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "message": "Duplicate claims detected. The following claims match existing submissions.",
+                "duplicate_indices": duplicate_indices,
+                "duplicate_details": duplicate_details
+            }
+        )
+    
     # Handle document upload if provided
     document_id = None
     gcs_uri = None
@@ -248,6 +341,32 @@ async def create_batch_claims_with_document(
             "transaction_ref_source": claim_item.transaction_ref_source or 'manual',
             "payment_method_source": claim_item.payment_method_source or 'manual',
         }
+        
+        # Check if this specific claim is a potential duplicate (partial match)
+        is_potential_dup = idx in dup_result.get("partial_duplicates", [])
+        
+        # Generate AI analysis - document attachment boosts score
+        has_doc = file is not None and file.filename
+        ai_analysis = generate_ai_analysis(
+            claim_data={
+                "amount": claim_item.amount,
+                "category": category,
+                "claim_type": batch.claim_type.value,
+                "claim_date": claim_item.claim_date,
+                "description": claim_item.description,
+                "vendor": claim_item.vendor,
+                "transaction_ref": claim_item.transaction_ref,
+                "title": claim_item.title,
+                "amount_source": claim_item.amount_source,
+                "date_source": claim_item.date_source,
+                "vendor_source": claim_item.vendor_source,
+                "category_source": claim_item.category_source,
+            },
+            has_document=has_doc,
+            ocr_confidence=None,  # Could be enhanced to use OCR results
+            is_potential_duplicate=is_potential_dup
+        )
+        claim_payload["ai_analysis"] = ai_analysis
         
         # Create claim
         new_claim = Claim(
@@ -381,6 +500,30 @@ async def submit_claim(
             detail="Only pending or returned claims can be resubmitted"
         )
     
+    # Check for duplicate claims (only for returned claims being resubmitted)
+    if claim.status == "RETURNED_TO_EMPLOYEE":
+        transaction_ref = claim.claim_payload.get("transaction_ref") if claim.claim_payload else None
+        
+        dup_result = await check_duplicate_claim(
+            db=db,
+            employee_id=claim.employee_id,
+            amount=float(claim.amount),
+            claim_date=claim.claim_date,
+            transaction_ref=transaction_ref,
+            exclude_claim_id=claim.id,
+            tenant_id=claim.tenant_id
+        )
+        
+        # Block submission if exact duplicate found
+        if dup_result["is_duplicate"] and dup_result["match_type"] == "exact":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "message": "This claim appears to be a duplicate of an existing submission.",
+                    "duplicate_claims": dup_result["duplicate_claims"]
+                }
+            )
+    
     # Update status - ensure it's PENDING_MANAGER for manager review
     claim.status = "PENDING_MANAGER"
     claim.submission_date = datetime.utcnow()
@@ -510,6 +653,37 @@ async def update_claim(
     
     # Handle status update for resubmission
     if claim_update.status == 'PENDING_MANAGER':
+        # Check for duplicate claims before resubmission
+        # Use updated values if provided, otherwise use existing values
+        check_amount = float(claim_update.amount if claim_update.amount is not None else claim.amount)
+        check_date = claim_update.claim_date if claim_update.claim_date is not None else claim.claim_date
+        
+        # Get transaction_ref from updated payload or existing payload
+        if claim_update.claim_payload is not None:
+            check_txn_ref = claim_update.claim_payload.get("transaction_ref")
+        else:
+            check_txn_ref = claim.claim_payload.get("transaction_ref") if claim.claim_payload else None
+        
+        dup_result = await check_duplicate_claim(
+            db=db,
+            employee_id=claim.employee_id,
+            amount=check_amount,
+            claim_date=check_date,
+            transaction_ref=check_txn_ref,
+            exclude_claim_id=claim.id,
+            tenant_id=claim.tenant_id
+        )
+        
+        # Block submission if exact duplicate found
+        if dup_result["is_duplicate"] and dup_result["match_type"] == "exact":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "message": "This claim appears to be a duplicate of an existing submission.",
+                    "duplicate_claims": dup_result["duplicate_claims"]
+                }
+            )
+        
         claim.status = 'PENDING_MANAGER'
         # Clear return-related fields on resubmission
         claim.return_reason = None

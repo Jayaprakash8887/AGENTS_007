@@ -78,6 +78,8 @@ export interface Claim {
   aiConfidenceScore?: number;
   aiConfidence?: number;
   aiProcessed?: boolean;
+  aiRecommendation?: 'approve' | 'review' | 'reject';
+  aiRecommendationText?: string;
   complianceScore?: number;
   policyViolations?: string[];
   dataSource?: Record<string, DataSource>;
