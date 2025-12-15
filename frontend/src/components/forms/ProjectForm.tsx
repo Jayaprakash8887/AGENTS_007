@@ -1,11 +1,12 @@
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { format } from 'date-fns';
-import { CalendarIcon, Loader2 } from 'lucide-react';
+import { CalendarIcon, Loader2, X, Check, ChevronsUpDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Calendar } from '@/components/ui/calendar';
+import { Badge } from '@/components/ui/badge';
 import {
   Form,
   FormControl,
@@ -26,11 +27,20 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+} from '@/components/ui/command';
 import { projectSchema, ProjectFormData } from '@/lib/validations';
 import { cn } from '@/lib/utils';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 interface ProjectFormProps {
   managers: { id: string; name: string }[];
+  employees?: { id: string; name: string }[];
   onSubmit: (data: ProjectFormData) => void;
   onCancel: () => void;
   isLoading?: boolean;
@@ -39,6 +49,7 @@ interface ProjectFormProps {
 
 export function ProjectForm({
   managers,
+  employees = [],
   onSubmit,
   onCancel,
   isLoading = false,
@@ -52,10 +63,13 @@ export function ProjectForm({
       description: '',
       budget: 0,
       managerId: '',
+      memberIds: [],
       startDate: new Date(),
       ...defaultValues,
     },
   });
+
+  const selectedMembers = form.watch('memberIds') || [];
 
   return (
     <Form {...form}>
@@ -235,6 +249,100 @@ export function ProjectForm({
             )}
           />
         </div>
+
+        {/* Team Members Selection */}
+        {employees.length > 0 && (
+          <FormField
+            control={form.control}
+            name="memberIds"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Team Members (Optional)</FormLabel>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <FormControl>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        className={cn(
+                          'w-full justify-between',
+                          !field.value?.length && 'text-muted-foreground'
+                        )}
+                      >
+                        {field.value?.length
+                          ? `${field.value.length} member${field.value.length > 1 ? 's' : ''} selected`
+                          : 'Select team members'}
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </FormControl>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-full p-0" align="start">
+                    <Command>
+                      <CommandInput placeholder="Search employees..." />
+                      <CommandEmpty>No employee found.</CommandEmpty>
+                      <CommandGroup>
+                        <ScrollArea className="h-[200px]">
+                          {employees.map((employee) => {
+                            const isSelected = field.value?.includes(employee.id);
+                            return (
+                              <CommandItem
+                                key={employee.id}
+                                value={employee.name}
+                                onSelect={() => {
+                                  const current = field.value || [];
+                                  if (isSelected) {
+                                    field.onChange(current.filter((id) => id !== employee.id));
+                                  } else {
+                                    field.onChange([...current, employee.id]);
+                                  }
+                                }}
+                              >
+                                <Check
+                                  className={cn(
+                                    'mr-2 h-4 w-4',
+                                    isSelected ? 'opacity-100' : 'opacity-0'
+                                  )}
+                                />
+                                {employee.name}
+                              </CommandItem>
+                            );
+                          })}
+                        </ScrollArea>
+                      </CommandGroup>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+                {/* Selected Members Tags */}
+                {field.value && field.value.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {field.value.map((memberId) => {
+                      const member = employees.find((e) => e.id === memberId);
+                      return member ? (
+                        <Badge
+                          key={memberId}
+                          variant="secondary"
+                          className="text-xs"
+                        >
+                          {member.name}
+                          <button
+                            type="button"
+                            className="ml-1 hover:text-destructive"
+                            onClick={() => {
+                              field.onChange(field.value?.filter((id) => id !== memberId));
+                            }}
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </Badge>
+                      ) : null;
+                    })}
+                  </div>
+                )}
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
 
         <div className="flex justify-end gap-2 pt-4">
           <Button type="button" variant="outline" onClick={onCancel}>

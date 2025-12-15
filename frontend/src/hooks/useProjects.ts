@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Project } from '@/data/mockEmployees';
+import { Project } from '@/types';
 
 const API_BASE_URL = 'http://localhost:8000/api/v1';
 
@@ -139,6 +139,7 @@ async function updateProject(id: string, project: Partial<Project>): Promise<Pro
       start_date: project.startDate ? new Date(project.startDate).toISOString().split('T')[0] : undefined,
       end_date: project.endDate ? new Date(project.endDate).toISOString().split('T')[0] : undefined,
       status: project.status?.toUpperCase(),
+      manager_id: project.managerId,
     }),
   });
   
@@ -187,4 +188,21 @@ export function useProjectStats() {
   } : null;
   
   return { data: stats, ...rest };
+}
+
+// Fetch all project members mapping
+async function fetchAllProjectMembers(): Promise<Record<string, string[]>> {
+  const response = await fetch(`${API_BASE_URL}/projects/all/members`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch project members');
+  }
+  return response.json();
+}
+
+export function useAllProjectMembers() {
+  return useQuery({
+    queryKey: ['projectMembers'],
+    queryFn: fetchAllProjectMembers,
+    staleTime: 30 * 1000, // 30 seconds
+  });
 }

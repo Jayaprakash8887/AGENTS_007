@@ -29,6 +29,10 @@ venv/
 ENV/
 env/
 .venv
+*.json
+agentsenv/
+.agentsenv
+artifacts/sample_reimbursement_bills/
 
 # IDEs
 .vscode/

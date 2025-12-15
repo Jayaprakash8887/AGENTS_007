@@ -7,54 +7,96 @@ import {
   Building2, 
   FolderKanban,
   CreditCard,
-  Sparkles
+  Sparkles,
+  Tag,
+  Hash,
+  Receipt
 } from "lucide-react";
-import { Category } from "./CategoryGrid";
 import { ComplianceScore } from "./ComplianceScore";
 import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
 
 interface ClaimFormData {
+  category?: string;
   title?: string;
   amount?: string;
   date?: Date;
   vendor?: string;
+  transactionRef?: string;
   description?: string;
-  paymentMethod?: string;
   projectCode?: string;
   costCenter?: string;
 }
 
-interface ClaimReviewProps {
-  category: Category;
-  formData: ClaimFormData;
-  files: any[];
+// Interface for multiple extracted claims
+export interface ExtractedClaim {
+  id: string;
+  selected: boolean;
+  category: string;
+  title: string;
+  amount: string;
+  date: Date | null;
+  vendor: string;
+  description: string;
+  rawText: string;
+  transactionRef?: string;
 }
 
-export function ClaimReview({ category, formData, files }: ClaimReviewProps) {
-  const Icon = category.icon;
+interface ClaimReviewProps {
+  formData: ClaimFormData;
+  files: any[];
+  multipleClaims?: ExtractedClaim[];
+}
+
+const categoryLabels: Record<string, string> = {
+  'certification': 'Certification',
+  'travel': 'Travel',
+  'team-lunch': 'Team Lunch',
+  'conveyance': 'Conveyance',
+  'accommodation': 'Accommodation',
+  'equipment': 'Equipment',
+  'phone-internet': 'Phone & Internet',
+  'medical': 'Medical',
+  'client-meeting': 'Client Meeting',
+};
+
+export function ClaimReview({ formData, files, multipleClaims }: ClaimReviewProps) {
   const complianceScore = 92; // Would be calculated based on form completion
+  const categoryLabel = formData.category ? categoryLabels[formData.category] || formData.category : 'Not selected';
+  
+  // Filter selected claims for multiple claims view
+  const selectedClaims = multipleClaims?.filter(c => c.selected) || [];
+  const hasMultipleClaims = selectedClaims.length > 1;
+  const totalAmount = selectedClaims.reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0);
 
   const reviewItems = [
+    { icon: Tag, label: "Category", value: categoryLabel },
     { icon: FileText, label: "Title", value: formData.title },
-    { icon: DollarSign, label: "Amount", value: `$${formData.amount}` },
+    { icon: DollarSign, label: "Amount", value: `₹${formData.amount}` },
     { icon: Calendar, label: "Date", value: formData.date ? format(formData.date, "PPP") : "Not set" },
     { icon: Building2, label: "Vendor", value: formData.vendor },
+    { icon: Hash, label: "Transaction Ref", value: formData.transactionRef || "Not available" },
     { icon: FolderKanban, label: "Project", value: formData.projectCode || "Not selected" },
-    { icon: CreditCard, label: "Payment", value: formData.paymentMethod || "Not selected" },
   ];
 
-  const aiSummary = `This ${category.title.toLowerCase()} expense of $${formData.amount} from ${formData.vendor || "vendor"} on ${formData.date ? format(formData.date, "MMM d, yyyy") : "the specified date"} has been analyzed and meets company policy requirements. The claim will be routed to your direct manager for approval based on the amount threshold.`;
+  const aiSummary = hasMultipleClaims
+    ? `You are submitting ${selectedClaims.length} expenses totaling ₹${totalAmount.toFixed(2)}. All claims have been analyzed and meet company policy requirements. Each claim will be routed to your direct manager for approval based on the amount threshold.`
+    : `This ${categoryLabel.toLowerCase()} expense of ₹${formData.amount} from ${formData.vendor || "vendor"} on ${formData.date ? format(formData.date, "MMM d, yyyy") : "the specified date"} has been analyzed and meets company policy requirements. The claim will be routed to your direct manager for approval based on the amount threshold.`;
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       {/* Header */}
       <div className="text-center">
         <div className="inline-flex h-16 w-16 items-center justify-center rounded-2xl gradient-primary mb-4">
-          <Icon className="h-8 w-8 text-primary-foreground" />
+          {hasMultipleClaims ? <Receipt className="h-8 w-8 text-primary-foreground" /> : <CheckCircle2 className="h-8 w-8 text-primary-foreground" />}
         </div>
-        <h2 className="text-2xl font-bold text-foreground">Review Your Claim</h2>
+        <h2 className="text-2xl font-bold text-foreground">
+          {hasMultipleClaims ? `Review ${selectedClaims.length} Claims` : 'Review Your Claim'}
+        </h2>
         <p className="mt-2 text-muted-foreground">
-          Please verify all details before submitting
+          {hasMultipleClaims 
+            ? `Total amount: ₹${totalAmount.toFixed(2)}`
+            : 'Please verify all details before submitting'}
         </p>
       </div>
 
@@ -82,26 +124,68 @@ export function ClaimReview({ category, formData, files }: ClaimReviewProps) {
       <div className="grid md:grid-cols-3 gap-6">
         {/* Claim Details */}
         <div className="md:col-span-2 rounded-xl border border-border bg-card p-6">
-          <h3 className="font-semibold text-foreground mb-4">Claim Details</h3>
+          <h3 className="font-semibold text-foreground mb-4">
+            {hasMultipleClaims ? `${selectedClaims.length} Selected Claims` : 'Claim Details'}
+          </h3>
           
-          <div className="grid sm:grid-cols-2 gap-4">
-            {reviewItems.map((item, idx) => (
-              <div 
-                key={idx}
-                className="flex items-start gap-3 p-3 rounded-lg bg-secondary/30"
-              >
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-secondary">
-                  <item.icon className="h-4 w-4 text-secondary-foreground" />
+          {hasMultipleClaims ? (
+            /* Multiple Claims List */
+            <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2">
+              {selectedClaims.map((claim, idx) => (
+                <div key={claim.id} className="p-4 rounded-lg bg-secondary/30 border border-border/50">
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-xs">
+                        #{idx + 1}
+                      </Badge>
+                      <span className="font-medium text-foreground">{claim.title || 'Untitled Expense'}</span>
+                    </div>
+                    <span className="text-lg font-bold text-primary">₹{parseFloat(claim.amount).toFixed(2)}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div>
+                      <span className="text-muted-foreground">Category: </span>
+                      <span className="text-foreground">{categoryLabels[claim.category] || claim.category}</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Date: </span>
+                      <span className="text-foreground">{claim.date ? format(claim.date, "MMM d, yyyy") : "—"}</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Vendor: </span>
+                      <span className="text-foreground">{claim.vendor || "—"}</span>
+                    </div>
+                    {claim.transactionRef && (
+                      <div>
+                        <span className="text-muted-foreground">Ref: </span>
+                        <span className="text-foreground">{claim.transactionRef}</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <div className="min-w-0">
-                  <p className="text-xs text-muted-foreground">{item.label}</p>
-                  <p className="font-medium text-foreground truncate">{item.value || "—"}</p>
+              ))}
+            </div>
+          ) : (
+            /* Single Claim Grid */
+            <div className="grid sm:grid-cols-2 gap-4">
+              {reviewItems.map((item, idx) => (
+                <div 
+                  key={idx}
+                  className="flex items-start gap-3 p-3 rounded-lg bg-secondary/30"
+                >
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-secondary">
+                    <item.icon className="h-4 w-4 text-secondary-foreground" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs text-muted-foreground">{item.label}</p>
+                    <p className="font-medium text-foreground truncate">{item.value || "—"}</p>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
 
-          {formData.description && (
+          {!hasMultipleClaims && formData.description && (
             <div className="mt-4 pt-4 border-t border-border">
               <p className="text-xs text-muted-foreground mb-1">Description</p>
               <p className="text-sm text-foreground">{formData.description}</p>
@@ -127,10 +211,10 @@ export function ClaimReview({ category, formData, files }: ClaimReviewProps) {
           )}
         </div>
 
-        {/* Compliance Score */}
+        {/* Form Completeness */}
         <div className="rounded-xl border border-border bg-card p-6">
           <h3 className="font-semibold text-foreground mb-4 text-center">
-            Compliance Score
+            Form Completeness
           </h3>
           
           <div className="flex justify-center mb-4">

@@ -11,8 +11,11 @@ async function fetchClaims(): Promise<Claim[]> {
   }
   const data = await response.json();
   
+  // Backend returns { claims: [...], total, page, page_size }
+  const claimsList = data.claims || data;
+  
   // Transform backend response to frontend format
-  return data.map((claim: any) => ({
+  return claimsList.map((claim: any) => ({
     id: claim.id,
     claimNumber: claim.claim_number,
     employeeId: claim.employee_id,
@@ -20,7 +23,8 @@ async function fetchClaims(): Promise<Claim[]> {
     department: claim.department,
     type: claim.claim_type?.toLowerCase() || 'reimbursement',
     category: claim.category?.toLowerCase() || 'other',
-    amount: parseFloat(claim.amount),
+    title: claim.title || claim.description?.slice(0, 50) || 'Expense Claim',
+    amount: parseFloat(claim.amount) || 0,
     currency: claim.currency || 'INR',
     status: mapBackendStatus(claim.status),
     submissionDate: claim.submission_date ? new Date(claim.submission_date) : new Date(),
@@ -35,9 +39,7 @@ async function fetchClaims(): Promise<Claim[]> {
 
 function mapBackendStatus(backendStatus: string): ClaimStatus {
   const statusMap: Record<string, ClaimStatus> = {
-    'DRAFT': 'draft',
-    'SUBMITTED': 'submitted',
-    'AI_PROCESSING': 'submitted',
+    'AI_PROCESSING': 'pending_manager',
     'PENDING_MANAGER': 'pending_manager',
     'RETURNED_TO_EMPLOYEE': 'returned',
     'MANAGER_APPROVED': 'pending_hr',
@@ -48,7 +50,7 @@ function mapBackendStatus(backendStatus: string): ClaimStatus {
     'SETTLED': 'settled',
     'REJECTED': 'rejected'
   };
-  return statusMap[backendStatus] || 'draft';
+  return statusMap[backendStatus] || 'pending_manager';
 }
 
 async function fetchClaimById(id: string): Promise<Claim | undefined> {
@@ -58,6 +60,7 @@ async function fetchClaimById(id: string): Promise<Claim | undefined> {
     throw new Error('Failed to fetch claim');
   }
   const claim = await response.json();
+  const payload = claim.claim_payload || {};
   
   return {
     id: claim.id,
@@ -73,10 +76,30 @@ async function fetchClaimById(id: string): Promise<Claim | undefined> {
     submissionDate: claim.submission_date ? new Date(claim.submission_date) : new Date(),
     claimDate: claim.claim_date ? new Date(claim.claim_date) : new Date(),
     description: claim.description || '',
+    title: payload.title || claim.description || '',
+    projectCode: payload.project_code || '',
+    costCenter: payload.cost_center || '',
+    vendor: payload.vendor || '',
+    transactionRef: payload.transaction_ref || '',
     documents: claim.documents || [],
     aiProcessed: claim.ai_validation_score !== null,
     aiConfidence: claim.ai_validation_score || 0,
     complianceScore: claim.compliance_score || 0,
+    // Add dataSource based on whether data was auto-extracted or manual
+    dataSource: {
+      category: payload.category_source || 'manual',
+      title: payload.title_source || 'manual',
+      amount: payload.amount_source || 'manual',
+      date: payload.date_source || 'manual',
+      vendor: payload.vendor_source || 'manual',
+      description: payload.description_source || 'manual',
+      transactionRef: payload.transaction_ref_source || 'manual',
+    },
+    // Return workflow fields
+    returnReason: claim.return_reason || undefined,
+    returnCount: claim.return_count || 0,
+    returnedAt: claim.returned_at ? new Date(claim.returned_at) : undefined,
+    canEdit: claim.can_edit || false,
   };
 }
 
@@ -153,6 +176,186 @@ export function useUpdateClaimStatus() {
   return useMutation({
     mutationFn: ({ id, status }: { id: string; status: ClaimStatus }) => 
       updateClaimStatus(id, status),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['claims'] });
+    },
+  });
+}
+
+// Batch claims creation types
+export interface BatchClaimItem {
+  category: string;
+  amount: number;
+  claim_date: string;  // ISO date string YYYY-MM-DD
+  title?: string;
+  vendor?: string;
+  description?: string;
+  transaction_ref?: string;
+  // Field source tracking: 'ocr' for auto-extracted, 'manual' for user-entered
+  category_source?: 'ocr' | 'manual';
+  title_source?: 'ocr' | 'manual';
+  amount_source?: 'ocr' | 'manual';
+  date_source?: 'ocr' | 'manual';
+  vendor_source?: 'ocr' | 'manual';
+  description_source?: 'ocr' | 'manual';
+  transaction_ref_source?: 'ocr' | 'manual';
+}
+
+export interface BatchClaimCreate {
+  employee_id: string;
+  claim_type: 'REIMBURSEMENT' | 'ALLOWANCE';
+  project_code?: string;
+  claims: BatchClaimItem[];
+}
+
+export interface BatchClaimWithDocumentCreate {
+  batchData: BatchClaimCreate;
+  file?: File;  // Optional document file
+}
+
+export interface BatchClaimResponse {
+  success: boolean;
+  total_claims: number;
+  total_amount: number;
+  claim_ids: string[];
+  claim_numbers: string[];
+  message: string;
+}
+
+async function createBatchClaims(batch: BatchClaimCreate): Promise<BatchClaimResponse> {
+  const response = await fetch(`${API_BASE_URL}/claims/batch`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(batch),
+  });
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to create claims');
+  }
+  
+  return response.json();
+}
+
+async function createBatchClaimsWithDocument(data: BatchClaimWithDocumentCreate): Promise<BatchClaimResponse> {
+  const formData = new FormData();
+  formData.append('batch_data', JSON.stringify(data.batchData));
+  
+  if (data.file) {
+    formData.append('file', data.file);
+  }
+  
+  const response = await fetch(`${API_BASE_URL}/claims/batch-with-document`, {
+    method: 'POST',
+    body: formData,  // No Content-Type header - browser sets it with boundary
+  });
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to create claims');
+  }
+  
+  return response.json();
+}
+
+export function useCreateBatchClaims() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: createBatchClaims,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['claims'] });
+    },
+  });
+}
+
+export function useCreateBatchClaimsWithDocument() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: createBatchClaimsWithDocument,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['claims'] });
+    },
+  });
+}
+
+// Delete a claim
+async function deleteClaim(claimId: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/claims/${claimId}`, {
+    method: 'DELETE',
+  });
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to delete claim');
+  }
+}
+
+export function useDeleteClaim() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: deleteClaim,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['claims'] });
+    },
+  });
+}
+
+// Update a claim (fields only, not documents)
+export interface ClaimUpdateData {
+  amount?: number;
+  claim_date?: string;  // YYYY-MM-DD format
+  description?: string;
+  status?: string;  // e.g., 'PENDING_MANAGER' to resubmit
+  edited_sources?: string[];  // Fields that were edited (e.g., ['amount', 'date', 'description'])
+}
+
+async function updateClaim(claimId: string, data: ClaimUpdateData): Promise<Claim> {
+  const response = await fetch(`${API_BASE_URL}/claims/${claimId}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to update claim');
+  }
+  
+  const claim = await response.json();
+  return {
+    id: claim.id,
+    claimNumber: claim.claim_number,
+    employeeId: claim.employee_id,
+    employeeName: claim.employee_name,
+    department: claim.department,
+    type: claim.claim_type?.toLowerCase() || 'reimbursement',
+    category: claim.category?.toLowerCase() || 'other',
+    amount: parseFloat(claim.amount),
+    currency: claim.currency || 'INR',
+    status: mapBackendStatus(claim.status),
+    submissionDate: claim.submission_date ? new Date(claim.submission_date) : new Date(),
+    claimDate: claim.claim_date ? new Date(claim.claim_date) : new Date(),
+    description: claim.description || '',
+    documents: claim.documents || [],
+    aiProcessed: claim.ai_validation_score !== null,
+    aiConfidence: claim.ai_validation_score || 0,
+    complianceScore: claim.compliance_score || 0,
+  };
+}
+
+export function useUpdateClaim() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: ({ claimId, data }: { claimId: string; data: ClaimUpdateData }) => 
+      updateClaim(claimId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['claims'] });
     },

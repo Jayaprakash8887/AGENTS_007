@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { getAllDepartments } from '@/config/company';
 import { ArrowLeft, Mail, Phone, Calendar, MapPin, Briefcase, Edit2, UserCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -126,7 +127,7 @@ export default function EmployeeDetails() {
     );
   }
 
-  const departments = ['Engineering', 'Sales', 'Marketing', 'HR', 'Finance'];
+  const departments = getAllDepartments();
   const managers = allEmployees?.filter((emp) => emp.role === 'manager').map((emp) => ({
     id: emp.id,
     name: emp.name,

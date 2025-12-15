@@ -19,13 +19,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useProjects, useProjectStats, useCreateProject, useUpdateProject } from '@/hooks/useProjects';
-import { useEmployees } from '@/hooks/useEmployees';
+import { useProjects, useProjectStats, useCreateProject, useUpdateProject, useAllProjectMembers } from '@/hooks/useProjects';
+import { useEmployees, useAllocateEmployeeToProject } from '@/hooks/useEmployees';
 import { ProjectForm } from '@/components/forms/ProjectForm';
 import { CardSkeleton } from '@/components/ui/loading-skeleton';
 import { exportToCSV, formatCurrency, formatDate } from '@/lib/export-utils';
 import { ProjectFormData } from '@/lib/validations';
-import { Project } from '@/data/mockEmployees';
+import { Project } from '@/types';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 
@@ -134,8 +134,10 @@ export default function Projects() {
   const { data: projects, isLoading, error } = useProjects();
   const { data: stats } = useProjectStats();
   const { data: employees } = useEmployees();
+  const { data: projectMembersMap } = useAllProjectMembers();
   const createProject = useCreateProject();
   const updateProject = useUpdateProject();
+  const allocateEmployee = useAllocateEmployeeToProject();
 
   const managers = useMemo(() => {
     if (!employees) return [];
@@ -151,7 +153,18 @@ export default function Projects() {
 
   const filteredProjects = useMemo(() => {
     if (!projects) return [];
-    return projects.filter((project) => {
+    
+    // Enrich projects with member IDs from the allocations API
+    const enrichedProjects = projects.map((project) => {
+      const memberIds = projectMembersMap?.[project.id] || [];
+      
+      return {
+        ...project,
+        memberIds,
+      };
+    });
+    
+    return enrichedProjects.filter((project) => {
       const matchesSearch =
         project.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         project.code.toLowerCase().includes(searchQuery.toLowerCase());
@@ -159,22 +172,38 @@ export default function Projects() {
         statusFilter === 'all' || project.status === statusFilter;
       return matchesSearch && matchesStatus;
     });
-  }, [projects, searchQuery, statusFilter]);
+  }, [projects, projectMembersMap, searchQuery, statusFilter]);
 
   const handleAddProject = async (data: ProjectFormData) => {
     try {
-      await createProject.mutateAsync({
+      const newProject = await createProject.mutateAsync({
         name: data.name,
         code: data.code,
         description: data.description || '',
         budget: data.budget,
         spent: 0,
         managerId: data.managerId,
-        memberIds: [],
+        memberIds: data.memberIds || [],
         status: 'active',
         startDate: data.startDate,
         endDate: data.endDate,
       });
+      
+      // Allocate team members to the project
+      if (data.memberIds && data.memberIds.length > 0) {
+        for (const memberId of data.memberIds) {
+          try {
+            await allocateEmployee.mutateAsync({
+              employeeId: memberId,
+              projectId: newProject.id,
+              role: 'MEMBER',
+            });
+          } catch (e) {
+            console.error(`Failed to allocate employee ${memberId}:`, e);
+          }
+        }
+      }
+      
       toast.success('Project created successfully');
       setIsAddDialogOpen(false);
     } catch {
@@ -193,11 +222,31 @@ export default function Projects() {
           code: data.code,
           description: data.description || '',
           budget: data.budget,
+          managerId: data.managerId,
           status: data.status || selectedProject.status,
           startDate: data.startDate,
           endDate: data.endDate,
         },
       });
+      
+      // Handle member allocation changes
+      const currentMemberIds = selectedProject.memberIds || [];
+      const newMemberIds = data.memberIds || [];
+      
+      // Allocate new members
+      const membersToAdd = newMemberIds.filter(id => !currentMemberIds.includes(id));
+      for (const memberId of membersToAdd) {
+        try {
+          await allocateEmployee.mutateAsync({
+            employeeId: memberId,
+            projectId: selectedProject.id,
+            role: 'MEMBER',
+          });
+        } catch (e) {
+          console.error(`Failed to allocate employee ${memberId}:`, e);
+        }
+      }
+      
       toast.success('Project updated successfully');
       setIsEditDialogOpen(false);
       setSelectedProject(null);
@@ -277,6 +326,7 @@ export default function Projects() {
               </DialogHeader>
               <ProjectForm
                 managers={managers}
+                employees={employeeMap}
                 onSubmit={handleAddProject}
                 onCancel={() => setIsAddDialogOpen(false)}
                 isLoading={createProject.isPending}
@@ -290,6 +340,7 @@ export default function Projects() {
               </DialogHeader>
               <ProjectForm
                 managers={managers}
+                employees={employeeMap}
                 onSubmit={handleEditProject}
                 onCancel={() => {
                   setIsEditDialogOpen(false);
@@ -302,6 +353,7 @@ export default function Projects() {
                   description: selectedProject.description,
                   budget: selectedProject.budget,
                   managerId: selectedProject.managerId,
+                  memberIds: selectedProject.memberIds,
                   startDate: selectedProject.startDate,
                   endDate: selectedProject.endDate,
                 } : undefined}

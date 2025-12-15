@@ -30,7 +30,7 @@ const statusConfig = {
   },
   checking: {
     icon: Loader2,
-    className: "text-muted-foreground animate-spin",
+    className: "text-muted-foreground",
     bgClassName: "bg-secondary",
   },
 };
@@ -40,7 +40,7 @@ export function PolicyChecks({ checks }: PolicyChecksProps) {
   const totalCount = checks.length;
 
   return (
-    <div className="rounded-xl border border-border bg-card p-5">
+    <div className="rounded-xl border border-border bg-card p-5 relative isolate">
       <div className="flex items-center justify-between mb-4">
         <h4 className="font-semibold text-foreground flex items-center gap-2">
           <span className="text-lg">📋</span>
@@ -65,22 +65,22 @@ export function PolicyChecks({ checks }: PolicyChecksProps) {
             <div
               key={check.id}
               className={cn(
-                "flex items-start gap-3 rounded-lg p-3 transition-all",
+                "flex items-start gap-3 rounded-lg p-3 transition-all overflow-hidden",
                 config.bgClassName
               )}
             >
-              <div className={cn("shrink-0 mt-0.5", config.className)}>
-                <Icon className="h-4 w-4" />
+              <div className={cn("shrink-0 mt-0.5", config.className)} style={{ transform: 'none' }}>
+                <Icon className="h-4 w-4" style={{ animation: check.status === 'checking' ? 'spin 1s linear infinite' : 'none' }} />
               </div>
-              <div className="flex-1 min-w-0">
+              <div className="flex-1 min-w-0 overflow-hidden">
                 <p className={cn(
-                  "text-sm font-medium",
+                  "text-sm font-medium truncate",
                   check.status === "pass" ? "text-foreground" : config.className
-                )}>
+                )} style={{ transform: 'none' }}>
                   {check.label}
                 </p>
                 {check.message && (
-                  <p className="text-xs text-muted-foreground mt-0.5">
+                  <p className="text-xs text-muted-foreground mt-0.5 truncate" style={{ transform: 'none' }}>
                     {check.message}
                   </p>
                 )}

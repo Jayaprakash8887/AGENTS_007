@@ -283,7 +283,7 @@ Return in JSON format:
     def _get_employee(self, employee_id: Any):
         """Get employee from database"""
         from database import get_sync_db
-        from models import Employee
+        from models import User as Employee
         
         db = next(get_sync_db())
         return db.query(Employee).filter(Employee.id == employee_id).first()

@@ -3,12 +3,13 @@ import { Upload, X, FileText, Image, File, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
-interface UploadedFile {
+export interface UploadedFile {
   id: string;
   name: string;
   size: string;
   type: "image" | "pdf" | "other";
   status: "uploading" | "complete" | "error";
+  file: File; // Actual File object for OCR processing
 }
 
 interface DocumentUploadProps {
@@ -33,40 +34,76 @@ export function DocumentUpload({ requiredDocs, onFilesChange }: DocumentUploadPr
     return (bytes / (1024 * 1024)).toFixed(1) + " MB";
   };
 
+  const isValidFileType = (file: File): boolean => {
+    const validTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+    const ext = file.name.toLowerCase().split('.').pop();
+    const validExtensions = ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'webp'];
+    return validTypes.includes(file.type) || validExtensions.includes(ext || '');
+  };
+
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
       setIsDragging(false);
 
       const droppedFiles = Array.from(e.dataTransfer.files);
-      const newFiles: UploadedFile[] = droppedFiles.map((file) => ({
+      
+      // Only allow PDF and image files
+      const validFiles = droppedFiles.filter(isValidFileType);
+      
+      if (validFiles.length === 0) {
+        alert('Only PDF and image files (JPG, PNG, GIF, WebP) are allowed');
+        return;
+      }
+      
+      // Only allow single file - take the first valid file
+      const file = validFiles[0];
+      const newFile: UploadedFile = {
         id: Math.random().toString(36).substr(2, 9),
         name: file.name,
         size: formatFileSize(file.size),
         type: getFileType(file.name),
         status: "complete" as const,
-      }));
+        file: file, // Include actual File object
+      };
 
-      const updatedFiles = [...files, ...newFiles];
+      // Replace existing file (only one file allowed)
+      const updatedFiles = [newFile];
       setFiles(updatedFiles);
       onFilesChange(updatedFiles);
     },
-    [files, onFilesChange]
+    [onFilesChange]
   );
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = Array.from(e.target.files || []);
-    const newFiles: UploadedFile[] = selectedFiles.map((file) => ({
+    
+    // Only allow PDF and image files
+    const validFiles = selectedFiles.filter(isValidFileType);
+    
+    if (validFiles.length === 0) {
+      alert('Only PDF and image files (JPG, PNG, GIF, WebP) are allowed');
+      return;
+    }
+    
+    // Only allow single file - take the first valid file
+    const file = validFiles[0];
+    const newFile: UploadedFile = {
       id: Math.random().toString(36).substr(2, 9),
       name: file.name,
       size: formatFileSize(file.size),
       type: getFileType(file.name),
       status: "complete" as const,
-    }));
+      file: file, // Include actual File object
+    };
 
-    const updatedFiles = [...files, ...newFiles];
+    // Replace existing file (only one file allowed)
+    const updatedFiles = [newFile];
     setFiles(updatedFiles);
     onFilesChange(updatedFiles);
+    
+    // Reset input so same file can be selected again if needed
+    e.target.value = '';
   };
 
   const removeFile = (id: string) => {
@@ -118,10 +155,9 @@ export function DocumentUpload({ requiredDocs, onFilesChange }: DocumentUploadPr
       >
         <input
           type="file"
-          multiple
           onChange={handleFileInput}
           className="absolute inset-0 cursor-pointer opacity-0"
-          accept=".pdf,.jpg,.jpeg,.png,.gif,.doc,.docx"
+          accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,image/*,application/pdf"
         />
         
         <div className={cn(
@@ -132,10 +168,13 @@ export function DocumentUpload({ requiredDocs, onFilesChange }: DocumentUploadPr
         </div>
         
         <p className="mt-4 text-sm font-medium text-foreground">
-          {isDragging ? "Drop files here" : "Drag & drop files here"}
+          {isDragging ? "Drop file here" : "Drag & drop files here"}
         </p>
         <p className="mt-1 text-xs text-muted-foreground">
-          or click to browse (PDF, Images, Documents)
+          or click to browse (PDF, Images)
+        </p>
+        <p className="mt-1 text-[10px] text-muted-foreground/70">
+          Only one file allowed per claim
         </p>
       </div>
 

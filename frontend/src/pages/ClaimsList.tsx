@@ -14,6 +14,8 @@ import {
   ChevronRight,
   ArrowUpDown,
   FileText,
+  Loader2,
+  AlertCircle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -45,19 +47,61 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ClaimStatusBadge } from '@/components/claims/ClaimStatusBadge';
 import { AIConfidenceBadge } from '@/components/claims/AIConfidenceBadge';
-import { mockClaims } from '@/data/mockClaims';
+import { useClaims, useDeleteClaim } from '@/hooks/useClaims';
+import { toast } from '@/hooks/use-toast';
 import { ClaimStatus } from '@/types';
+import { useAuth } from '@/contexts/AuthContext';
 
 const statusOptions: { value: ClaimStatus | 'all'; label: string }[] = [
   { value: 'all', label: 'All Status' },
-  { value: 'draft', label: 'Draft' },
   { value: 'pending_manager', label: 'Pending Manager' },
   { value: 'pending_hr', label: 'Pending HR' },
   { value: 'pending_finance', label: 'Pending Finance' },
   { value: 'approved', label: 'Approved' },
   { value: 'rejected', label: 'Rejected' },
+  { value: 'returned', label: 'Returned' },
   { value: 'settled', label: 'Settled' },
 ];
+
+// Helper function to format category for display
+const formatCategory = (category: string): string => {
+  const categoryMap: Record<string, string> = {
+    // Backend uppercase categories
+    'TEAM_LUNCH': 'Team Lunch',
+    'FOOD': 'Food & Meals',
+    'TRAVEL': 'Travel',
+    'CERTIFICATION': 'Certification',
+    'ACCOMMODATION': 'Accommodation',
+    'EQUIPMENT': 'Equipment',
+    'SOFTWARE': 'Software',
+    'OFFICE_SUPPLIES': 'Office Supplies',
+    'MEDICAL': 'Medical',
+    'MOBILE': 'Phone & Internet',
+    'PASSPORT_VISA': 'Passport & Visa',
+    'CONVEYANCE': 'Conveyance',
+    'CLIENT_MEETING': 'Client Meeting',
+    'OTHER': 'Other',
+    // Frontend lowercase categories
+    'team_lunch': 'Team Lunch',
+    'food': 'Food & Meals',
+    'travel': 'Travel',
+    'certification': 'Certification',
+    'accommodation': 'Accommodation',
+    'equipment': 'Equipment',
+    'software': 'Software',
+    'office_supplies': 'Office Supplies',
+    'medical': 'Medical',
+    'phone_internet': 'Phone & Internet',
+    'passport_visa': 'Passport & Visa',
+    'conveyance': 'Conveyance',
+    'client_meeting': 'Client Meeting',
+    'other': 'Other',
+    // Legacy mappings
+    'RELOCATION': 'Other',
+    'INTERNET': 'Software',
+  };
+  return categoryMap[category] || category.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+};
 
 const ITEMS_PER_PAGE = 10;
 
@@ -69,18 +113,45 @@ export default function ClaimsList() {
   const [currentPage, setCurrentPage] = useState(1);
   const [sortField, setSortField] = useState<'date' | 'amount'>('date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  
+  const { user } = useAuth();
+  const { data: claims = [], isLoading, error, refetch } = useClaims();
+  const deleteClaim = useDeleteClaim();
+
+  const handleDeleteClaim = async (claimId: string, claimNumber: string) => {
+    if (!confirm(`Are you sure you want to delete claim ${claimNumber}?`)) {
+      return;
+    }
+    
+    try {
+      await deleteClaim.mutateAsync(claimId);
+      toast({
+        title: "Claim Deleted",
+        description: `Claim ${claimNumber} has been deleted successfully.`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Delete Failed",
+        description: error.message || "Failed to delete claim. Only draft claims can be deleted.",
+        variant: "destructive",
+      });
+    }
+  };
 
   const filteredClaims = useMemo(() => {
-    let result = [...mockClaims];
+    // Filter by current user's employee ID if available
+    let result = user?.id 
+      ? claims.filter(claim => claim.employeeId === user.id)
+      : claims;
 
     // Search filter
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       result = result.filter(
         (claim) =>
-          claim.title.toLowerCase().includes(query) ||
-          claim.claimNumber.toLowerCase().includes(query) ||
-          claim.vendor.toLowerCase().includes(query)
+          (claim.title?.toLowerCase() || '').includes(query) ||
+          (claim.claimNumber?.toLowerCase() || '').includes(query) ||
+          (claim.description?.toLowerCase() || '').includes(query)
       );
     }
 
@@ -91,13 +162,15 @@ export default function ClaimsList() {
 
     // Sort
     result.sort((a, b) => {
-      const aVal = sortField === 'date' ? a.date.getTime() : a.amount;
-      const bVal = sortField === 'date' ? b.date.getTime() : b.amount;
+      const aDate = a.claimDate || a.submissionDate || new Date();
+      const bDate = b.claimDate || b.submissionDate || new Date();
+      const aVal = sortField === 'date' ? aDate.getTime() : a.amount;
+      const bVal = sortField === 'date' ? bDate.getTime() : b.amount;
       return sortOrder === 'asc' ? aVal - bVal : bVal - aVal;
     });
 
     return result;
-  }, [searchQuery, statusFilter, sortField, sortOrder]);
+  }, [claims, user?.id, searchQuery, statusFilter, sortField, sortOrder]);
 
   const totalPages = Math.ceil(filteredClaims.length / ITEMS_PER_PAGE);
   const paginatedClaims = filteredClaims.slice(
@@ -202,7 +275,35 @@ export default function ClaimsList() {
         </CardContent>
       </Card>
 
+      {/* Loading State */}
+      {isLoading && (
+        <Card>
+          <CardContent className="flex items-center justify-center py-12">
+            <div className="flex flex-col items-center gap-3">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <p className="text-muted-foreground">Loading claims...</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Error State */}
+      {error && (
+        <Card>
+          <CardContent className="flex items-center justify-center py-12">
+            <div className="flex flex-col items-center gap-3">
+              <AlertCircle className="h-8 w-8 text-destructive" />
+              <p className="text-destructive">Failed to load claims</p>
+              <Button variant="outline" onClick={() => refetch()}>
+                Try Again
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Claims Table */}
+      {!isLoading && !error && (
       <Card>
         <CardContent className="p-0">
           <Table>
@@ -278,27 +379,27 @@ export default function ClaimsList() {
                     </TableCell>
                     <TableCell>
                       <div className="max-w-[200px]">
-                        <p className="truncate font-medium">{claim.title}</p>
+                        <p className="truncate font-medium">{claim.title || 'Untitled Claim'}</p>
                         <p className="truncate text-sm text-muted-foreground">
-                          {claim.vendor}
+                          {claim.description || '-'}
                         </p>
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline">{claim.category.name}</Badge>
+                      <Badge variant="outline">{formatCategory(claim.category || 'Other')}</Badge>
                     </TableCell>
                     <TableCell className="font-medium">
                       ₹{claim.amount.toLocaleString()}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
-                      {format(claim.date, 'MMM dd, yyyy')}
+                      {format(claim.claimDate || claim.submissionDate || new Date(), 'MMM dd, yyyy')}
                     </TableCell>
                     <TableCell>
                       <ClaimStatusBadge status={claim.status} size="sm" />
                     </TableCell>
                     <TableCell>
-                      {claim.aiConfidenceScore && (
-                        <AIConfidenceBadge score={claim.aiConfidenceScore} size="sm" />
+                      {claim.aiConfidence > 0 && (
+                        <AIConfidenceBadge score={claim.aiConfidence} size="sm" />
                       )}
                     </TableCell>
                     <TableCell>
@@ -319,17 +420,24 @@ export default function ClaimsList() {
                               View Details
                             </Link>
                           </DropdownMenuItem>
-                          {claim.status === 'draft' && (
-                            <DropdownMenuItem className="gap-2">
-                              <Edit className="h-4 w-4" />
-                              Edit
+                          {claim.status === 'returned' && (
+                            <DropdownMenuItem className="gap-2" asChild>
+                              <Link to={`/claims/${claim.id}/edit`}>
+                                <Edit className="h-4 w-4" />
+                                Edit
+                              </Link>
                             </DropdownMenuItem>
                           )}
                           <DropdownMenuSeparator />
-                          <DropdownMenuItem className="gap-2 text-destructive">
+                          {(claim.status === 'pending_manager' || claim.status === 'returned') && (
+                          <DropdownMenuItem 
+                            className="gap-2 text-destructive cursor-pointer"
+                            onClick={() => handleDeleteClaim(claim.id, claim.claimNumber || claim.id)}
+                          >
                             <Trash2 className="h-4 w-4" />
                             Delete
                           </DropdownMenuItem>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
@@ -340,6 +448,7 @@ export default function ClaimsList() {
           </Table>
         </CardContent>
       </Card>
+      )}
 
       {/* Pagination */}
       {totalPages > 1 && (

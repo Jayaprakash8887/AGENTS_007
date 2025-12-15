@@ -5,7 +5,10 @@ import uuid
 import hashlib
 from sqlalchemy.orm import Session
 from database import sync_engine
-from models import Base, User, Employee
+from models import Base, User
+
+# Employee is now an alias for User (tables merged)
+Employee = User
 
 def simple_hash(password: str) -> str:
     """Simple password hashing for demo purposes"""

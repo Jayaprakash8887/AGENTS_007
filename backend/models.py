@@ -25,7 +25,7 @@ class Claim(Base):
     claim_number = Column(String(50), unique=True, nullable=False)
     
     # Employee & Claim Info
-    employee_id = Column(UUID(as_uuid=True), ForeignKey("employees.id"), nullable=False)
+    employee_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     employee_name = Column(String(255), nullable=False)
     department = Column(String(100))
     claim_type = Column(String(20), nullable=False)  # REIMBURSEMENT or ALLOWANCE
@@ -36,7 +36,7 @@ class Claim(Base):
     currency = Column(String(3), default="INR")
     
     # Status & Workflow
-    status = Column(String(50), nullable=False, default="DRAFT")
+    status = Column(String(50), nullable=False, default="PENDING_MANAGER")
     
     # Dates
     submission_date = Column(DateTime(timezone=True))
@@ -72,7 +72,7 @@ class Claim(Base):
     amount_paid = Column(Numeric(12, 2))
     
     # Relationships
-    employee = relationship("Employee", back_populates="claims")
+    employee = relationship("User", back_populates="claims", foreign_keys=[employee_id])
     documents = relationship("Document", back_populates="claim", cascade="all, delete-orphan")
     comments = relationship("Comment", back_populates="claim", cascade="all, delete-orphan")
     approvals = relationship("Approval", back_populates="claim", cascade="all, delete-orphan")
@@ -81,7 +81,7 @@ class Claim(Base):
     # Constraints
     __table_args__ = (
         CheckConstraint(
-            "status IN ('DRAFT', 'SUBMITTED', 'AI_PROCESSING', 'PENDING_MANAGER', "
+            "status IN ('AI_PROCESSING', 'PENDING_MANAGER', "
             "'RETURNED_TO_EMPLOYEE', 'MANAGER_APPROVED', 'PENDING_HR', 'HR_APPROVED', "
             "'PENDING_FINANCE', 'FINANCE_APPROVED', 'SETTLED', 'REJECTED')",
             name="valid_status"
@@ -102,18 +102,26 @@ class Claim(Base):
     )
 
 
-class Employee(Base):
-    """Employee master data"""
-    __tablename__ = "employees"
+class User(Base):
+    """
+    Unified User model combining authentication, authorization, and employee data.
+    This replaces the separate Employee table for simpler data management.
+    """
+    __tablename__ = "users"
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = Column(UUID(as_uuid=True), nullable=False)
-    employee_id = Column(String(50), unique=True, nullable=False)
     
-    # Personal Info
-    first_name = Column(String(100), nullable=False)
-    last_name = Column(String(100), nullable=False)
+    # Authentication
+    username = Column(String(100), unique=True, nullable=False)
     email = Column(String(255), unique=True, nullable=False)
+    hashed_password = Column(String(255), nullable=False)
+    
+    # Profile / Employee Info
+    employee_code = Column(String(50), unique=True)  # e.g., EMP001
+    first_name = Column(String(100))
+    last_name = Column(String(100))
+    full_name = Column(String(255))  # Computed or manual
     phone = Column(String(20))
     mobile = Column(String(20))
     address = Column(Text)
@@ -121,47 +129,15 @@ class Employee(Base):
     # Employment
     department = Column(String(100))
     designation = Column(String(100))
-    manager_id = Column(UUID(as_uuid=True), ForeignKey("employees.id"))
+    manager_id = Column(UUID(as_uuid=True), ForeignKey("users.id"))
     date_of_joining = Column(Date)
-    employment_status = Column(String(20), default="ACTIVE")
+    employment_status = Column(String(20), default="ACTIVE")  # ACTIVE, INACTIVE, ON_LEAVE
     
-    # Additional data
-    employee_data = Column(JSONB, default={})
-    
-    # Timestamps
-    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
-    
-    # Relationships
-    claims = relationship("Claim", back_populates="employee")
-    manager = relationship("Employee", remote_side=[id])
-    
-    __table_args__ = (
-        Index("idx_employees_tenant", "tenant_id"),
-        Index("idx_employees_employee_id", "employee_id"),
-        Index("idx_employees_email", "email"),
-        Index("idx_employees_manager", "manager_id"),
-    )
-
-
-class User(Base):
-    """Users for authentication and authorization"""
-    __tablename__ = "users"
-    
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tenant_id = Column(UUID(as_uuid=True), nullable=False)
-    
-    # Auth
-    username = Column(String(100), unique=True, nullable=False)
-    email = Column(String(255), unique=True, nullable=False)
-    hashed_password = Column(String(255), nullable=False)
-    
-    # Profile
-    full_name = Column(String(255))
+    # Roles & Permissions
     roles = Column(ARRAY(String), default=[])  # EMPLOYEE, MANAGER, HR, FINANCE, ADMIN
     
-    # Linked employee
-    employee_id = Column(UUID(as_uuid=True), ForeignKey("employees.id"))
+    # Additional data (JSONB for flexibility)
+    user_data = Column(JSONB, default={})
     
     # Status
     is_active = Column(Boolean, default=True)
@@ -171,11 +147,29 @@ class User(Base):
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
     last_login = Column(DateTime(timezone=True))
     
+    # Relationships
+    claims = relationship("Claim", back_populates="employee", foreign_keys="[Claim.employee_id]")
+    manager = relationship("User", remote_side=[id], backref="direct_reports")
+    
     __table_args__ = (
         Index("idx_users_tenant", "tenant_id"),
         Index("idx_users_username", "username"),
         Index("idx_users_email", "email"),
+        Index("idx_users_employee_code", "employee_code"),
+        Index("idx_users_department", "department"),
+        Index("idx_users_manager", "manager_id"),
     )
+    
+    @property
+    def display_name(self):
+        """Get display name, preferring first+last over full_name"""
+        if self.first_name and self.last_name:
+            return f"{self.first_name} {self.last_name}"
+        return self.full_name or self.username
+
+
+# Keep Employee as an alias for backward compatibility during transition
+Employee = User
 
 
 class Document(Base):
@@ -190,7 +184,13 @@ class Document(Base):
     filename = Column(String(255), nullable=False)
     file_type = Column(String(50))
     file_size = Column(Integer)
-    storage_path = Column(String(500), nullable=False)
+    storage_path = Column(String(500), nullable=False)  # Local path or GCS blob name
+    
+    # Cloud storage info
+    gcs_uri = Column(String(500))  # Full GCS URI (gs://bucket/path)
+    gcs_blob_name = Column(String(500))  # Blob name for signed URL generation
+    storage_type = Column(String(20), default="local")  # 'local' or 'gcs'
+    content_type = Column(String(100))  # MIME type
     
     # Document type
     document_type = Column(String(50))  # INVOICE, RECEIPT, CERTIFICATE, TICKET, etc.
@@ -291,6 +291,7 @@ class Project(Base):
     project_code = Column(String(50), unique=True, nullable=False)
     project_name = Column(String(255), nullable=False)
     description = Column(Text)
+    manager_id = Column(UUID(as_uuid=True), ForeignKey("users.id"))
     
     # Budget
     budget_allocated = Column(Numeric(12, 2))
@@ -390,4 +391,51 @@ class Policy(Base):
         Index("idx_policies_type", "policy_type"),
         Index("idx_policies_category", "category"),
         Index("idx_policies_active", "is_active"),
+    )
+
+
+class EmployeeProjectAllocation(Base):
+    """Tracks history of employee-project allocations"""
+    __tablename__ = "employee_project_allocations"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(UUID(as_uuid=True), nullable=False)
+    
+    # Employee and Project references
+    employee_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"), nullable=False)
+    
+    # Allocation details
+    role = Column(String(100))  # Role in the project: MEMBER, LEAD, MANAGER, etc.
+    allocation_percentage = Column(Integer, default=100)  # Percentage allocation (0-100)
+    
+    # Status
+    status = Column(String(20), default="ACTIVE")  # ACTIVE, COMPLETED, REMOVED
+    
+    # Dates
+    allocated_date = Column(Date, nullable=False)
+    deallocated_date = Column(Date)  # NULL if still active
+    
+    # Audit
+    allocated_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    deallocated_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    notes = Column(Text)
+    
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    
+    # Relationships
+    employee = relationship("User", backref="project_allocations", foreign_keys=[employee_id])
+    project = relationship("Project", backref="employee_allocations")
+    
+    __table_args__ = (
+        CheckConstraint("status IN ('ACTIVE', 'COMPLETED', 'REMOVED')", name="valid_allocation_status"),
+        CheckConstraint("allocation_percentage >= 0 AND allocation_percentage <= 100", name="valid_allocation_percentage"),
+        Index("idx_allocations_tenant", "tenant_id"),
+        Index("idx_allocations_employee", "employee_id"),
+        Index("idx_allocations_project", "project_id"),
+        Index("idx_allocations_status", "status"),
+        Index("idx_allocations_employee_status", "employee_id", "status"),
+        Index("idx_allocations_dates", "allocated_date", "deallocated_date"),
     )

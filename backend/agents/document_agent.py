@@ -21,19 +21,28 @@ class DocumentAgent(BaseAgent):
             self._init_ocr()
     
     def _init_ocr(self):
-        """Initialize PaddleOCR"""
+        """Initialize PaddleOCR with Tesseract fallback"""
+        self.tesseract_available = False
+        
+        # Try PaddleOCR first
         try:
             from paddleocr import PaddleOCR
-            self.ocr_engine = PaddleOCR(
-                use_angle_cls=True,
-                lang=settings.OCR_LANG,
-                use_gpu=False,
-                show_log=False
-            )
+            # PaddleOCR 3.x API - simplified initialization
+            # Deprecated params: use_angle_cls, show_log, use_gpu
+            self.ocr_engine = PaddleOCR(lang=settings.OCR_LANG)
             self.logger.info("PaddleOCR initialized successfully")
         except Exception as e:
-            self.logger.error(f"Failed to initialize OCR: {e}")
+            self.logger.error(f"Failed to initialize PaddleOCR: {e}")
             self.ocr_engine = None
+        
+        # Check Tesseract availability as fallback
+        try:
+            import pytesseract
+            pytesseract.get_tesseract_version()
+            self.tesseract_available = True
+            self.logger.info("Tesseract available as fallback OCR")
+        except Exception as e:
+            self.logger.warning(f"Tesseract not available: {e}")
     
     async def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -128,23 +137,52 @@ class DocumentAgent(BaseAgent):
             }
     
     def _run_ocr(self, file_path: str) -> Dict[str, Any]:
-        """Run OCR on document"""
-        if not self.ocr_engine:
-            raise ValueError("OCR engine not initialized")
+        """Run OCR on document with Tesseract fallback"""
         
+        # Try PaddleOCR first
+        if self.ocr_engine:
+            try:
+                result = self._run_paddleocr(file_path)
+                if result.get("text"):
+                    return result
+                self.logger.warning("PaddleOCR returned empty result, trying Tesseract fallback")
+            except Exception as e:
+                self.logger.error(f"PaddleOCR failed: {e}, trying Tesseract fallback")
+        
+        # Fallback to Tesseract
+        if self.tesseract_available:
+            try:
+                return self._run_tesseract(file_path)
+            except Exception as e:
+                self.logger.error(f"Tesseract OCR also failed: {e}")
+        
+        # Both failed
+        return {
+            "text": "",
+            "lines": [],
+            "confidence": 0.0,
+            "error": "Both PaddleOCR and Tesseract failed"
+        }
+    
+    def _run_paddleocr(self, file_path: str) -> Dict[str, Any]:
+        """Run PaddleOCR on document"""
         try:
-            result = self.ocr_engine.ocr(file_path, cls=True)
+            # PaddleOCR 3.x API - use predict() method
+            result = self.ocr_engine.predict(file_path)
             
-            # Extract text and confidence scores
+            # Extract text and confidence scores from new result format
             text_lines = []
             confidences = []
             
-            if result and result[0]:
-                for line in result[0]:
-                    text = line[1][0]
-                    confidence = line[1][1]
-                    text_lines.append(text)
-                    confidences.append(confidence)
+            if result:
+                for item in result:
+                    # PaddleOCR 3.x returns dict-like objects with rec_texts and rec_scores
+                    texts = item.get("rec_texts", [])
+                    scores = item.get("rec_scores", [])
+                    
+                    for text, score in zip(texts, scores):
+                        text_lines.append(text)
+                        confidences.append(score)
             
             avg_confidence = sum(confidences) / len(confidences) if confidences else 0.0
             
@@ -152,17 +190,59 @@ class DocumentAgent(BaseAgent):
                 "text": "\n".join(text_lines),
                 "lines": text_lines,
                 "confidence": avg_confidence,
+                "method": "paddleocr",
                 "raw_result": result
             }
             
         except Exception as e:
-            self.logger.error(f"OCR failed: {e}")
+            self.logger.error(f"PaddleOCR failed: {e}")
+            raise
+    
+    def _run_tesseract(self, file_path: str) -> Dict[str, Any]:
+        """Run Tesseract OCR on document (fallback)"""
+        import pytesseract
+        from PIL import Image
+        
+        try:
+            # Handle PDF files
+            if file_path.lower().endswith('.pdf'):
+                from pdf2image import convert_from_path
+                images = convert_from_path(file_path)
+                text_lines = []
+                for img in images:
+                    text = pytesseract.image_to_string(img)
+                    text_lines.extend([line.strip() for line in text.split('\n') if line.strip()])
+            else:
+                # Handle image files
+                img = Image.open(file_path)
+                text = pytesseract.image_to_string(img)
+                text_lines = [line.strip() for line in text.split('\n') if line.strip()]
+            
+            # Get confidence using detailed data
+            try:
+                if file_path.lower().endswith('.pdf'):
+                    # Use first page for confidence
+                    data = pytesseract.image_to_data(images[0], output_type=pytesseract.Output.DICT)
+                else:
+                    data = pytesseract.image_to_data(Image.open(file_path), output_type=pytesseract.Output.DICT)
+                
+                confidences = [int(c) for c in data['conf'] if int(c) > 0]
+                avg_confidence = sum(confidences) / len(confidences) / 100.0 if confidences else 0.5
+            except:
+                avg_confidence = 0.5  # Default confidence for Tesseract
+            
+            self.logger.info(f"Tesseract extracted {len(text_lines)} lines")
+            
             return {
-                "text": "",
-                "lines": [],
-                "confidence": 0.0,
-                "error": str(e)
+                "text": "\n".join(text_lines),
+                "lines": text_lines,
+                "confidence": avg_confidence,
+                "method": "tesseract"
             }
+            
+        except Exception as e:
+            self.logger.error(f"Tesseract OCR failed: {e}")
+            raise
     
     async def _extract_structured_data(self, ocr_result: Dict[str, Any]) -> Dict[str, Any]:
         """Use LLM to extract structured data from OCR text"""

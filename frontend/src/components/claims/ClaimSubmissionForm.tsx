@@ -3,19 +3,23 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format } from "date-fns";
-import { ArrowLeft, ArrowRight, Check, X, Receipt, Wallet, Phone, Clock, TrendingUp, Utensils } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, X, Receipt, Wallet, Phone, Clock, TrendingUp, Utensils, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { CategoryGrid, Category } from "./CategoryGrid";
-import { SmartClaimForm } from "./SmartClaimForm";
+import { SmartClaimForm, ExtractedClaim, FieldSources } from "./SmartClaimForm";
 import { ClaimReview } from "./ClaimReview";
 import { toast } from "@/hooks/use-toast";
 import { allowancePolicies } from "@/data/mockAllowances";
 import { AllowanceType } from "@/types/allowance";
+import { useAuth } from "@/contexts/AuthContext";
+import { useCreateBatchClaimsWithDocument, BatchClaimItem } from "@/hooks/useClaims";
+import { UploadedFile } from "./DocumentUpload";
 
 const claimSchema = z.object({
+  category: z.string().optional(),
   title: z.string().min(3, "Title must be at least 3 characters"),
   amount: z.string().min(1, "Amount is required").refine(
     (val) => !isNaN(parseFloat(val)) && parseFloat(val) > 0,
@@ -23,8 +27,8 @@ const claimSchema = z.object({
   ),
   date: z.date({ required_error: "Date is required" }),
   vendor: z.string().min(2, "Vendor name is required"),
+  transactionRef: z.string().optional(),
   description: z.string().optional(),
-  paymentMethod: z.string().optional(),
   projectCode: z.string().optional(),
   costCenter: z.string().optional(),
 });
@@ -33,7 +37,13 @@ type ClaimFormData = z.infer<typeof claimSchema>;
 
 type ClaimTypeOption = 'reimbursement' | 'allowance';
 
-const steps = [
+const reimbursementSteps = [
+  { id: 1, label: "Claim Type" },
+  { id: 2, label: "Details" },
+  { id: 3, label: "Review" },
+];
+
+const allowanceSteps = [
   { id: 1, label: "Claim Type" },
   { id: 2, label: "Category" },
   { id: 3, label: "Details" },
@@ -56,7 +66,21 @@ export function ClaimSubmissionForm({ onClose }: ClaimSubmissionFormProps) {
   const [claimType, setClaimType] = useState<ClaimTypeOption | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
   const [selectedAllowance, setSelectedAllowance] = useState<AllowanceType | null>(null);
-  const [uploadedFiles, setUploadedFiles] = useState<any[]>([]);
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
+  const [extractedMultipleClaims, setExtractedMultipleClaims] = useState<ExtractedClaim[]>([]);
+  const [singleFormFieldSources, setSingleFormFieldSources] = useState<FieldSources>({
+    category: 'manual',
+    title: 'manual',
+    amount: 'manual',
+    date: 'manual',
+    vendor: 'manual',
+    transactionRef: 'manual',
+    description: 'manual',
+    projectCode: 'manual',
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { user } = useAuth();
+  const createBatchClaimsWithDocument = useCreateBatchClaimsWithDocument();
   const [allowanceData, setAllowanceData] = useState({
     amount: '',
     periodStart: format(new Date(new Date().getFullYear(), new Date().getMonth(), 1), 'yyyy-MM-dd'),
@@ -68,11 +92,11 @@ export function ClaimSubmissionForm({ onClose }: ClaimSubmissionFormProps) {
   const form = useForm<ClaimFormData>({
     resolver: zodResolver(claimSchema),
     defaultValues: {
+      category: "",
       title: "",
       amount: "",
       vendor: "",
       description: "",
-      paymentMethod: "",
       projectCode: "",
       costCenter: "",
     },
@@ -86,6 +110,10 @@ export function ClaimSubmissionForm({ onClose }: ClaimSubmissionFormProps) {
     setClaimType(type);
     setSelectedCategory(null);
     setSelectedAllowance(null);
+    // For reimbursements, skip category selection and go directly to details
+    if (type === 'reimbursement') {
+      setCurrentStep(2);
+    }
   };
 
   const handleCategorySelect = (category: Category) => {
@@ -107,17 +135,22 @@ export function ClaimSubmissionForm({ onClose }: ClaimSubmissionFormProps) {
       return;
     }
 
-    // Step 2: Category Selection
-    if (currentStep === 2) {
-      if (claimType === 'reimbursement' && !selectedCategory) {
+    // For reimbursements: Step 2 is Details (validation)
+    if (claimType === 'reimbursement' && currentStep === 2) {
+      const isValid = await form.trigger(["title", "amount", "date", "vendor"]);
+      if (!isValid) {
         toast({
-          title: "Please select a category",
-          description: "Choose an expense category to continue",
+          title: "Please fill required fields",
+          description: "Complete all required fields to continue",
           variant: "destructive",
         });
         return;
       }
-      if (claimType === 'allowance' && !selectedAllowance) {
+    }
+
+    // For allowances: Step 2 is Category Selection
+    if (claimType === 'allowance' && currentStep === 2) {
+      if (!selectedAllowance) {
         toast({
           title: "Please select an allowance type",
           description: "Choose an allowance type to continue",
@@ -127,19 +160,9 @@ export function ClaimSubmissionForm({ onClose }: ClaimSubmissionFormProps) {
       }
     }
 
-    // Step 3: Form Validation
-    if (currentStep === 3) {
-      if (claimType === 'reimbursement') {
-        const isValid = await form.trigger(["title", "amount", "date", "vendor"]);
-        if (!isValid) {
-          toast({
-            title: "Please fill required fields",
-            description: "Complete all required fields to continue",
-            variant: "destructive",
-          });
-          return;
-        }
-      } else if (claimType === 'allowance' && !allowanceData.amount) {
+    // For allowances: Step 3 is Form Validation
+    if (claimType === 'allowance' && currentStep === 3) {
+      if (!allowanceData.amount) {
         toast({
           title: "Please enter the amount",
           description: "Amount is required to continue",
@@ -149,20 +172,126 @@ export function ClaimSubmissionForm({ onClose }: ClaimSubmissionFormProps) {
       }
     }
 
-    setCurrentStep((prev) => Math.min(prev + 1, 4));
+    const maxStep = claimType === 'reimbursement' ? 3 : 4;
+    setCurrentStep((prev) => Math.min(prev + 1, maxStep));
   };
 
   const handleBack = () => {
     setCurrentStep((prev) => Math.max(prev - 1, 1));
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const claimTypeLabel = claimType === 'reimbursement' ? 'Reimbursement' : 'Allowance';
-    toast({
-      title: `${claimTypeLabel} Claim Submitted Successfully! 🎉`,
-      description: "Your claim has been sent for approval. Track it in your dashboard.",
-    });
-    onClose();
+    
+    if (!user?.id) {
+      toast({
+        title: "Error",
+        description: "User not found. Please select an employee first.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSubmitting(true);
+    
+    try {
+      // Check if we have multiple claims to submit
+      const selectedClaims = extractedMultipleClaims.filter(c => c.selected);
+      
+      // Get the uploaded file if available
+      const documentFile = uploadedFiles.length > 0 ? uploadedFiles[0].file : undefined;
+      
+      if (selectedClaims.length > 0) {
+        // Prepare batch claims data
+        const batchClaimItems: BatchClaimItem[] = selectedClaims.map(claim => ({
+          category: claim.category || selectedCategory || 'miscellaneous',
+          amount: parseFloat(claim.amount) || 0,
+          claim_date: claim.date
+            ? (typeof claim.date === 'string' ? claim.date.split('T')[0] : format(new Date(claim.date), 'yyyy-MM-dd'))
+            : format(new Date(), 'yyyy-MM-dd'),
+          title: claim.description?.slice(0, 50) || `${claim.category || 'Expense'} Claim`,
+          vendor: claim.vendor || undefined,
+          description: claim.description || undefined,
+          transaction_ref: claim.transactionRef || undefined,
+          // Field source tracking (ocr = auto-extracted, manual = user-entered)
+          category_source: claim.fieldSources?.category || 'manual',
+          title_source: claim.fieldSources?.title || 'manual',
+          amount_source: claim.fieldSources?.amount || 'manual',
+          date_source: claim.fieldSources?.date || 'manual',
+          vendor_source: claim.fieldSources?.vendor || 'manual',
+          description_source: claim.fieldSources?.description || 'manual',
+          transaction_ref_source: claim.fieldSources?.transactionRef || 'manual',
+        }));
+
+        const batchPayload = {
+          employee_id: user.id,
+          claim_type: claimType === 'reimbursement' ? 'REIMBURSEMENT' as const : 'ALLOWANCE' as const,
+          project_code: selectedClaims[0]?.projectCode || undefined,
+          claims: batchClaimItems,
+        };
+
+        // Call the batch API with document
+        const response = await createBatchClaimsWithDocument.mutateAsync({
+          batchData: batchPayload,
+          file: documentFile,
+        });
+        
+        toast({
+          title: `${response.total_claims} Claims Submitted Successfully! 🎉`,
+          description: `Your ${response.total_claims} reimbursement claims totaling ₹${response.total_amount.toFixed(2)} have been sent for approval.${documentFile ? ' Document attached.' : ''} Claim IDs: ${response.claim_numbers.join(', ')}`,
+        });
+      } else {
+        // Single claim from form data - use actual field sources from state
+        const formData = form.getValues();
+        const singleClaimItems: BatchClaimItem[] = [{
+          category: formData.category || selectedCategory || 'miscellaneous',
+          amount: parseFloat(formData.amount) || 0,
+          claim_date: formData.date
+            ? format(new Date(formData.date), 'yyyy-MM-dd')
+            : format(new Date(), 'yyyy-MM-dd'),
+          title: formData.title || `${formData.category || 'Expense'} Claim`,
+          vendor: formData.vendor || undefined,
+          transaction_ref: formData.transactionRef || undefined,
+          description: formData.description || undefined,
+          // Use actual field sources from single form tracking
+          category_source: singleFormFieldSources.category === 'none' ? 'manual' : singleFormFieldSources.category,
+          title_source: singleFormFieldSources.title === 'none' ? 'manual' : singleFormFieldSources.title,
+          amount_source: singleFormFieldSources.amount === 'none' ? 'manual' : singleFormFieldSources.amount,
+          date_source: singleFormFieldSources.date === 'none' ? 'manual' : singleFormFieldSources.date,
+          vendor_source: singleFormFieldSources.vendor === 'none' ? 'manual' : singleFormFieldSources.vendor,
+          description_source: singleFormFieldSources.description === 'none' ? 'manual' : singleFormFieldSources.description,
+          transaction_ref_source: singleFormFieldSources.transactionRef === 'none' ? 'manual' : singleFormFieldSources.transactionRef,
+        }];
+
+        const batchPayload = {
+          employee_id: user.id,
+          claim_type: claimType === 'reimbursement' ? 'REIMBURSEMENT' as const : 'ALLOWANCE' as const,
+          project_code: formData.projectCode || undefined,
+          claims: singleClaimItems,
+        };
+
+        const response = await createBatchClaimsWithDocument.mutateAsync({
+          batchData: batchPayload,
+          file: documentFile,
+        });
+        
+        toast({
+          title: `${claimTypeLabel} Claim Submitted Successfully! 🎉`,
+          description: `Your claim (${response.claim_numbers[0]}) has been sent for approval.${documentFile ? ' Document attached.' : ''} Track it in your dashboard.`,
+        });
+      }
+      
+      onClose();
+    } catch (error: any) {
+      console.error('Failed to submit claims:', error);
+      toast({
+        title: "Submission Failed",
+        description: error?.message || "Failed to submit claims. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -179,7 +308,7 @@ export function ClaimSubmissionForm({ onClose }: ClaimSubmissionFormProps) {
 
           {/* Step Indicator */}
           <div className="hidden sm:flex items-center gap-2">
-            {steps.map((step, idx) => (
+            {(claimType === 'reimbursement' ? reimbursementSteps : allowanceSteps).map((step, idx) => (
               <div key={step.id} className="flex items-center">
                 <div
                   className={cn(
@@ -205,7 +334,7 @@ export function ClaimSubmissionForm({ onClose }: ClaimSubmissionFormProps) {
                 >
                   {step.label}
                 </span>
-                {idx < steps.length - 1 && (
+                {idx < (claimType === 'reimbursement' ? reimbursementSteps : allowanceSteps).length - 1 && (
                   <div
                     className={cn(
                       "mx-4 h-0.5 w-12",
@@ -219,7 +348,7 @@ export function ClaimSubmissionForm({ onClose }: ClaimSubmissionFormProps) {
 
           {/* Mobile Step Indicator */}
           <div className="sm:hidden text-sm text-muted-foreground">
-            Step {currentStep} of {steps.length}
+            Step {currentStep} of {claimType === 'reimbursement' ? reimbursementSteps.length : allowanceSteps.length}
           </div>
         </div>
       </header>
@@ -302,14 +431,28 @@ export function ClaimSubmissionForm({ onClose }: ClaimSubmissionFormProps) {
           </div>
         )}
 
-        {/* Step 2: Category Selection */}
+        {/* Step 2: Details Form for Reimbursement */}
         {currentStep === 2 && claimType === 'reimbursement' && (
-          <CategoryGrid
-            selectedCategory={selectedCategory?.id || null}
-            onSelectCategory={handleCategorySelect}
+          <SmartClaimForm
+            form={form}
+            onFilesChange={setUploadedFiles}
+            uploadedFiles={uploadedFiles}
+            onMultipleClaimsExtracted={(claims) => {
+              console.log('Multiple claims extracted in parent:', claims);
+              setExtractedMultipleClaims(claims);
+            }}
+            onClaimsUpdated={(claims) => {
+              console.log('Claims updated in parent (edited by user):', claims);
+              setExtractedMultipleClaims(claims);
+            }}
+            onSingleFormFieldSourcesChange={(sources) => {
+              console.log('Single form field sources changed:', sources);
+              setSingleFormFieldSources(sources);
+            }}
           />
         )}
 
+        {/* Step 2: Category Selection for Allowance */}
         {currentStep === 2 && claimType === 'allowance' && (
           <div className="max-w-4xl mx-auto">
             <div className="mb-8 text-center">
@@ -330,21 +473,16 @@ export function ClaimSubmissionForm({ onClose }: ClaimSubmissionFormProps) {
                     onClick={() => handleAllowanceSelect(policy.type)}
                   >
                     <CardHeader>
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="p-2 rounded-lg bg-primary/10">
-                            <Icon className="h-5 w-5 text-primary" />
-                          </div>
-                          <div>
-                            <CardTitle className="text-base">{policy.name}</CardTitle>
-                            {policy.taxable && (
-                              <Badge variant="secondary" className="text-xs mt-1">Taxable</Badge>
-                            )}
-                          </div>
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-lg bg-primary/10">
+                          <Icon className="h-5 w-5 text-primary" />
                         </div>
-                        <Badge variant="outline" className="font-semibold">
-                          ₹{policy.maxAmount.toLocaleString()}
-                        </Badge>
+                        <div>
+                          <CardTitle className="text-base">{policy.name}</CardTitle>
+                          {policy.taxable && (
+                            <Badge variant="secondary" className="text-xs mt-1">Taxable</Badge>
+                          )}
+                        </div>
                       </div>
                     </CardHeader>
                     <CardContent>
@@ -367,15 +505,7 @@ export function ClaimSubmissionForm({ onClose }: ClaimSubmissionFormProps) {
           </div>
         )}
 
-        {/* Step 3: Details Form */}
-        {currentStep === 3 && claimType === 'reimbursement' && selectedCategory && (
-          <SmartClaimForm
-            category={selectedCategory}
-            form={form}
-            onFilesChange={setUploadedFiles}
-          />
-        )}
-
+        {/* Step 3: Allowance Details Form */}
         {currentStep === 3 && claimType === 'allowance' && selectedAllowance && selectedPolicy && (
           <div className="max-w-3xl mx-auto">
             <Card>
@@ -468,12 +598,12 @@ export function ClaimSubmissionForm({ onClose }: ClaimSubmissionFormProps) {
           </div>
         )}
 
-        {/* Step 4: Review */}
-        {currentStep === 4 && claimType === 'reimbursement' && selectedCategory && (
+        {/* Step 3: Review for Reimbursement */}
+        {currentStep === 3 && claimType === 'reimbursement' && (
           <ClaimReview
-            category={selectedCategory}
             formData={form.getValues()}
             files={uploadedFiles}
+            multipleClaims={extractedMultipleClaims.length > 1 ? extractedMultipleClaims : undefined}
           />
         )}
 
@@ -539,7 +669,7 @@ export function ClaimSubmissionForm({ onClose }: ClaimSubmissionFormProps) {
           </Button>
 
           <div className="flex items-center gap-2">
-            {steps.map((step) => (
+            {(claimType === 'reimbursement' ? reimbursementSteps : allowanceSteps).map((step) => (
               <div
                 key={step.id}
                 className={cn(
@@ -554,15 +684,29 @@ export function ClaimSubmissionForm({ onClose }: ClaimSubmissionFormProps) {
             ))}
           </div>
 
-          {currentStep < 4 ? (
+          {currentStep < (claimType === 'reimbursement' ? 3 : 4) ? (
             <Button variant="gradient" onClick={handleNext} className="gap-2">
               Continue
               <ArrowRight className="h-4 w-4" />
             </Button>
           ) : (
-            <Button variant="gradient" onClick={handleSubmit} className="gap-2">
-              <Check className="h-4 w-4" />
-              Submit Claim
+            <Button 
+              variant="gradient" 
+              onClick={handleSubmit} 
+              className="gap-2"
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Submitting...
+                </>
+              ) : (
+                <>
+                  <Check className="h-4 w-4" />
+                  Submit Claim
+                </>
+              )}
             </Button>
           )}
         </div>

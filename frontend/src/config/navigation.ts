@@ -22,7 +22,6 @@ export const mainNavigation: NavItem[] = [
     label: 'Approvals',
     href: '/approvals',
     icon: 'CheckSquare',
-    badge: 5,
     roles: ['manager', 'hr', 'finance', 'admin'],
   },
   {

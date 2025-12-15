@@ -4,21 +4,313 @@ Claims API endpoints
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
+from sqlalchemy.orm.attributes import flag_modified
 from typing import List, Optional
 from uuid import UUID, uuid4
 from datetime import datetime
 import os
+import shutil
+from pathlib import Path
+import json
+import logging
 
 from database import get_async_db
-from models import Claim, Employee, Document, User
+from models import Claim, Document, User, Comment
+# Employee is now an alias for User
+Employee = User
 from schemas import (
     ClaimCreate, ClaimUpdate, ClaimResponse, ClaimListResponse,
-    ReturnToEmployee, SettleClaim, HRCorrection
+    ReturnToEmployee, SettleClaim, HRCorrection,
+    BatchClaimCreate, BatchClaimResponse, ApproveRejectClaim
 )
 from config import settings
 from agents.orchestrator import process_claim_task
+from services.storage import upload_to_gcs
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
+
+# Ensure upload directory exists
+UPLOAD_DIR = Path(os.environ.get("UPLOAD_DIR", "./uploads"))
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _map_category(category_str: str) -> str:
+    """Map frontend category string to backend category enum"""
+    category_map = {
+        'travel': 'TRAVEL',
+        'food': 'FOOD',
+        'team_lunch': 'TEAM_LUNCH',
+        'certification': 'CERTIFICATION',
+        'accommodation': 'ACCOMMODATION',
+        'equipment': 'EQUIPMENT',
+        'software': 'SOFTWARE',
+        'office_supplies': 'OFFICE_SUPPLIES',
+        'medical': 'MEDICAL',
+        'communication': 'MOBILE',
+        'phone_internet': 'MOBILE',
+        'passport_visa': 'PASSPORT_VISA',
+        'conveyance': 'CONVEYANCE',
+        'client_meeting': 'CLIENT_MEETING',
+        'other': 'OTHER',
+    }
+    return category_map.get(category_str.lower(), 'OTHER')
+
+
+@router.post("/batch", response_model=BatchClaimResponse, status_code=status.HTTP_201_CREATED)
+async def create_batch_claims(
+    batch: BatchClaimCreate,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Create multiple claims at once (for multi-receipt submissions)"""
+    
+    # Get employee
+    result = await db.execute(select(Employee).where(Employee.id == batch.employee_id))
+    employee = result.scalar_one_or_none()
+    
+    if not employee:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Employee not found: {batch.employee_id}"
+        )
+    
+    created_claims = []
+    claim_ids = []
+    claim_numbers = []
+    total_amount = 0.0
+    
+    for idx, claim_item in enumerate(batch.claims):
+        # Generate unique claim number
+        claim_number = f"CLM-{datetime.now().strftime('%Y%m%d')}-{str(uuid4())[:8].upper()}"
+        
+        # Map category
+        category = _map_category(claim_item.category)
+        
+        # Build claim payload with field source tracking
+        claim_payload = {
+            "title": claim_item.title or f"{claim_item.category.title()} Expense",
+            "vendor": claim_item.vendor,
+            "transaction_ref": claim_item.transaction_ref,
+            "payment_method": claim_item.payment_method,
+            "project_code": batch.project_code,
+            "batch_index": idx,
+            "batch_total": len(batch.claims),
+            # Field source tracking: 'ocr' for auto-extracted, 'manual' for user-entered
+            "category_source": claim_item.category_source or 'manual',
+            "title_source": claim_item.title_source or 'manual',
+            "amount_source": claim_item.amount_source or 'manual',
+            "date_source": claim_item.date_source or 'manual',
+            "vendor_source": claim_item.vendor_source or 'manual',
+            "description_source": claim_item.description_source or 'manual',
+            "transaction_ref_source": claim_item.transaction_ref_source or 'manual',
+            "payment_method_source": claim_item.payment_method_source or 'manual',
+        }
+        
+        # Create claim
+        new_claim = Claim(
+            tenant_id=UUID(settings.DEFAULT_TENANT_ID),
+            claim_number=claim_number,
+            employee_id=employee.id,
+            employee_name=f"{employee.first_name} {employee.last_name}",
+            department=employee.department,
+            claim_type=batch.claim_type.value,
+            category=category,
+            amount=claim_item.amount,
+            claim_date=claim_item.claim_date,
+            description=claim_item.description or claim_item.title,
+            claim_payload=claim_payload,
+            status="PENDING_MANAGER",  # Direct submit to manager approval
+            submission_date=datetime.utcnow(),
+            can_edit=False
+        )
+        
+        db.add(new_claim)
+        created_claims.append(new_claim)
+        total_amount += claim_item.amount
+    
+    await db.commit()
+    
+    # Refresh to get IDs
+    for claim in created_claims:
+        await db.refresh(claim)
+        claim_ids.append(claim.id)
+        claim_numbers.append(claim.claim_number)
+    
+    return BatchClaimResponse(
+        success=True,
+        total_claims=len(created_claims),
+        total_amount=total_amount,
+        claim_ids=claim_ids,
+        claim_numbers=claim_numbers,
+        message=f"Successfully created {len(created_claims)} claims totaling ₹{total_amount:.2f}"
+    )
+
+
+@router.post("/batch-with-document", response_model=BatchClaimResponse, status_code=status.HTTP_201_CREATED)
+async def create_batch_claims_with_document(
+    batch_data: str = Form(...),  # JSON string of BatchClaimCreate
+    file: Optional[UploadFile] = File(None),  # Optional document file
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Create multiple claims at once with an optional document attachment.
+    The document will be uploaded to GCS and linked to all created claims.
+    
+    Args:
+        batch_data: JSON string containing BatchClaimCreate data
+        file: Optional document file (PDF or image) to attach to all claims
+    """
+    # Parse batch data from JSON string
+    try:
+        batch_dict = json.loads(batch_data)
+        batch = BatchClaimCreate(**batch_dict)
+    except (json.JSONDecodeError, ValueError) as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid batch data format: {str(e)}"
+        )
+    
+    # Get employee
+    result = await db.execute(select(Employee).where(Employee.id == batch.employee_id))
+    employee = result.scalar_one_or_none()
+    
+    if not employee:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Employee not found: {batch.employee_id}"
+        )
+    
+    # Handle document upload if provided
+    document_id = None
+    gcs_uri = None
+    gcs_blob_name = None
+    file_path = None
+    
+    if file and file.filename:
+        # Generate unique filename
+        file_extension = Path(file.filename).suffix
+        unique_filename = f"{uuid4()}{file_extension}"
+        file_path = UPLOAD_DIR / unique_filename
+        
+        # Save file locally first
+        try:
+            with file_path.open("wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+            logger.info(f"Saved document locally: {file_path}")
+        except Exception as e:
+            logger.error(f"Failed to save file locally: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to save document: {str(e)}"
+            )
+        
+        # Upload to GCS
+        try:
+            gcs_uri, gcs_blob_name = upload_to_gcs(
+                file_path=file_path,
+                claim_id="batch_upload",  # Temporary - will be updated per claim
+                original_filename=file.filename,
+                content_type=file.content_type
+            )
+            if gcs_uri:
+                logger.info(f"Document uploaded to GCS: {gcs_uri}")
+        except Exception as e:
+            logger.warning(f"GCS upload failed, using local storage: {e}")
+    
+    created_claims = []
+    claim_ids = []
+    claim_numbers = []
+    total_amount = 0.0
+    
+    for idx, claim_item in enumerate(batch.claims):
+        # Generate unique claim number
+        claim_number = f"CLM-{datetime.now().strftime('%Y%m%d')}-{str(uuid4())[:8].upper()}"
+        
+        # Map category
+        category = _map_category(claim_item.category)
+        
+        # Build claim payload with field source tracking
+        claim_payload = {
+            "title": claim_item.title or f"{claim_item.category.title()} Expense",
+            "vendor": claim_item.vendor,
+            "transaction_ref": claim_item.transaction_ref,
+            "payment_method": claim_item.payment_method,
+            "project_code": batch.project_code,
+            "batch_index": idx,
+            "batch_total": len(batch.claims),
+            # Field source tracking
+            "category_source": claim_item.category_source or 'manual',
+            "title_source": claim_item.title_source or 'manual',
+            "amount_source": claim_item.amount_source or 'manual',
+            "date_source": claim_item.date_source or 'manual',
+            "vendor_source": claim_item.vendor_source or 'manual',
+            "description_source": claim_item.description_source or 'manual',
+            "transaction_ref_source": claim_item.transaction_ref_source or 'manual',
+            "payment_method_source": claim_item.payment_method_source or 'manual',
+        }
+        
+        # Create claim
+        new_claim = Claim(
+            tenant_id=UUID(settings.DEFAULT_TENANT_ID),
+            claim_number=claim_number,
+            employee_id=employee.id,
+            employee_name=f"{employee.first_name} {employee.last_name}",
+            department=employee.department,
+            claim_type=batch.claim_type.value,
+            category=category,
+            amount=claim_item.amount,
+            claim_date=claim_item.claim_date,
+            description=claim_item.description or claim_item.title,
+            claim_payload=claim_payload,
+            status="PENDING_MANAGER",
+            submission_date=datetime.utcnow(),
+            can_edit=False
+        )
+        
+        db.add(new_claim)
+        created_claims.append(new_claim)
+        total_amount += claim_item.amount
+    
+    await db.commit()
+    
+    # Refresh to get claim IDs
+    for claim in created_claims:
+        await db.refresh(claim)
+        claim_ids.append(claim.id)
+        claim_numbers.append(claim.claim_number)
+    
+    # Now create document records for each claim if file was uploaded
+    if file and file.filename and file_path:
+        for claim in created_claims:
+            # Create document record linked to this claim
+            document = Document(
+                id=uuid4(),
+                tenant_id=claim.tenant_id,
+                claim_id=claim.id,
+                document_type="INVOICE",
+                filename=file.filename,
+                storage_path=str(file_path),
+                file_size=file_path.stat().st_size if file_path.exists() else 0,
+                file_type=file_path.suffix.lstrip('.').upper(),
+                content_type=file.content_type or "application/octet-stream",
+                gcs_uri=gcs_uri,
+                gcs_blob_name=gcs_blob_name,
+                storage_type="gcs" if gcs_uri else "local",
+            )
+            db.add(document)
+        
+        await db.commit()
+        logger.info(f"Created {len(created_claims)} document records linked to claims")
+    
+    return BatchClaimResponse(
+        success=True,
+        total_claims=len(created_claims),
+        total_amount=total_amount,
+        claim_ids=claim_ids,
+        claim_numbers=claim_numbers,
+        message=f"Successfully created {len(created_claims)} claims totaling ₹{total_amount:.2f}" + 
+                (f" with document attached" if file else "")
+    )
 
 
 @router.post("/", response_model=ClaimResponse, status_code=status.HTTP_201_CREATED)
@@ -55,8 +347,8 @@ async def create_claim(
         claim_date=claim.claim_date,
         description=claim.description,
         claim_payload=claim.claim_payload,
-        status="DRAFT",
-        submission_date=None
+        status="PENDING_MANAGER",
+        submission_date=datetime.utcnow()
     )
     
     db.add(new_claim)
@@ -71,7 +363,7 @@ async def submit_claim(
     claim_id: UUID,
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Submit a claim for processing"""
+    """Submit a claim for processing - moves to PENDING_MANAGER status"""
     
     # Get claim
     result = await db.execute(select(Claim).where(Claim.id == claim_id))
@@ -83,14 +375,14 @@ async def submit_claim(
             detail="Claim not found"
         )
     
-    if claim.status != "DRAFT":
+    if claim.status not in ["PENDING_MANAGER", "RETURNED_TO_EMPLOYEE"]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only draft claims can be submitted"
+            detail="Only pending or returned claims can be resubmitted"
         )
     
-    # Update status
-    claim.status = "SUBMITTED"
+    # Update status - ensure it's PENDING_MANAGER for manager review
+    claim.status = "PENDING_MANAGER"
     claim.submission_date = datetime.utcnow()
     claim.can_edit = False
     await db.commit()
@@ -167,7 +459,7 @@ async def update_claim(
     claim_update: ClaimUpdate,
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Update a claim"""
+    """Update a claim - only claims in RETURNED_TO_EMPLOYEE status can be edited"""
     
     result = await db.execute(select(Claim).where(Claim.id == claim_id))
     claim = result.scalar_one_or_none()
@@ -178,10 +470,11 @@ async def update_claim(
             detail="Claim not found"
         )
     
-    if not claim.can_edit and claim.status not in ["DRAFT", "RETURNED_TO_EMPLOYEE"]:
+    # Only allow editing if claim was returned to employee
+    if claim.status != "RETURNED_TO_EMPLOYEE":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Claim cannot be edited in current status"
+            detail="Only claims returned for correction can be edited"
         )
     
     # Update fields
@@ -194,6 +487,34 @@ async def update_claim(
     if claim_update.claim_payload is not None:
         claim.claim_payload = claim_update.claim_payload
     
+    # Update data source flags for edited fields
+    if claim_update.edited_sources:
+        payload = dict(claim.claim_payload or {})  # Make a copy
+        source_field_map = {
+            'amount': 'amount_source',
+            'date': 'date_source',
+            'description': 'description_source',
+            'vendor': 'vendor_source',
+            'category': 'category_source',
+            'title': 'title_source',
+            'transaction_ref': 'transaction_ref_source',
+            'payment_method': 'payment_method_source',
+        }
+        for field in claim_update.edited_sources:
+            source_key = source_field_map.get(field)
+            if source_key:
+                payload[source_key] = 'manual'
+        claim.claim_payload = payload
+        # Force SQLAlchemy to detect the change in JSONB field
+        flag_modified(claim, 'claim_payload')
+    
+    # Handle status update for resubmission
+    if claim_update.status == 'PENDING_MANAGER':
+        claim.status = 'PENDING_MANAGER'
+        # Clear return-related fields on resubmission
+        claim.return_reason = None
+        claim.returned_at = None
+    
     await db.commit()
     await db.refresh(claim)
     
@@ -205,7 +526,7 @@ async def delete_claim(
     claim_id: UUID,
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Delete a claim (only drafts)"""
+    """Delete a claim (employees can delete their pending claims)"""
     
     result = await db.execute(select(Claim).where(Claim.id == claim_id))
     claim = result.scalar_one_or_none()
@@ -216,10 +537,12 @@ async def delete_claim(
             detail="Claim not found"
         )
     
-    if claim.status != "DRAFT":
+    # Allow deletion for pending and returned claims only
+    deletable_statuses = ["PENDING_MANAGER", "RETURNED_TO_EMPLOYEE"]
+    if claim.status not in deletable_statuses:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only draft claims can be deleted"
+            detail=f"Cannot delete claims in {claim.status} status. Only pending or returned claims can be deleted."
         )
     
     await db.delete(claim)
@@ -243,6 +566,9 @@ async def return_to_employee(
             detail="Claim not found"
         )
     
+    # Store previous status for approval history
+    previous_status = claim.status
+    
     # Update claim
     claim.status = "RETURNED_TO_EMPLOYEE"
     claim.can_edit = True
@@ -251,10 +577,184 @@ async def return_to_employee(
     claim.returned_at = datetime.utcnow()
     # claim.returned_by = current_user.id  # TODO: Add auth
     
+    # Add to approval history in claim_payload
+    if not claim.claim_payload:
+        claim.claim_payload = {}
+    if "approval_history" not in claim.claim_payload:
+        claim.claim_payload["approval_history"] = []
+    
+    claim.claim_payload["approval_history"].append({
+        "action": "returned",
+        "from_status": previous_status,
+        "comment": return_data.return_reason,
+        "timestamp": datetime.utcnow().isoformat()
+    })
+    # Flag claim_payload as modified for SQLAlchemy to detect JSONB changes
+    flag_modified(claim, "claim_payload")
+    
+    # Create a Comment record for visibility in Edit Claim page
+    # Find a user with MANAGER role to attribute the comment to (TODO: use actual auth user)
+    approver_user = await db.execute(
+        select(User).where(User.roles.contains(["MANAGER"])).limit(1)
+    )
+    approver = approver_user.scalar_one_or_none()
+    
+    if approver:
+        comment = Comment(
+            id=uuid4(),
+            tenant_id=claim.tenant_id,
+            claim_id=claim.id,
+            comment_text=return_data.return_reason,
+            comment_type="RETURN",
+            user_id=approver.id,
+            user_name=approver.full_name or approver.username,
+            user_role="MANAGER",
+            visible_to_employee=True
+        )
+        db.add(comment)
+    
     await db.commit()
     await db.refresh(claim)
     
     # TODO: Send notification to employee
+    
+    return claim
+
+
+@router.post("/{claim_id}/approve", response_model=ClaimResponse)
+async def approve_claim(
+    claim_id: UUID,
+    approve_data: ApproveRejectClaim = None,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Approve a claim - moves to next approval stage"""
+    
+    result = await db.execute(select(Claim).where(Claim.id == claim_id))
+    claim = result.scalar_one_or_none()
+    
+    if not claim:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Claim not found"
+        )
+    
+    # Define status transitions
+    status_transitions = {
+        "PENDING_MANAGER": "MANAGER_APPROVED",
+        "MANAGER_APPROVED": "PENDING_HR",  # Auto-transition to HR
+        "PENDING_HR": "HR_APPROVED",
+        "HR_APPROVED": "PENDING_FINANCE",  # Auto-transition to Finance
+        "PENDING_FINANCE": "FINANCE_APPROVED",
+    }
+    
+    if claim.status not in status_transitions:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot approve claim in {claim.status} status"
+        )
+    
+    # Get next status
+    next_status = status_transitions[claim.status]
+    
+    # If manager approved, move directly to pending HR
+    if next_status == "MANAGER_APPROVED":
+        claim.status = "PENDING_HR"
+    elif next_status == "HR_APPROVED":
+        claim.status = "PENDING_FINANCE"
+    else:
+        claim.status = next_status
+    
+    claim.can_edit = False
+    
+    # Store approval comment in payload
+    if approve_data and approve_data.comment:
+        if not claim.claim_payload:
+            claim.claim_payload = {}
+        if "approval_history" not in claim.claim_payload:
+            claim.claim_payload["approval_history"] = []
+        claim.claim_payload["approval_history"].append({
+            "action": "approved",
+            "from_status": claim.status,
+            "to_status": next_status,
+            "comment": approve_data.comment,
+            "timestamp": datetime.utcnow().isoformat()
+        })
+        # Flag claim_payload as modified for SQLAlchemy to detect JSONB changes
+        flag_modified(claim, "claim_payload")
+    
+    await db.commit()
+    await db.refresh(claim)
+    
+    return claim
+
+
+@router.post("/{claim_id}/reject", response_model=ClaimResponse)
+async def reject_claim(
+    claim_id: UUID,
+    reject_data: ApproveRejectClaim = None,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Reject a claim"""
+    
+    result = await db.execute(select(Claim).where(Claim.id == claim_id))
+    claim = result.scalar_one_or_none()
+    
+    if not claim:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Claim not found"
+        )
+    
+    # Can only reject claims that are pending approval
+    rejectable_statuses = ["PENDING_MANAGER", "PENDING_HR", "PENDING_FINANCE"]
+    if claim.status not in rejectable_statuses:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot reject claim in {claim.status} status"
+        )
+    
+    previous_status = claim.status
+    claim.status = "REJECTED"
+    claim.can_edit = False
+    
+    # Store rejection comment in payload and create Comment record
+    if reject_data and reject_data.comment:
+        if not claim.claim_payload:
+            claim.claim_payload = {}
+        if "approval_history" not in claim.claim_payload:
+            claim.claim_payload["approval_history"] = []
+        claim.claim_payload["approval_history"].append({
+            "action": "rejected",
+            "from_status": previous_status,
+            "comment": reject_data.comment,
+            "timestamp": datetime.utcnow().isoformat()
+        })
+        # Flag claim_payload as modified for SQLAlchemy to detect JSONB changes
+        flag_modified(claim, "claim_payload")
+        
+        # Create a Comment record for visibility
+        # Find a user with appropriate role to attribute the comment to (TODO: use actual auth user)
+        approver_user = await db.execute(
+            select(User).where(User.roles.contains(["MANAGER"])).limit(1)
+        )
+        approver = approver_user.scalar_one_or_none()
+        
+        if approver:
+            comment = Comment(
+                id=uuid4(),
+                tenant_id=claim.tenant_id,
+                claim_id=claim.id,
+                comment_text=reject_data.comment,
+                comment_type="REJECTION",
+                user_id=approver.id,
+                user_name=approver.full_name or approver.username,
+                user_role="APPROVER",
+                visible_to_employee=True
+            )
+            db.add(comment)
+    
+    await db.commit()
+    await db.refresh(claim)
     
     return claim
 

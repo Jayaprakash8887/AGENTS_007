@@ -4,7 +4,6 @@ import { cn } from "@/lib/utils";
 interface CategoryCardProps {
   icon: LucideIcon;
   title: string;
-  maxAmount: string;
   requiredDocs: string[];
   isSelected: boolean;
   onClick: () => void;
@@ -13,7 +12,6 @@ interface CategoryCardProps {
 export function CategoryCard({
   icon: Icon,
   title,
-  maxAmount,
   requiredDocs,
   isSelected,
   onClick,
@@ -48,11 +46,6 @@ export function CategoryCard({
       </div>
 
       <h3 className="mt-4 font-semibold text-foreground">{title}</h3>
-      
-      <div className="mt-2 flex items-center gap-1.5">
-        <span className="text-xs text-muted-foreground">Max:</span>
-        <span className="text-sm font-medium text-primary">{maxAmount}</span>
-      </div>
 
       <div className="mt-3 pt-3 border-t border-border w-full">
         <p className="text-xs text-muted-foreground mb-1.5">Required docs:</p>

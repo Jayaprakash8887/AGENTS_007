@@ -2,7 +2,10 @@
 Test data creation script for development and demo
 """
 from database import get_sync_db
-from models import Employee, Project, User, Policy, Claim
+from models import User, Project, Policy, Claim
+
+# Employee is now an alias for User (tables merged)
+Employee = User
 from uuid import uuid4, UUID
 from datetime import date, datetime
 from passlib.context import CryptContext

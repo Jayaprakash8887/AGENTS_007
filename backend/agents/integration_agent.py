@@ -121,7 +121,7 @@ class IntegrationAgent(BaseAgent):
     def _fetch_employee_from_db(self, employee_id: Any) -> Dict[str, Any]:
         """Fetch employee data from local database"""
         from database import get_sync_db
-        from models import Employee
+        from models import User as Employee
         
         db = next(get_sync_db())
         employee = db.query(Employee).filter(Employee.id == employee_id).first()

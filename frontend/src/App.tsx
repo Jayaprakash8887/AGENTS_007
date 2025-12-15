@@ -13,6 +13,7 @@ import { ProtectedRoute } from '@/components/ProtectedRoute';
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const ClaimsList = lazy(() => import('./pages/ClaimsList'));
 const ClaimDetails = lazy(() => import('./pages/ClaimDetails'));
+const EditClaim = lazy(() => import('./pages/EditClaim'));
 const NewClaim = lazy(() => import('./pages/NewClaim'));
 const ApprovalQueue = lazy(() => import('./pages/ApprovalQueue'));
 const AllowancesList = lazy(() => import('./pages/AllowancesList'));
@@ -91,6 +92,14 @@ const App = () => (
                 element={
                   <Suspense fallback={<PageLoader />}>
                     <ClaimDetails />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="/claims/:id/edit"
+                element={
+                  <Suspense fallback={<PageLoader />}>
+                    <EditClaim />
                   </Suspense>
                 }
               />

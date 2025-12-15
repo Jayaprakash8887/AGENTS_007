@@ -13,7 +13,7 @@ def create_sample_data():
     
     with Session(sync_engine) as db:
         # Get existing employees
-        from models import Employee
+        from models import User as Employee
         employees = db.query(Employee).limit(3).all()
         
         if not employees:

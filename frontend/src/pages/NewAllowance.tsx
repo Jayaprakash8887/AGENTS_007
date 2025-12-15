@@ -185,9 +185,6 @@ export default function NewAllowance() {
                                 {policy.description}
                               </p>
                               <div className="mt-2 flex items-center gap-2">
-                                <Badge variant="outline">
-                                  Max ₹{policy.maxAmount.toLocaleString()}
-                                </Badge>
                                 {policy.taxable && (
                                   <Badge variant="secondary">Taxable</Badge>
                                 )}

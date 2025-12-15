@@ -17,6 +17,7 @@ import {
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { getNavigationForRole } from '@/config/navigation';
+import { usePendingApprovals } from '@/hooks/useDashboard';
 import { Button } from '@/components/ui/button';
 import {
   Tooltip,
@@ -48,6 +49,27 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const { user } = useAuth();
   const location = useLocation();
   const navItems = user ? getNavigationForRole(user.role) : [];
+  
+  // Fetch pending approvals count dynamically
+  const { data: pendingApprovals } = usePendingApprovals();
+  
+  // Get dynamic badge count based on user role
+  const getDynamicBadge = (href: string): number | undefined => {
+    if (href !== '/approvals' || !pendingApprovals) return undefined;
+    
+    switch (user?.role) {
+      case 'manager':
+        return pendingApprovals.manager_pending || 0;
+      case 'hr':
+        return pendingApprovals.hr_pending || 0;
+      case 'finance':
+        return pendingApprovals.finance_pending || 0;
+      case 'admin':
+        return pendingApprovals.total_pending || 0;
+      default:
+        return undefined;
+    }
+  };
 
   return (
     <TooltipProvider delayDuration={0}>
@@ -63,6 +85,8 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
             {navItems.map((item) => {
               const Icon = iconMap[item.icon] || LayoutDashboard;
               const isActive = location.pathname === item.href;
+              // Use dynamic badge for approvals, fall back to static badge
+              const badgeCount = getDynamicBadge(item.href) ?? item.badge;
 
               const linkContent = (
                 <NavLink
@@ -78,12 +102,12 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                   {!collapsed && (
                     <>
                       <span className="flex-1">{item.label}</span>
-                      {item.badge && (
+                      {badgeCount !== undefined && badgeCount > 0 && (
                         <Badge
                           variant={isActive ? 'secondary' : 'default'}
                           className="h-5 min-w-[20px] justify-center px-1.5"
                         >
-                          {item.badge}
+                          {badgeCount}
                         </Badge>
                       )}
                     </>
@@ -97,9 +121,9 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                     <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
                     <TooltipContent side="right" className="flex items-center gap-2">
                       {item.label}
-                      {item.badge && (
+                      {badgeCount !== undefined && badgeCount > 0 && (
                         <Badge variant="default" className="h-5 px-1.5">
-                          {item.badge}
+                          {badgeCount}
                         </Badge>
                       )}
                     </TooltipContent>

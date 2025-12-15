@@ -7,10 +7,36 @@ from typing import List
 from uuid import UUID, uuid4
 
 from database import get_sync_db
-from models import Project
+from models import Project, EmployeeProjectAllocation, User
+
+# Employee is now an alias for User (tables merged)
+Employee = User
 from schemas import ProjectCreate, ProjectResponse, ProjectUpdate
 
 router = APIRouter()
+
+
+@router.get("/all/members")
+async def get_all_project_members(
+    db: Session = Depends(get_sync_db)
+):
+    """Get all active project-employee allocations for all projects"""
+    results = db.query(
+        EmployeeProjectAllocation.project_id,
+        EmployeeProjectAllocation.employee_id
+    ).filter(
+        EmployeeProjectAllocation.status == "ACTIVE"
+    ).all()
+    
+    # Group by project_id
+    project_members = {}
+    for project_id, employee_id in results:
+        pid = str(project_id)
+        if pid not in project_members:
+            project_members[pid] = []
+        project_members[pid].append(str(employee_id))
+    
+    return project_members
 
 
 @router.get("/", response_model=List[ProjectResponse])
@@ -116,3 +142,47 @@ async def delete_project(
     db.commit()
     
     return None
+
+
+@router.get("/{project_id}/members")
+async def get_project_members(
+    project_id: UUID,
+    include_inactive: bool = False,
+    db: Session = Depends(get_sync_db)
+):
+    """Get all members allocated to a project"""
+    # Verify project exists
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project not found"
+        )
+    
+    # Query allocations with employee details
+    query = db.query(
+        EmployeeProjectAllocation,
+        Employee
+    ).join(
+        Employee, EmployeeProjectAllocation.employee_id == Employee.id
+    ).filter(
+        EmployeeProjectAllocation.project_id == project_id
+    )
+    
+    if not include_inactive:
+        query = query.filter(EmployeeProjectAllocation.status == "ACTIVE")
+    
+    results = query.all()
+    
+    return [
+        {
+            "allocation_id": allocation.id,
+            "employee_id": str(employee.id),
+            "employee_name": f"{employee.first_name} {employee.last_name}",
+            "role": allocation.role,
+            "allocation_percentage": allocation.allocation_percentage,
+            "status": allocation.status,
+            "allocated_date": allocation.allocated_date.isoformat() if allocation.allocated_date else None,
+        }
+        for allocation, employee in results
+    ]

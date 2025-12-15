@@ -77,7 +77,7 @@ export function ComplianceScore({ score, size = "md" }: ComplianceScoreProps) {
           {score}%
         </span>
         <span className={cn("text-muted-foreground uppercase tracking-wider", config.label)}>
-          Compliance
+          Complete
         </span>
       </div>
     </div>

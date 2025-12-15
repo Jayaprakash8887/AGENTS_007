@@ -5,11 +5,8 @@ import {
   Clock,
   CheckCircle,
   XCircle,
-  AlertCircle,
   RotateCcw,
   Wallet,
-  Send,
-  FileText,
 } from 'lucide-react';
 
 interface ClaimStatusBadgeProps {
@@ -22,18 +19,6 @@ const statusConfig: Record<
   ClaimStatus,
   { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline'; icon: any; className: string }
 > = {
-  draft: {
-    label: 'Draft',
-    variant: 'secondary',
-    icon: FileText,
-    className: 'bg-secondary text-secondary-foreground',
-  },
-  submitted: {
-    label: 'Submitted',
-    variant: 'default',
-    icon: Send,
-    className: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
-  },
   pending_manager: {
     label: 'Pending Manager',
     variant: 'outline',

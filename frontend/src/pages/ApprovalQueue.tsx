@@ -37,10 +37,21 @@ import {
 } from '@/components/ui/dialog';
 import { ClaimStatusBadge } from '@/components/claims/ClaimStatusBadge';
 import { AIConfidenceBadge } from '@/components/claims/AIConfidenceBadge';
-import { getPendingApprovals } from '@/data/mockClaims';
+import { useClaims } from '@/hooks/useClaims';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/hooks/use-toast';
-import { Claim } from '@/types';
+import { Claim, ClaimStatus } from '@/types';
+
+// Helper to get pending status based on role
+function getPendingStatusForRole(role: string): ClaimStatus | null {
+  switch (role) {
+    case 'manager': return 'pending_manager';
+    case 'hr': return 'pending_hr';
+    case 'finance': return 'pending_finance';
+    case 'admin': return null; // Admin can see all pending
+    default: return null;
+  }
+}
 
 export default function ApprovalQueue() {
   const { user } = useAuth();
@@ -52,20 +63,34 @@ export default function ApprovalQueue() {
     action: 'approve' | 'reject' | 'return' | null;
   }>({ open: false, action: null });
   const [actionComment, setActionComment] = useState('');
+  
+  const { data: allClaims = [], isLoading, error, refetch } = useClaims();
 
   const pendingClaims = useMemo(() => {
-    const claims = getPendingApprovals(user?.role || 'employee');
+    const pendingStatus = getPendingStatusForRole(user?.role || 'employee');
+    
+    // Filter claims based on role
+    let claims = allClaims.filter(claim => {
+      if (pendingStatus) {
+        return claim.status === pendingStatus;
+      }
+      // Admin sees all pending claims
+      return ['pending_manager', 'pending_hr', 'pending_finance'].includes(claim.status);
+    });
+    
     return claims.sort((a, b) => {
       switch (sortBy) {
         case 'amount':
           return b.amount - a.amount;
         case 'confidence':
-          return (b.aiConfidenceScore || 0) - (a.aiConfidenceScore || 0);
+          return (b.aiConfidence || 0) - (a.aiConfidence || 0);
         default:
-          return b.submittedAt.getTime() - a.submittedAt.getTime();
+          const aDate = a.submissionDate || new Date();
+          const bDate = b.submissionDate || new Date();
+          return bDate.getTime() - aDate.getTime();
       }
     });
-  }, [user?.role, sortBy]);
+  }, [allClaims, user?.role, sortBy]);
 
   const currentClaim = pendingClaims[selectedClaimIndex];
 
@@ -73,22 +98,65 @@ export default function ApprovalQueue() {
     setActionDialog({ open: true, action });
   };
 
-  const confirmAction = () => {
-    const messages = {
-      approve: 'Claim approved successfully',
-      reject: 'Claim rejected',
-      return: 'Claim returned to employee',
-    };
-    toast({ title: messages[actionDialog.action!] });
+  const confirmAction = async () => {
+    if (!currentClaim) return;
+    
+    const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+    const action = actionDialog.action;
+    
+    try {
+      let endpoint = '';
+      let body: Record<string, string> = {};
+      
+      if (action === 'approve') {
+        endpoint = `${API_BASE_URL}/claims/${currentClaim.id}/approve`;
+        if (actionComment) body = { comment: actionComment };
+      } else if (action === 'reject') {
+        endpoint = `${API_BASE_URL}/claims/${currentClaim.id}/reject`;
+        if (actionComment) body = { comment: actionComment };
+      } else if (action === 'return') {
+        endpoint = `${API_BASE_URL}/claims/${currentClaim.id}/return`;
+        body = { return_reason: actionComment || 'Please review and correct the claim' };
+      }
+      
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || 'Action failed');
+      }
+      
+      const messages = {
+        approve: 'Claim approved successfully',
+        reject: 'Claim rejected',
+        return: 'Claim returned to employee',
+      };
+      toast({ title: messages[action!] });
+      
+      // Refresh claims list
+      await refetch();
+      
+      // Move to next claim or reset index
+      if (pendingClaims.length <= 1) {
+        setSelectedClaimIndex(0);
+      } else if (selectedClaimIndex >= pendingClaims.length - 1) {
+        setSelectedClaimIndex(Math.max(0, pendingClaims.length - 2));
+      }
+      
+    } catch (error) {
+      toast({ 
+        title: 'Action failed', 
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive' 
+      });
+    }
+    
     setActionDialog({ open: false, action: null });
     setActionComment('');
-
-    // Move to next claim
-    if (selectedClaimIndex < pendingClaims.length - 1) {
-      setSelectedClaimIndex(selectedClaimIndex + 1);
-    } else if (pendingClaims.length > 1) {
-      setSelectedClaimIndex(0);
-    }
   };
 
   const navigateClaim = (direction: 'prev' | 'next') => {
@@ -98,6 +166,26 @@ export default function ApprovalQueue() {
       setSelectedClaimIndex(selectedClaimIndex + 1);
     }
   };
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Approval Queue</h1>
+          <p className="text-muted-foreground">
+            Review and approve pending expense claims
+          </p>
+        </div>
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-16">
+            <Bot className="h-16 w-16 text-primary animate-pulse mb-4" />
+            <p className="text-muted-foreground">Loading pending claims...</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   if (pendingClaims.length === 0) {
     return (
@@ -169,9 +257,9 @@ export default function ApprovalQueue() {
                     )}
                   >
                     <Avatar className="h-8 w-8">
-                      <AvatarImage src={claim.submittedBy.avatar} />
+                      <AvatarImage src={claim.submittedBy?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${claim.employeeName}`} />
                       <AvatarFallback className="text-xs">
-                        {claim.submittedBy.name
+                        {(claim.submittedBy?.name || claim.employeeName || 'UN')
                           .split(' ')
                           .map((n) => n[0])
                           .join('')}
@@ -186,23 +274,23 @@ export default function ApprovalQueue() {
                       </div>
                       <div className="flex items-center gap-2 mt-1">
                         <span className="text-xs text-muted-foreground">
-                          {claim.submittedBy.name}
+                          {claim.employeeName || 'Unknown Employee'}
                         </span>
                         <span className="text-xs text-muted-foreground">•</span>
                         <span className="text-xs text-muted-foreground">
-                          {format(claim.submittedAt, 'MMM dd')}
+                          {format(claim.submissionDate || new Date(), 'MMM dd')}
                         </span>
                       </div>
                       <div className="flex items-center gap-2 mt-2">
                         <AIConfidenceBadge
-                          score={claim.aiConfidenceScore || 0}
+                          score={claim.aiConfidence || 0}
                           size="sm"
                           showIcon={false}
                         />
-                        {claim.policyViolations.length > 0 && (
+                        {(claim.policyViolations?.length || 0) > 0 && (
                           <Badge variant="destructive" className="gap-1 text-xs px-1.5">
                             <AlertTriangle className="h-3 w-3" />
-                            {claim.policyViolations.length}
+                            {claim.policyViolations?.length}
                           </Badge>
                         )}
                       </div>
@@ -256,7 +344,7 @@ export default function ApprovalQueue() {
                     <p className="text-sm text-muted-foreground mb-1">
                       Confidence Score
                     </p>
-                    <AIConfidenceBadge score={currentClaim.aiConfidenceScore || 0} />
+                    <AIConfidenceBadge score={currentClaim.aiConfidence || 0} />
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground mb-1">
@@ -266,12 +354,12 @@ export default function ApprovalQueue() {
                       variant="outline"
                       className={cn(
                         'gap-1',
-                        (currentClaim.aiConfidenceScore || 0) >= 90
+                        (currentClaim.aiConfidence || 0) >= 90
                           ? 'bg-success/10 text-success border-success/20'
                           : 'bg-warning/10 text-warning border-warning/20'
                       )}
                     >
-                      {(currentClaim.aiConfidenceScore || 0) >= 90 ? (
+                      {(currentClaim.aiConfidence || 0) >= 90 ? (
                         <>
                           <CheckCircle className="h-3 w-3" />
                           Auto-approve recommended
@@ -285,13 +373,13 @@ export default function ApprovalQueue() {
                     </Badge>
                   </div>
                 </div>
-                {currentClaim.policyViolations.length > 0 && (
+                {(currentClaim.policyViolations?.length || 0) > 0 && (
                   <div className="mt-4 pt-4 border-t border-ai/20">
                     <p className="text-sm text-muted-foreground mb-2">
                       Policy Violations
                     </p>
                     <div className="flex flex-wrap gap-2">
-                      {currentClaim.policyViolations.map((violation, idx) => (
+                      {currentClaim.policyViolations?.map((violation, idx) => (
                         <Badge key={idx} variant="destructive" className="gap-1">
                           <AlertTriangle className="h-3 w-3" />
                           {violation}
@@ -316,16 +404,18 @@ export default function ApprovalQueue() {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Category</p>
-                  <Badge variant="outline">{currentClaim.category.name}</Badge>
+                  <Badge variant="outline" className="capitalize">
+                    {typeof currentClaim.category === 'string' ? currentClaim.category : currentClaim.category?.name || 'Other'}
+                  </Badge>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Vendor</p>
-                  <p className="font-medium">{currentClaim.vendor}</p>
+                  <p className="text-sm text-muted-foreground">Description</p>
+                  <p className="font-medium">{currentClaim.description || 'N/A'}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Expense Date</p>
                   <p className="font-medium">
-                    {format(currentClaim.date, 'MMMM dd, yyyy')}
+                    {format(currentClaim.claimDate || currentClaim.submissionDate || new Date(), 'MMMM dd, yyyy')}
                   </p>
                 </div>
                 <div>
@@ -337,31 +427,31 @@ export default function ApprovalQueue() {
               {/* Submitted By */}
               <div className="flex items-center gap-3 rounded-lg bg-secondary/50 p-4">
                 <Avatar>
-                  <AvatarImage src={currentClaim.submittedBy.avatar} />
+                  <AvatarImage src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${currentClaim.employeeName || 'User'}`} />
                   <AvatarFallback>
-                    {currentClaim.submittedBy.name
+                    {(currentClaim.employeeName || 'U')
                       .split(' ')
                       .map((n) => n[0])
                       .join('')}
                   </AvatarFallback>
                 </Avatar>
                 <div>
-                  <p className="font-medium">{currentClaim.submittedBy.name}</p>
+                  <p className="font-medium">{currentClaim.employeeName || 'Unknown Employee'}</p>
                   <p className="text-sm text-muted-foreground">
-                    {currentClaim.submittedBy.department} •{' '}
-                    {format(currentClaim.submittedAt, 'MMM dd, yyyy HH:mm')}
+                    {currentClaim.department || 'Unknown Dept'} •{' '}
+                    {format(currentClaim.submissionDate || new Date(), 'MMM dd, yyyy HH:mm')}
                   </p>
                 </div>
               </div>
 
               {/* Documents */}
-              {currentClaim.documents.length > 0 && (
+              {(currentClaim.documents?.length || 0) > 0 && (
                 <div>
                   <p className="text-sm font-medium mb-2">
-                    Attached Documents ({currentClaim.documents.length})
+                    Attached Documents ({currentClaim.documents?.length || 0})
                   </p>
                   <div className="flex flex-wrap gap-2">
-                    {currentClaim.documents.map((doc) => (
+                    {currentClaim.documents?.map((doc) => (
                       <Badge key={doc.id} variant="outline" className="gap-1">
                         {doc.name}
                       </Badge>

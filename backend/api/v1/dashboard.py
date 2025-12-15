@@ -8,38 +8,54 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Any
 
 from database import get_sync_db
-from models import Claim, Employee, Approval, AgentExecution
+from models import Claim, User, Approval, AgentExecution
+
+# Employee is now an alias for User (tables merged)
+Employee = User
 
 router = APIRouter()
 
 
 @router.get("/summary")
 async def get_dashboard_summary(
+    employee_id: str = None,
     db: Session = Depends(get_sync_db)
 ):
     """Get dashboard summary statistics"""
     
+    # Base query conditions
+    base_conditions = []
+    if employee_id:
+        base_conditions.append(Claim.employee_id == employee_id)
+    
     # Total claims
-    total_claims = db.query(func.count(Claim.id)).scalar() or 0
+    query = db.query(func.count(Claim.id))
+    if base_conditions:
+        query = query.filter(and_(*base_conditions))
+    total_claims = query.scalar() or 0
     
     # Pending claims
+    pending_conditions = base_conditions + [Claim.status.in_(['PENDING_MANAGER', 'PENDING_HR', 'PENDING_FINANCE'])]
     pending_claims = db.query(func.count(Claim.id)).filter(
-        Claim.status.in_(['PENDING_MANAGER', 'PENDING_HR', 'PENDING_FINANCE'])
+        and_(*pending_conditions)
     ).scalar() or 0
     
     # Approved claims (this month)
     first_day_of_month = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    approved_conditions = base_conditions + [
+        Claim.status == 'FINANCE_APPROVED',
+        Claim.updated_at >= first_day_of_month
+    ]
     approved_this_month = db.query(func.count(Claim.id)).filter(
-        and_(
-            Claim.status == 'FINANCE_APPROVED',
-            Claim.updated_at >= first_day_of_month
-        )
+        and_(*approved_conditions)
     ).scalar() or 0
     
-    # Total amount claimed (this month)
-    total_amount = db.query(func.sum(Claim.amount)).filter(
-        Claim.submission_date >= first_day_of_month
-    ).scalar() or 0
+    # Total amount claimed (this month) - convert to INR
+    amount_conditions = base_conditions + [Claim.submission_date >= first_day_of_month]
+    total_amount_query = db.query(
+        func.sum(Claim.amount)
+    ).filter(and_(*amount_conditions))
+    total_amount = total_amount_query.scalar() or 0
     
     # Average processing time (in days)
     avg_processing_time = 3.5  # TODO: Calculate actual average
@@ -55,29 +71,41 @@ async def get_dashboard_summary(
 
 @router.get("/claims-by-status")
 async def get_claims_by_status(
+    employee_id: str = None,
     db: Session = Depends(get_sync_db)
 ):
     """Get claim counts grouped by status"""
     
-    results = db.query(
+    query = db.query(
         Claim.status,
         func.count(Claim.id).label('count')
-    ).group_by(Claim.status).all()
+    )
+    
+    if employee_id:
+        query = query.filter(Claim.employee_id == employee_id)
+    
+    results = query.group_by(Claim.status).all()
     
     return [{"status": status, "count": count} for status, count in results]
 
 
 @router.get("/claims-by-category")
 async def get_claims_by_category(
+    employee_id: str = None,
     db: Session = Depends(get_sync_db)
 ):
     """Get claim counts and amounts grouped by category"""
     
-    results = db.query(
+    query = db.query(
         Claim.category,
         func.count(Claim.id).label('count'),
         func.sum(Claim.amount).label('total_amount')
-    ).group_by(Claim.category).all()
+    )
+    
+    if employee_id:
+        query = query.filter(Claim.employee_id == employee_id)
+    
+    results = query.group_by(Claim.category).all()
     
     return [
         {
@@ -92,11 +120,21 @@ async def get_claims_by_category(
 @router.get("/recent-activity")
 async def get_recent_activity(
     limit: int = 10,
+    employee_id: str = None,
+    status: str = None,
     db: Session = Depends(get_sync_db)
 ):
     """Get recent claim activities"""
     
-    recent_claims = db.query(Claim).order_by(
+    query = db.query(Claim)
+    
+    if employee_id:
+        query = query.filter(Claim.employee_id == employee_id)
+    
+    if status:
+        query = query.filter(Claim.status == status)
+    
+    recent_claims = query.order_by(
         Claim.updated_at.desc()
     ).limit(limit).all()
     
@@ -108,6 +146,7 @@ async def get_recent_activity(
             "employee_name": claim.employee_name,
             "category": claim.category,
             "amount": float(claim.amount),
+            "currency": claim.currency or "INR",
             "status": claim.status,
             "updated_at": claim.updated_at.isoformat()
         })
@@ -146,16 +185,76 @@ async def get_ai_metrics(
 async def get_pending_approvals_count(
     db: Session = Depends(get_sync_db)
 ):
-    """Get pending approvals count by level"""
+    """Get pending approvals count by level based on claim status"""
     
-    results = db.query(
-        Approval.approval_level,
-        func.count(Approval.id).label('count')
+    # Count claims by pending status
+    manager_pending = db.query(func.count(Claim.id)).filter(
+        Claim.status == 'PENDING_MANAGER'
+    ).scalar() or 0
+    
+    hr_pending = db.query(func.count(Claim.id)).filter(
+        Claim.status == 'PENDING_HR'
+    ).scalar() or 0
+    
+    finance_pending = db.query(func.count(Claim.id)).filter(
+        Claim.status == 'PENDING_FINANCE'
+    ).scalar() or 0
+    
+    total_pending = manager_pending + hr_pending + finance_pending
+    
+    return {
+        "manager_pending": manager_pending,
+        "hr_pending": hr_pending,
+        "finance_pending": finance_pending,
+        "total_pending": total_pending
+    }
+
+
+@router.get("/allowance-summary")
+async def get_allowance_summary(
+    employee_id: str = None,
+    db: Session = Depends(get_sync_db)
+):
+    """Get allowance summary by category"""
+    
+    # Base query for allowance claims
+    query = db.query(
+        Claim.category,
+        func.count(Claim.id).label('total_count'),
+        func.sum(
+            func.case(
+                (Claim.status.in_(['PENDING_MANAGER', 'PENDING_HR', 'PENDING_FINANCE']), 1),
+                else_=0
+            )
+        ).label('pending_count'),
+        func.sum(
+            func.case(
+                (Claim.status == 'FINANCE_APPROVED', 1),
+                else_=0
+            )
+        ).label('approved_count'),
+        func.sum(Claim.amount).label('total_value')
     ).filter(
-        Approval.status == 'PENDING'
-    ).group_by(Approval.approval_level).all()
+        Claim.claim_type == 'ALLOWANCE'
+    )
     
-    return [
-        {"level": level, "count": count}
-        for level, count in results
-    ]
+    if employee_id:
+        query = query.filter(Claim.employee_id == employee_id)
+    
+    # Filter for current month
+    first_day_of_month = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    query = query.filter(Claim.created_at >= first_day_of_month)
+    
+    results = query.group_by(Claim.category).all()
+    
+    allowances = []
+    for category, total, pending, approved, value in results:
+        allowances.append({
+            "category": category,
+            "total": int(total or 0),
+            "pending": int(pending or 0),
+            "approved": int(approved or 0),
+            "total_value": float(value or 0)
+        })
+    
+    return allowances

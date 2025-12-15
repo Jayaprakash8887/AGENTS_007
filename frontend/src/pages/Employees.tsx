@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Plus, Search, Upload, MoreHorizontal, Mail, Phone, Download } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { getAllDepartments } from '@/config/company';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -71,9 +72,12 @@ export default function Employees() {
   const createEmployee = useCreateEmployee();
   const updateEmployee = useUpdateEmployee();
 
+  // Get departments from config, with any additional ones from existing employees
   const departments = useMemo(() => {
-    if (!employees) return [];
-    return [...new Set(employees.map((e) => e.department))];
+    const configDepartments = getAllDepartments();
+    if (!employees) return configDepartments;
+    const employeeDepts = employees.map((e) => e.department).filter(Boolean);
+    return [...new Set([...configDepartments, ...employeeDepts])];
   }, [employees]);
 
   const managers = useMemo(() => {

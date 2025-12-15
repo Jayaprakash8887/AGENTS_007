@@ -2,11 +2,10 @@
 export type AllowanceType = 'on_call' | 'shift' | 'work_incentive' | 'food';
 
 export type AllowanceStatus = 
-  | 'draft'
-  | 'submitted'
   | 'pending_manager'
   | 'approved'
   | 'rejected'
+  | 'returned'
   | 'payroll_ready';
 
 export interface AllowancePolicy {

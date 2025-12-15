@@ -20,6 +20,13 @@ import {
   CreditCard,
   FileImage,
   AlertTriangle,
+  Eye,
+  ExternalLink,
+  ZoomIn,
+  ZoomOut,
+  X,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -29,12 +36,61 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { ClaimStatusBadge } from '@/components/claims/ClaimStatusBadge';
-import { AIConfidenceBadge } from '@/components/claims/AIConfidenceBadge';
-import { getClaimById } from '@/data/mockClaims';
+import { useClaim } from '@/hooks/useClaims';
+import { useDocuments, getDocumentViewUrl, getDocumentDownloadUrl, useDocumentSignedUrl } from '@/hooks/useDocuments';
+import { useComments, useCreateComment } from '@/hooks/useComments';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/hooks/use-toast';
-import { DataSource } from '@/types';
+import { DataSource, Claim, ClaimDocument } from '@/types';
+
+// Helper function to format category for display
+const formatCategory = (category: string): string => {
+  const categoryMap: Record<string, string> = {
+    // Backend uppercase categories
+    'TEAM_LUNCH': 'Team Lunch',
+    'FOOD': 'Food & Meals',
+    'TRAVEL': 'Travel',
+    'CERTIFICATION': 'Certification',
+    'ACCOMMODATION': 'Accommodation',
+    'EQUIPMENT': 'Equipment',
+    'SOFTWARE': 'Software',
+    'OFFICE_SUPPLIES': 'Office Supplies',
+    'MEDICAL': 'Medical',
+    'MOBILE': 'Phone & Internet',
+    'PASSPORT_VISA': 'Passport & Visa',
+    'CONVEYANCE': 'Conveyance',
+    'CLIENT_MEETING': 'Client Meeting',
+    'OTHER': 'Other',
+    // Frontend lowercase categories
+    'team_lunch': 'Team Lunch',
+    'food': 'Food & Meals',
+    'travel': 'Travel',
+    'certification': 'Certification',
+    'accommodation': 'Accommodation',
+    'equipment': 'Equipment',
+    'software': 'Software',
+    'office_supplies': 'Office Supplies',
+    'medical': 'Medical',
+    'phone_internet': 'Phone & Internet',
+    'passport_visa': 'Passport & Visa',
+    'conveyance': 'Conveyance',
+    'client_meeting': 'Client Meeting',
+    'other': 'Other',
+    // Legacy mappings
+    'RELOCATION': 'Other',
+    'INTERNET': 'Software',
+  };
+  return categoryMap[category] || category.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+};
 
 export default function ClaimDetails() {
   const { id } = useParams<{ id: string }>();
@@ -42,8 +98,57 @@ export default function ClaimDetails() {
   const { user } = useAuth();
   const [comment, setComment] = useState('');
   const [activeTab, setActiveTab] = useState('details');
+  const [viewingDocument, setViewingDocument] = useState<ClaimDocument | null>(null);
+  const [zoomLevel, setZoomLevel] = useState(100);
+  const [actionDialog, setActionDialog] = useState<{
+    open: boolean;
+    action: 'approve' | 'reject' | 'return' | null;
+  }>({ open: false, action: null });
+  const [actionComment, setActionComment] = useState('');
+  
+  const { data: claim, isLoading, error } = useClaim(id || '');
+  const { data: documents = [], isLoading: documentsLoading } = useDocuments(id || '');
+  const { data: comments = [], isLoading: commentsLoading } = useComments(id || '');
+  const createCommentMutation = useCreateComment();
+  
+  // Get signed URL for the currently viewed document
+  const { data: signedUrl, isLoading: signedUrlLoading } = useDocumentSignedUrl(viewingDocument?.id || null);
 
-  const claim = getClaimById(id || '');
+  // Combine claim documents with fetched documents (prefer API data)
+  const allDocuments = documents.length > 0 ? documents : (claim?.documents || []);
+
+  // Handle document view inline
+  const handleViewDocument = (doc: ClaimDocument) => {
+    setViewingDocument(doc);
+    setZoomLevel(100);
+  };
+
+  // Close document preview
+  const handleClosePreview = () => {
+    setViewingDocument(null);
+    setZoomLevel(100);
+  };
+
+  // Zoom controls
+  const handleZoomIn = () => setZoomLevel(prev => Math.min(prev + 25, 300));
+  const handleZoomOut = () => setZoomLevel(prev => Math.max(prev - 25, 25));
+  const handleResetZoom = () => setZoomLevel(100);
+
+  // Handle document download
+  const handleDownloadDocument = (doc: ClaimDocument) => {
+    const downloadUrl = getDocumentDownloadUrl(doc.id);
+    window.open(downloadUrl, '_blank');
+  };
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="flex h-[50vh] flex-col items-center justify-center gap-4">
+        <Bot className="h-16 w-16 text-primary animate-pulse" />
+        <p className="text-muted-foreground">Loading claim details...</p>
+      </div>
+    );
+  }
 
   if (!claim) {
     return (
@@ -63,28 +168,91 @@ export default function ClaimDetails() {
     (user?.role === 'hr' && claim.status === 'pending_hr') ||
     (user?.role === 'finance' && claim.status === 'pending_finance');
 
-  const handleAction = (action: 'approve' | 'reject' | 'return') => {
-    const messages = {
-      approve: 'Claim approved successfully',
-      reject: 'Claim rejected',
-      return: 'Claim returned to employee',
-    };
-    toast({ title: messages[action] });
+  const handleActionClick = (action: 'approve' | 'reject' | 'return') => {
+    setActionDialog({ open: true, action });
   };
 
-  const handleAddComment = () => {
-    if (!comment.trim()) return;
-    toast({ title: 'Comment added' });
-    setComment('');
+  const confirmAction = async () => {
+    if (!id || !actionDialog.action) return;
+    
+    const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+    const action = actionDialog.action;
+    
+    try {
+      let endpoint = '';
+      let body: Record<string, string> = {};
+      
+      if (action === 'approve') {
+        endpoint = `${API_BASE_URL}/claims/${id}/approve`;
+        if (actionComment) body = { comment: actionComment };
+      } else if (action === 'reject') {
+        endpoint = `${API_BASE_URL}/claims/${id}/reject`;
+        if (actionComment) body = { comment: actionComment };
+      } else if (action === 'return') {
+        endpoint = `${API_BASE_URL}/claims/${id}/return`;
+        body = { return_reason: actionComment || 'Please review and correct the claim details' };
+      }
+      
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || 'Action failed');
+      }
+      
+      const messages = {
+        approve: 'Claim approved successfully',
+        reject: 'Claim rejected',
+        return: 'Claim returned to employee',
+      };
+      toast({ title: messages[action] });
+      
+      setActionDialog({ open: false, action: null });
+      setActionComment('');
+      
+      // Refresh the page to show updated status
+      window.location.reload();
+      
+    } catch (error) {
+      toast({ 
+        title: 'Action failed', 
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive' 
+      });
+    }
+  };
+
+  const handleAddComment = async () => {
+    if (!comment.trim() || !id) return;
+    
+    try {
+      await createCommentMutation.mutateAsync({
+        claim_id: id,
+        comment_text: comment.trim(),
+        comment_type: 'GENERAL',
+        user_name: user?.name || 'Anonymous',
+        user_role: user?.role || 'employee',
+        visible_to_employee: true,
+      });
+      toast({ title: 'Comment added successfully' });
+      setComment('');
+    } catch (error) {
+      toast({ title: 'Failed to add comment', variant: 'destructive' });
+    }
   };
 
   const getDataSourceBadge = (source: DataSource) => {
     const config = {
-      ocr: { label: 'OCR', icon: Zap, className: 'bg-ai/10 text-ai' },
+      ocr: { label: 'Auto', icon: Zap, className: 'bg-ai/10 text-ai' },
+      auto: { label: 'Auto', icon: Zap, className: 'bg-ai/10 text-ai' },  // Support both 'ocr' and 'auto'
       manual: { label: 'Manual', icon: User, className: 'bg-secondary text-secondary-foreground' },
       edited: { label: 'Edited', icon: Edit, className: 'bg-warning/10 text-warning' },
     };
-    const { label, icon: Icon, className } = config[source];
+    const { label, icon: Icon, className } = config[source] || config.manual;
     return (
       <Badge variant="outline" className={cn('gap-1 text-xs', className)}>
         <Icon className="h-3 w-3" />
@@ -118,7 +286,7 @@ export default function ClaimDetails() {
             <Button
               variant="outline"
               className="gap-2 text-warning"
-              onClick={() => handleAction('return')}
+              onClick={() => handleActionClick('return')}
             >
               <RotateCcw className="h-4 w-4" />
               Return
@@ -126,7 +294,7 @@ export default function ClaimDetails() {
             <Button
               variant="outline"
               className="gap-2 text-destructive"
-              onClick={() => handleAction('reject')}
+              onClick={() => handleActionClick('reject')}
             >
               <XCircle className="h-4 w-4" />
               Reject
@@ -134,7 +302,7 @@ export default function ClaimDetails() {
             <Button
               variant="gradient"
               className="gap-2"
-              onClick={() => handleAction('approve')}
+              onClick={() => handleActionClick('approve')}
             >
               <CheckCircle className="h-4 w-4" />
               Approve
@@ -154,7 +322,7 @@ export default function ClaimDetails() {
               </TabsTrigger>
               <TabsTrigger value="documents" className="gap-2">
                 <FileImage className="h-4 w-4" />
-                Documents ({claim.documents.length})
+                Documents ({allDocuments.length})
               </TabsTrigger>
               <TabsTrigger value="history" className="gap-2">
                 <History className="h-4 w-4" />
@@ -164,44 +332,6 @@ export default function ClaimDetails() {
 
             {/* Details Tab */}
             <TabsContent value="details" className="space-y-6 mt-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Bot className="h-5 w-5 text-ai" />
-                    AI Analysis
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-muted-foreground mb-2">
-                        Confidence Score
-                      </p>
-                      <AIConfidenceBadge score={claim.aiConfidenceScore || 0} />
-                    </div>
-                    {claim.policyViolations.length > 0 && (
-                      <div className="text-right">
-                        <p className="text-sm text-muted-foreground mb-2">
-                          Policy Violations
-                        </p>
-                        <div className="flex flex-wrap justify-end gap-2">
-                          {claim.policyViolations.map((violation, idx) => (
-                            <Badge
-                              key={idx}
-                              variant="destructive"
-                              className="gap-1"
-                            >
-                              <AlertTriangle className="h-3 w-3" />
-                              {violation}
-                            </Badge>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-
               <Card>
                 <CardHeader>
                   <CardTitle>Claim Information</CardTitle>
@@ -217,17 +347,7 @@ export default function ClaimDetails() {
                         <p className="text-lg font-semibold">
                           ₹{claim.amount.toLocaleString()}
                         </p>
-                        {claim.dataSource.amount && getDataSourceBadge(claim.dataSource.amount)}
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground flex items-center gap-2">
-                        <Building className="h-4 w-4" />
-                        Vendor
-                      </p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <p className="font-medium">{claim.vendor}</p>
-                        {claim.dataSource.vendor && getDataSourceBadge(claim.dataSource.vendor)}
+                        {getDataSourceBadge(claim.dataSource?.amount || 'manual')}
                       </div>
                     </div>
                     <div>
@@ -237,32 +357,55 @@ export default function ClaimDetails() {
                       </p>
                       <div className="flex items-center gap-2 mt-1">
                         <p className="font-medium">
-                          {format(claim.date, 'MMMM dd, yyyy')}
+                          {format(claim.claimDate || claim.submissionDate || new Date(), 'MMMM dd, yyyy')}
                         </p>
-                        {claim.dataSource.date && getDataSourceBadge(claim.dataSource.date)}
+                        {getDataSourceBadge(claim.dataSource?.date || 'manual')}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground flex items-center gap-2">
+                        <Building className="h-4 w-4" />
+                        Vendor
+                      </p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <p className="font-medium">{claim.vendor || 'N/A'}</p>
+                        {getDataSourceBadge(claim.dataSource?.vendor || 'manual')}
                       </div>
                     </div>
                   </div>
                   <div className="space-y-4">
                     <div>
                       <p className="text-sm text-muted-foreground">Category</p>
-                      <Badge variant="outline" className="mt-1">
-                        {claim.category.name}
-                      </Badge>
+                      <div className="flex items-center gap-2 mt-1">
+                        <Badge variant="outline">
+                          {formatCategory(typeof claim.category === 'string' ? claim.category : claim.category?.name || 'Other')}
+                        </Badge>
+                        {getDataSourceBadge(claim.dataSource?.category || 'manual')}
+                      </div>
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">Project Code</p>
-                      <p className="font-medium mt-1">{claim.projectCode || 'N/A'}</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <p className="font-medium">{claim.projectCode || 'N/A'}</p>
+                        {getDataSourceBadge('manual')}
+                      </div>
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">Cost Center</p>
-                      <p className="font-medium mt-1">{claim.costCenter || 'N/A'}</p>
+                      <p className="text-sm text-muted-foreground">Transaction Ref</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <p className="font-medium">{claim.transactionRef || 'N/A'}</p>
+                        {getDataSourceBadge(claim.dataSource?.transactionRef || 'manual')}
+                      </div>
                     </div>
+
                   </div>
                   {claim.description && (
                     <div className="sm:col-span-2">
                       <p className="text-sm text-muted-foreground">Description</p>
-                      <p className="mt-1">{claim.description}</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <p>{claim.description}</p>
+                        {getDataSourceBadge(claim.dataSource?.description || 'manual')}
+                      </div>
                     </div>
                   )}
                 </CardContent>
@@ -273,34 +416,174 @@ export default function ClaimDetails() {
             <TabsContent value="documents" className="mt-6">
               <Card>
                 <CardContent className="pt-6">
-                  {claim.documents.length === 0 ? (
+                  {documentsLoading ? (
+                    <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                      <FileImage className="h-12 w-12 mb-4 animate-pulse" />
+                      <p>Loading documents...</p>
+                    </div>
+                  ) : allDocuments.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                       <FileImage className="h-12 w-12 mb-4" />
                       <p>No documents attached</p>
                     </div>
                   ) : (
                     <div className="space-y-4">
-                      {claim.documents.map((doc) => (
+                      {allDocuments.map((doc) => (
                         <div
                           key={doc.id}
-                          className="flex items-center justify-between rounded-lg border border-border p-4"
+                          className={cn(
+                            "rounded-lg border border-border p-4 transition-colors",
+                            viewingDocument?.id === doc.id ? "bg-muted/50 border-primary" : "hover:bg-muted/50"
+                          )}
                         >
-                          <div className="flex items-center gap-3">
-                            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                              <FileText className="h-5 w-5 text-primary" />
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                                <FileText className="h-5 w-5 text-primary" />
+                              </div>
+                              <div>
+                                <p className="font-medium">{doc.name || doc.filename}</p>
+                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                  <span>{(doc.size / 1024).toFixed(1)} KB</span>
+                                  {doc.ocrConfidence !== undefined && doc.ocrConfidence > 0 && (
+                                    <>
+                                      <span>•</span>
+                                      <span>OCR {Math.round(doc.ocrConfidence * 100)}% confidence</span>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
                             </div>
-                            <div>
-                              <p className="font-medium">{doc.name}</p>
-                              <p className="text-sm text-muted-foreground">
-                                {(doc.size / 1024).toFixed(1)} KB • OCR{' '}
-                                {doc.ocrConfidence}% confidence
-                              </p>
+                            <div className="flex gap-2">
+                              <Button 
+                                variant={viewingDocument?.id === doc.id ? "default" : "outline"}
+                                size="sm" 
+                                className="gap-2"
+                                onClick={() => viewingDocument?.id === doc.id ? handleClosePreview() : handleViewDocument(doc)}
+                              >
+                                {viewingDocument?.id === doc.id ? (
+                                  <>
+                                    <X className="h-4 w-4" />
+                                    Close
+                                  </>
+                                ) : (
+                                  <>
+                                    <Eye className="h-4 w-4" />
+                                    View
+                                  </>
+                                )}
+                              </Button>
+                              <Button 
+                                variant="outline" 
+                                size="sm" 
+                                className="gap-2"
+                                onClick={() => handleDownloadDocument(doc)}
+                              >
+                                <Download className="h-4 w-4" />
+                                Download
+                              </Button>
                             </div>
                           </div>
-                          <Button variant="outline" size="sm" className="gap-2">
-                            <Download className="h-4 w-4" />
-                            Download
-                          </Button>
+                          
+                          {/* Inline Document Preview */}
+                          {viewingDocument?.id === doc.id && (
+                            <div className="mt-4 border-t pt-4">
+                              {/* Zoom Controls */}
+                              <div className="flex items-center justify-between mb-3 pb-3 border-b">
+                                <div className="flex items-center gap-2">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={handleZoomOut}
+                                    disabled={zoomLevel <= 25}
+                                  >
+                                    <ZoomOut className="h-4 w-4" />
+                                  </Button>
+                                  <span className="text-sm font-medium min-w-[60px] text-center">
+                                    {zoomLevel}%
+                                  </span>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={handleZoomIn}
+                                    disabled={zoomLevel >= 300}
+                                  >
+                                    <ZoomIn className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={handleResetZoom}
+                                    className="ml-2"
+                                  >
+                                    Reset
+                                  </Button>
+                                </div>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    if (signedUrl) {
+                                      window.open(signedUrl, '_blank');
+                                    } else {
+                                      const viewUrl = doc.downloadUrl || getDocumentViewUrl(doc.id);
+                                      window.open(viewUrl, '_blank');
+                                    }
+                                  }}
+                                  className="gap-2"
+                                >
+                                  <ExternalLink className="h-4 w-4" />
+                                  Open in New Tab
+                                </Button>
+                              </div>
+                              
+                              {/* Preview Container with scroll */}
+                              <div 
+                                className="relative bg-muted/30 rounded-lg overflow-auto"
+                                style={{ maxHeight: '500px' }}
+                              >
+                                {signedUrlLoading ? (
+                                  <div className="flex items-center justify-center min-h-[300px]">
+                                    <div className="text-center">
+                                      <FileImage className="h-12 w-12 mx-auto mb-4 animate-pulse text-muted-foreground" />
+                                      <p className="text-muted-foreground">Loading document preview...</p>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div 
+                                    className="flex items-center justify-center min-h-[300px] p-4"
+                                    style={{ 
+                                      transform: `scale(${zoomLevel / 100})`,
+                                      transformOrigin: 'top center',
+                                      transition: 'transform 0.2s ease-out'
+                                    }}
+                                  >
+                                    {doc.type?.toLowerCase().includes('pdf') || doc.contentType?.includes('pdf') ? (
+                                      <iframe
+                                        src={signedUrl || doc.downloadUrl || getDocumentViewUrl(doc.id)}
+                                        className="w-full border-0 rounded"
+                                        style={{ height: '450px', minWidth: '600px' }}
+                                        title={doc.name || doc.filename}
+                                      />
+                                    ) : (
+                                      <img
+                                        src={signedUrl || doc.downloadUrl || getDocumentViewUrl(doc.id)}
+                                        alt={doc.name || doc.filename}
+                                        className="max-w-full rounded shadow-lg"
+                                        style={{ maxHeight: '450px', objectFit: 'contain' }}
+                                        onError={(e) => {
+                                          const target = e.target as HTMLImageElement;
+                                          target.onerror = null;
+                                          target.src = '/placeholder-document.png';
+                                          target.alt = 'Document preview unavailable';
+                                        }}
+                                      />
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -314,7 +597,9 @@ export default function ClaimDetails() {
               <Card>
                 <CardContent className="pt-6">
                   <div className="space-y-6">
-                    {claim.approvalHistory.map((item, idx) => (
+                    {(!claim.approvalHistory || claim.approvalHistory.length === 0) ? (
+                      <p className="text-muted-foreground text-center py-4">No approval history yet</p>
+                    ) : claim.approvalHistory.map((item, idx) => (
                       <div key={item.id} className="flex gap-4">
                         <div className="relative flex flex-col items-center">
                           <div
@@ -374,24 +659,24 @@ export default function ClaimDetails() {
             <CardContent>
               <div className="flex items-center gap-3">
                 <Avatar>
-                  <AvatarImage src={claim.submittedBy.avatar} />
+                  <AvatarImage src={claim.submittedBy?.avatar} />
                   <AvatarFallback>
-                    {claim.submittedBy.name
+                    {(claim.submittedBy?.name || claim.employeeName || 'U')
                       .split(' ')
-                      .map((n) => n[0])
+                      .map((n: string) => n[0])
                       .join('')}
                   </AvatarFallback>
                 </Avatar>
                 <div>
-                  <p className="font-medium">{claim.submittedBy.name}</p>
+                  <p className="font-medium">{claim.submittedBy?.name || claim.employeeName || 'Unknown'}</p>
                   <p className="text-sm text-muted-foreground">
-                    {claim.submittedBy.department}
+                    {claim.submittedBy?.department || claim.department || 'N/A'}
                   </p>
                 </div>
               </div>
               <Separator className="my-4" />
               <p className="text-sm text-muted-foreground">
-                Submitted on {format(claim.submittedAt, 'MMM dd, yyyy')}
+                Submitted on {claim.submittedAt ? format(claim.submittedAt, 'MMM dd, yyyy') : (claim.submissionDate ? format(new Date(claim.submissionDate), 'MMM dd, yyyy') : 'N/A')}
               </p>
             </CardContent>
           </Card>
@@ -401,30 +686,33 @@ export default function ClaimDetails() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <MessageSquare className="h-5 w-5" />
-                Comments ({claim.comments.length})
+                Comments ({comments.length})
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {claim.comments.map((cmt) => (
+              {commentsLoading ? (
+                <p className="text-muted-foreground text-center py-2">Loading comments...</p>
+              ) : comments.length === 0 ? (
+                <p className="text-muted-foreground text-center py-2">No comments yet</p>
+              ) : comments.map((cmt) => (
                 <div key={cmt.id} className="space-y-2">
                   <div className="flex items-center gap-2">
                     <Avatar className="h-6 w-6">
-                      <AvatarImage src={cmt.author.avatar} />
                       <AvatarFallback className="text-xs">
-                        {cmt.author.name
+                        {cmt.user_name
                           .split(' ')
-                          .map((n) => n[0])
+                          .map((n: string) => n[0])
                           .join('')}
                       </AvatarFallback>
                     </Avatar>
-                    <span className="text-sm font-medium">{cmt.author.name}</span>
+                    <span className="text-sm font-medium">{cmt.user_name}</span>
                     <Badge variant="outline" className="text-xs capitalize">
-                      {cmt.role}
+                      {cmt.user_role}
                     </Badge>
                   </div>
-                  <p className="text-sm text-muted-foreground">{cmt.content}</p>
+                  <p className="text-sm text-muted-foreground">{cmt.comment_text}</p>
                   <p className="text-xs text-muted-foreground">
-                    {format(cmt.createdAt, 'MMM dd, yyyy HH:mm')}
+                    {format(new Date(cmt.created_at), 'MMM dd, yyyy HH:mm')}
                   </p>
                 </div>
               ))}
@@ -440,17 +728,57 @@ export default function ClaimDetails() {
                 />
                 <Button
                   onClick={handleAddComment}
-                  disabled={!comment.trim()}
+                  disabled={!comment.trim() || createCommentMutation.isPending}
                   size="sm"
                   className="w-full"
                 >
-                  Add Comment
+                  {createCommentMutation.isPending ? 'Adding...' : 'Add Comment'}
                 </Button>
               </div>
             </CardContent>
           </Card>
         </div>
       </div>
+
+      {/* Action Confirmation Dialog */}
+      <Dialog open={actionDialog.open} onOpenChange={(open) => setActionDialog({ open, action: open ? actionDialog.action : null })}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {actionDialog.action === 'approve' && 'Approve Claim'}
+              {actionDialog.action === 'reject' && 'Reject Claim'}
+              {actionDialog.action === 'return' && 'Return Claim'}
+            </DialogTitle>
+            <DialogDescription>
+              {actionDialog.action === 'approve' && 'Are you sure you want to approve this claim?'}
+              {actionDialog.action === 'reject' && 'Are you sure you want to reject this claim?'}
+              {actionDialog.action === 'return' && 'Please provide instructions for the employee to correct the claim.'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Textarea
+              placeholder={actionDialog.action === 'return' ? 'Instructions for correction...' : 'Add a comment (optional)...'}
+              value={actionComment}
+              onChange={(e) => setActionComment(e.target.value)}
+              rows={3}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setActionDialog({ open: false, action: null }); setActionComment(''); }}>
+              Cancel
+            </Button>
+            <Button
+              variant={actionDialog.action === 'reject' ? 'destructive' : actionDialog.action === 'return' ? 'outline' : 'default'}
+              onClick={confirmAction}
+              disabled={actionDialog.action === 'return' && actionComment.length < 10}
+            >
+              {actionDialog.action === 'approve' && 'Confirm Approve'}
+              {actionDialog.action === 'reject' && 'Confirm Reject'}
+              {actionDialog.action === 'return' && 'Confirm Return'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

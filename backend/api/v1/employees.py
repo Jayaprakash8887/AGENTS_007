@@ -1,17 +1,47 @@
 """
 Employee management endpoints
+Note: Employee is now an alias for User model (unified model)
 """
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from sqlalchemy import select
+from sqlalchemy import select, case
 from typing import List
 from uuid import UUID, uuid4
+from datetime import date
+import hashlib
 
 from database import get_sync_db
-from models import Employee
-from schemas import EmployeeCreate, EmployeeResponse
+from models import User, EmployeeProjectAllocation, Project
+# Employee is now an alias for User in models.py
+Employee = User
+from schemas import (
+    EmployeeCreate, EmployeeResponse, 
+    EmployeeProjectAllocationCreate, EmployeeProjectAllocationUpdate,
+    EmployeeProjectAllocationResponse, EmployeeProjectHistoryResponse
+)
 
 router = APIRouter()
+
+
+def _user_to_employee_response(user: User) -> dict:
+    """Convert User model to EmployeeResponse format for backward compatibility"""
+    return {
+        "id": user.id,
+        "employee_id": user.employee_code,
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "email": user.email,
+        "phone": user.phone,
+        "mobile": user.mobile,
+        "address": user.address,
+        "department": user.department,
+        "designation": user.designation,
+        "manager_id": user.manager_id,
+        "date_of_joining": user.date_of_joining,
+        "employment_status": user.employment_status or "ACTIVE",
+        "employee_data": user.user_data or {},
+        "created_at": user.created_at,
+    }
 
 
 @router.get("/", response_model=List[EmployeeResponse])
@@ -20,9 +50,9 @@ async def list_employees(
     limit: int = 100,
     db: Session = Depends(get_sync_db)
 ):
-    """Get list of all employees"""
-    employees = db.query(Employee).offset(skip).limit(limit).all()
-    return employees
+    """Get list of all employees (users)"""
+    users = db.query(User).offset(skip).limit(limit).all()
+    return [_user_to_employee_response(u) for u in users]
 
 
 @router.get("/{employee_id}", response_model=EmployeeResponse)
@@ -31,13 +61,13 @@ async def get_employee(
     db: Session = Depends(get_sync_db)
 ):
     """Get employee by ID"""
-    employee = db.query(Employee).filter(Employee.id == employee_id).first()
-    if not employee:
+    user = db.query(User).filter(User.id == employee_id).first()
+    if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Employee not found"
         )
-    return employee
+    return _user_to_employee_response(user)
 
 
 @router.post("/", response_model=EmployeeResponse, status_code=status.HTTP_201_CREATED)
@@ -45,10 +75,10 @@ async def create_employee(
     employee_data: EmployeeCreate,
     db: Session = Depends(get_sync_db)
 ):
-    """Create a new employee"""
-    # Check if employee_id already exists
-    existing = db.query(Employee).filter(
-        Employee.employee_id == employee_data.employee_id
+    """Create a new employee (creates a User with employee data)"""
+    # Check if employee_code already exists
+    existing = db.query(User).filter(
+        User.employee_code == employee_data.employee_id
     ).first()
     if existing:
         raise HTTPException(
@@ -57,8 +87,8 @@ async def create_employee(
         )
     
     # Check if email already exists
-    existing_email = db.query(Employee).filter(
-        Employee.email == employee_data.email
+    existing_email = db.query(User).filter(
+        User.email == employee_data.email
     ).first()
     if existing_email:
         raise HTTPException(
@@ -66,20 +96,27 @@ async def create_employee(
             detail=f"Employee with email {employee_data.email} already exists"
         )
     
-    # Create employee with a default tenant_id for now
-    # In production, this should come from authenticated user's tenant
-    # Store project_ids in employee_data JSONB field
-    emp_data = employee_data.employee_data or {}
+    # Store project_ids in user_data JSONB field
+    user_data = employee_data.employee_data or {}
     if employee_data.project_ids:
-        emp_data['project_ids'] = employee_data.project_ids
+        user_data['project_ids'] = employee_data.project_ids
     
-    employee = Employee(
+    # Generate username from email
+    username = employee_data.email.split('@')[0]
+    
+    # Generate a default hashed password
+    default_password = hashlib.sha256(f"temp_{employee_data.employee_id}".encode()).hexdigest()
+    
+    user = User(
         id=uuid4(),
-        tenant_id=uuid4(),  # TODO: Get from authenticated user
-        employee_id=employee_data.employee_id,
+        tenant_id=UUID('00000000-0000-0000-0000-000000000001'),  # Default tenant
+        username=username,
+        email=employee_data.email,
+        hashed_password=default_password,
+        employee_code=employee_data.employee_id,
         first_name=employee_data.first_name,
         last_name=employee_data.last_name,
-        email=employee_data.email,
+        full_name=f"{employee_data.first_name} {employee_data.last_name}",
         phone=employee_data.phone,
         mobile=employee_data.mobile,
         address=employee_data.address,
@@ -87,15 +124,17 @@ async def create_employee(
         designation=employee_data.designation,
         manager_id=UUID(employee_data.manager_id) if employee_data.manager_id else None,
         date_of_joining=employee_data.date_of_joining,
-        employee_data=emp_data,
-        employment_status="ACTIVE"
+        user_data=user_data,
+        employment_status="ACTIVE",
+        roles=["EMPLOYEE"],
+        is_active=True
     )
     
-    db.add(employee)
+    db.add(user)
     db.commit()
-    db.refresh(employee)
+    db.refresh(user)
     
-    return employee
+    return _user_to_employee_response(user)
 
 
 @router.put("/{employee_id}", response_model=EmployeeResponse)
@@ -105,33 +144,42 @@ async def update_employee(
     db: Session = Depends(get_sync_db)
 ):
     """Update an employee"""
-    employee = db.query(Employee).filter(Employee.id == employee_id).first()
-    if not employee:
+    user = db.query(User).filter(User.id == employee_id).first()
+    if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Employee not found"
         )
     
     # Update fields
-    update_data = employee_data.dict(exclude_unset=True)
+    user.employee_code = employee_data.employee_id
+    user.first_name = employee_data.first_name
+    user.last_name = employee_data.last_name
+    user.full_name = f"{employee_data.first_name} {employee_data.last_name}"
+    user.phone = employee_data.phone
+    user.mobile = employee_data.mobile
+    user.address = employee_data.address
+    user.department = employee_data.department
+    user.designation = employee_data.designation
     
-    # Handle manager_id conversion
-    if 'manager_id' in update_data and update_data['manager_id']:
-        update_data['manager_id'] = UUID(update_data['manager_id'])
+    if employee_data.manager_id:
+        user.manager_id = UUID(employee_data.manager_id)
     
-    # Store project_ids in employee_data JSONB field
-    if 'project_ids' in update_data:
-        emp_data = employee.employee_data or {}
-        emp_data['project_ids'] = update_data.pop('project_ids')
-        update_data['employee_data'] = emp_data
+    if employee_data.date_of_joining:
+        user.date_of_joining = employee_data.date_of_joining
     
-    for field, value in update_data.items():
-        setattr(employee, field, value)
+    # Store project_ids in user_data JSONB field
+    user_data = user.user_data or {}
+    if employee_data.project_ids:
+        user_data['project_ids'] = employee_data.project_ids
+    if employee_data.employee_data:
+        user_data.update(employee_data.employee_data)
+    user.user_data = user_data
     
     db.commit()
-    db.refresh(employee)
+    db.refresh(user)
     
-    return employee
+    return _user_to_employee_response(user)
 
 
 @router.delete("/{employee_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -140,14 +188,215 @@ async def delete_employee(
     db: Session = Depends(get_sync_db)
 ):
     """Delete an employee (soft delete by setting status to INACTIVE)"""
-    employee = db.query(Employee).filter(Employee.id == employee_id).first()
-    if not employee:
+    user = db.query(User).filter(User.id == employee_id).first()
+    if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Employee not found"
         )
     
-    employee.employment_status = "INACTIVE"
+    user.employment_status = "INACTIVE"
+    user.is_active = False
     db.commit()
     
     return None
+
+
+# ==================== Project Allocation Endpoints ====================
+
+@router.get("/{employee_id}/project-history", response_model=List[EmployeeProjectHistoryResponse])
+async def get_employee_project_history(
+    employee_id: UUID,
+    include_inactive: bool = True,
+    db: Session = Depends(get_sync_db)
+):
+    """
+    Get all projects an employee is/was allocated to.
+    This includes both current and past project allocations.
+    
+    Args:
+        employee_id: UUID of the employee (user)
+        include_inactive: If True, include deallocated/completed projects
+    
+    Returns:
+        List of project allocations with project details
+    """
+    user = db.query(User).filter(User.id == employee_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Employee not found"
+        )
+    
+    # Query project allocations with project details
+    query = db.query(
+        EmployeeProjectAllocation,
+        Project
+    ).join(
+        Project, EmployeeProjectAllocation.project_id == Project.id
+    ).filter(
+        EmployeeProjectAllocation.employee_id == employee_id
+    )
+    
+    if not include_inactive:
+        query = query.filter(EmployeeProjectAllocation.status == "ACTIVE")
+    
+    # Order by status (ACTIVE first, then COMPLETED, then REMOVED) and then by allocated_date desc
+    status_order = case(
+        (EmployeeProjectAllocation.status == "ACTIVE", 1),
+        (EmployeeProjectAllocation.status == "COMPLETED", 2),
+        (EmployeeProjectAllocation.status == "REMOVED", 3),
+        else_=4
+    )
+    query = query.order_by(
+        status_order,
+        EmployeeProjectAllocation.allocated_date.desc()
+    )
+    
+    results = query.all()
+    
+    # Build response with project details
+    response = []
+    for allocation, project in results:
+        response.append(EmployeeProjectHistoryResponse(
+            id=allocation.id,
+            employee_id=allocation.employee_id,
+            project_id=allocation.project_id,
+            project_code=project.project_code,
+            project_name=project.project_name,
+            project_status=project.status,
+            role=allocation.role,
+            allocation_percentage=allocation.allocation_percentage,
+            status=allocation.status,
+            allocated_date=allocation.allocated_date,
+            deallocated_date=allocation.deallocated_date
+        ))
+    
+    return response
+
+
+@router.post("/{employee_id}/allocate-project", response_model=EmployeeProjectAllocationResponse, status_code=status.HTTP_201_CREATED)
+async def allocate_employee_to_project(
+    employee_id: UUID,
+    allocation_data: EmployeeProjectAllocationCreate,
+    db: Session = Depends(get_sync_db)
+):
+    """
+    Allocate an employee to a project.
+    Creates a new allocation record to track history.
+    """
+    # Verify employee exists
+    user = db.query(User).filter(User.id == employee_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Employee not found"
+        )
+    
+    # Verify project exists
+    project = db.query(Project).filter(Project.id == allocation_data.project_id).first()
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project not found"
+        )
+    
+    # Check if active allocation already exists
+    existing = db.query(EmployeeProjectAllocation).filter(
+        EmployeeProjectAllocation.employee_id == employee_id,
+        EmployeeProjectAllocation.project_id == allocation_data.project_id,
+        EmployeeProjectAllocation.status == "ACTIVE"
+    ).first()
+    
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Employee is already allocated to this project"
+        )
+    
+    # Create allocation
+    allocation = EmployeeProjectAllocation(
+        id=uuid4(),
+        tenant_id=user.tenant_id,
+        employee_id=employee_id,
+        project_id=allocation_data.project_id,
+        role=allocation_data.role,
+        allocation_percentage=allocation_data.allocation_percentage or 100,
+        allocated_date=allocation_data.allocated_date or date.today(),
+        notes=allocation_data.notes,
+        status="ACTIVE"
+    )
+    
+    db.add(allocation)
+    
+    # Also update user_data.project_ids for backward compatibility
+    user_data = user.user_data or {}
+    project_ids = user_data.get('project_ids', [])
+    if str(allocation_data.project_id) not in project_ids:
+        project_ids.append(str(allocation_data.project_id))
+        user_data['project_ids'] = project_ids
+        user.user_data = user_data
+    
+    db.commit()
+    db.refresh(allocation)
+    
+    return allocation
+
+
+@router.put("/{employee_id}/deallocate-project/{project_id}", response_model=EmployeeProjectAllocationResponse)
+async def deallocate_employee_from_project(
+    employee_id: UUID,
+    project_id: UUID,
+    update_data: EmployeeProjectAllocationUpdate,
+    db: Session = Depends(get_sync_db)
+):
+    """
+    Deallocate an employee from a project.
+    Sets the deallocated_date and updates status.
+    """
+    # Find the active allocation
+    allocation = db.query(EmployeeProjectAllocation).filter(
+        EmployeeProjectAllocation.employee_id == employee_id,
+        EmployeeProjectAllocation.project_id == project_id,
+        EmployeeProjectAllocation.status == "ACTIVE"
+    ).first()
+    
+    if not allocation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Active allocation not found for this employee and project"
+        )
+    
+    # Update allocation
+    allocation.deallocated_date = update_data.deallocated_date or date.today()
+    allocation.status = update_data.status or "COMPLETED"
+    if update_data.notes:
+        allocation.notes = update_data.notes
+    
+    # Update user_data.project_ids for backward compatibility
+    user = db.query(User).filter(User.id == employee_id).first()
+    if user:
+        user_data = user.user_data or {}
+        project_ids = user_data.get('project_ids', [])
+        if str(project_id) in project_ids:
+            project_ids.remove(str(project_id))
+            user_data['project_ids'] = project_ids
+            user.user_data = user_data
+    
+    db.commit()
+    db.refresh(allocation)
+    
+    return allocation
+
+
+@router.get("/{employee_id}/current-projects", response_model=List[EmployeeProjectHistoryResponse])
+async def get_employee_current_projects(
+    employee_id: UUID,
+    db: Session = Depends(get_sync_db)
+):
+    """
+    Get only currently active project allocations for an employee.
+    Convenience endpoint that filters to only ACTIVE status.
+    """
+    return await get_employee_project_history(employee_id, include_inactive=False, db=db)
+

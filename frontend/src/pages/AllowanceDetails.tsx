@@ -39,20 +39,18 @@ const typeIcons: Record<AllowanceType, React.ElementType> = {
 };
 
 const statusColors: Record<AllowanceStatus, string> = {
-  draft: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300',
-  submitted: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
   pending_manager: 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-300',
   approved: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
   rejected: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300',
+  returned: 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-300',
   payroll_ready: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300',
 };
 
 const statusLabels: Record<AllowanceStatus, string> = {
-  draft: 'Draft',
-  submitted: 'Submitted',
   pending_manager: 'Pending Manager',
   approved: 'Approved',
   rejected: 'Rejected',
+  returned: 'Returned',
   payroll_ready: 'Payroll Ready',
 };
 

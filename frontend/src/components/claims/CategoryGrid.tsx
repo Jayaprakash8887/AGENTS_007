@@ -15,7 +15,6 @@ export interface Category {
   id: string;
   icon: typeof GraduationCap;
   title: string;
-  maxAmount: string;
   requiredDocs: string[];
 }
 
@@ -24,63 +23,54 @@ const categories: Category[] = [
     id: "certification",
     icon: GraduationCap,
     title: "Certification",
-    maxAmount: "$2,500",
     requiredDocs: ["Certificate", "Invoice", "Approval Email"],
   },
   {
     id: "travel",
     icon: Plane,
     title: "Travel",
-    maxAmount: "$5,000",
     requiredDocs: ["Tickets", "Boarding Pass", "Itinerary"],
   },
   {
     id: "team-lunch",
     icon: Utensils,
     title: "Team Lunch",
-    maxAmount: "$500",
     requiredDocs: ["Receipt", "Attendee List"],
   },
   {
     id: "conveyance",
     icon: Car,
     title: "Conveyance",
-    maxAmount: "$300",
     requiredDocs: ["Receipts", "Route Details"],
   },
   {
     id: "accommodation",
     icon: Hotel,
     title: "Accommodation",
-    maxAmount: "$3,000",
     requiredDocs: ["Hotel Invoice", "Booking Confirmation"],
   },
   {
     id: "equipment",
     icon: Laptop,
     title: "Equipment",
-    maxAmount: "$1,500",
     requiredDocs: ["Invoice", "Warranty Card", "Manager Approval"],
   },
   {
     id: "phone-internet",
     icon: Phone,
     title: "Phone & Internet",
-    maxAmount: "$150",
     requiredDocs: ["Bill Copy", "Usage Report"],
   },
   {
     id: "medical",
     icon: HeartPulse,
     title: "Medical",
-    maxAmount: "$2,000",
     requiredDocs: ["Medical Bill", "Prescription", "Insurance Claim"],
   },
   {
     id: "client-meeting",
     icon: Briefcase,
     title: "Client Meeting",
-    maxAmount: "$800",
     requiredDocs: ["Receipt", "Meeting Notes", "Client Name"],
   },
 ];
@@ -106,7 +96,6 @@ export function CategoryGrid({ selectedCategory, onSelectCategory }: CategoryGri
             key={category.id}
             icon={category.icon}
             title={category.title}
-            maxAmount={category.maxAmount}
             requiredDocs={category.requiredDocs}
             isSelected={selectedCategory === category.id}
             onClick={() => onSelectCategory(category)}

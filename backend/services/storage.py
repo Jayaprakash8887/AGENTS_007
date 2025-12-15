@@ -1,0 +1,389 @@
+"""
+Storage Service for document uploads
+
+Uses the multi-vendor provider abstraction layer to support:
+- Google Cloud Storage (GCS)
+- Azure Blob Storage
+- AWS S3
+- Local filesystem (for development)
+
+Configuration is done via environment variables:
+- STORAGE_PROVIDER: gcs | azure | aws | local
+"""
+import os
+import logging
+from pathlib import Path
+from typing import Optional, Tuple
+from uuid import uuid4
+from datetime import timedelta
+
+from config import settings
+
+logger = logging.getLogger(__name__)
+
+# Import provider abstraction
+try:
+    from services.providers.storage_provider import get_storage_provider, reset_storage_provider
+    USE_PROVIDER_ABSTRACTION = True
+except ImportError:
+    USE_PROVIDER_ABSTRACTION = False
+    logger.warning("Provider abstraction not available, using legacy GCS client")
+
+# Legacy GCS client (for backward compatibility)
+_gcs_client = None
+_gcs_bucket = None
+
+
+def get_gcs_client():
+    """Get or create GCS client singleton (legacy method)"""
+    global _gcs_client, _gcs_bucket
+    
+    if _gcs_client is None:
+        try:
+            from google.cloud import storage
+            from google.oauth2 import service_account
+            
+            # Check for credentials file
+            creds_path = settings.GCP_CREDENTIALS_PATH
+            
+            # Try to resolve relative paths
+            if creds_path:
+                # Try as-is first
+                if not os.path.exists(creds_path):
+                    # Try relative to backend directory
+                    backend_dir = Path(__file__).parent.parent
+                    potential_path = backend_dir / creds_path
+                    if potential_path.exists():
+                        creds_path = str(potential_path)
+                    else:
+                        # Try relative to project root
+                        project_root = backend_dir.parent
+                        potential_path = project_root / creds_path.lstrip('../')
+                        if potential_path.exists():
+                            creds_path = str(potential_path)
+            
+            if creds_path and os.path.exists(creds_path):
+                credentials = service_account.Credentials.from_service_account_file(creds_path)
+                _gcs_client = storage.Client(
+                    project=settings.GCP_PROJECT_ID,
+                    credentials=credentials
+                )
+                logger.info(f"GCS client initialized with credentials from {creds_path}")
+            else:
+                # Try default credentials (for GCP environments)
+                _gcs_client = storage.Client(project=settings.GCP_PROJECT_ID)
+                logger.info("GCS client initialized with default credentials")
+            
+            # Get bucket
+            _gcs_bucket = _gcs_client.bucket(settings.GCP_BUCKET_NAME)
+            
+            # Verify bucket exists
+            if not _gcs_bucket.exists():
+                logger.warning(f"Bucket {settings.GCP_BUCKET_NAME} does not exist. Creating...")
+                _gcs_bucket.create(location="us-central1")
+                logger.info(f"Bucket {settings.GCP_BUCKET_NAME} created successfully")
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize GCS client: {e}")
+            _gcs_client = None
+            _gcs_bucket = None
+    
+    return _gcs_client, _gcs_bucket
+
+
+def upload_to_gcs(
+    file_path: Path,
+    claim_id: str,
+    original_filename: str,
+    content_type: Optional[str] = None
+) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Upload a file to cloud storage (uses configured provider)
+    
+    Args:
+        file_path: Local path to the file
+        claim_id: Claim ID for organizing files
+        original_filename: Original filename from upload
+        content_type: MIME type of the file
+    
+    Returns:
+        Tuple of (storage_path, blob_name) or (None, None) on failure
+    """
+    # Use provider abstraction if available
+    if USE_PROVIDER_ABSTRACTION:
+        try:
+            provider = get_storage_provider()
+            return provider.upload_file(file_path, claim_id, original_filename, content_type)
+        except Exception as e:
+            logger.error(f"Provider upload failed, trying legacy GCS: {e}")
+    
+    # Legacy GCS implementation
+    client, bucket = get_gcs_client()
+    
+    if not client or not bucket:
+        logger.error("GCS client not available, falling back to local storage")
+        return None, None
+    
+    try:
+        # Generate unique blob name with folder structure
+        file_extension = Path(original_filename).suffix.lower()
+        unique_filename = f"{uuid4()}{file_extension}"
+        blob_name = f"claims/{claim_id}/documents/{unique_filename}"
+        
+        # Create blob and upload
+        blob = bucket.blob(blob_name)
+        
+        # Set content type
+        if content_type:
+            blob.content_type = content_type
+        
+        # Upload file
+        blob.upload_from_filename(str(file_path))
+        
+        logger.info(f"File uploaded to GCS: gs://{settings.GCP_BUCKET_NAME}/{blob_name}")
+        
+        # Return the GCS path (not public URL for security)
+        gcs_path = f"gs://{settings.GCP_BUCKET_NAME}/{blob_name}"
+        
+        return gcs_path, blob_name
+        
+    except Exception as e:
+        logger.error(f"Failed to upload file to GCS: {e}")
+        return None, None
+
+
+def upload_bytes_to_gcs(
+    file_content: bytes,
+    claim_id: str,
+    original_filename: str,
+    content_type: Optional[str] = None
+) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Upload file bytes directly to cloud storage (uses configured provider)
+    
+    Args:
+        file_content: File content as bytes
+        claim_id: Claim ID for organizing files
+        original_filename: Original filename from upload
+        content_type: MIME type of the file
+    
+    Returns:
+        Tuple of (storage_path, blob_name) or (None, None) on failure
+    """
+    # Use provider abstraction if available
+    if USE_PROVIDER_ABSTRACTION:
+        try:
+            provider = get_storage_provider()
+            return provider.upload_bytes(file_content, claim_id, original_filename, content_type)
+        except Exception as e:
+            logger.error(f"Provider upload_bytes failed, trying legacy GCS: {e}")
+    
+    # Legacy GCS implementation
+    client, bucket = get_gcs_client()
+    
+    if not client or not bucket:
+        logger.error("GCS client not available")
+        return None, None
+    
+    try:
+        # Generate unique blob name with folder structure
+        file_extension = Path(original_filename).suffix.lower()
+        unique_filename = f"{uuid4()}{file_extension}"
+        blob_name = f"claims/{claim_id}/documents/{unique_filename}"
+        
+        # Create blob and upload
+        blob = bucket.blob(blob_name)
+        
+        # Set content type
+        if content_type:
+            blob.content_type = content_type
+        
+        # Upload from bytes
+        blob.upload_from_string(file_content, content_type=content_type)
+        
+        logger.info(f"File uploaded to GCS: gs://{settings.GCP_BUCKET_NAME}/{blob_name}")
+        
+        # Return the GCS path
+        gcs_path = f"gs://{settings.GCP_BUCKET_NAME}/{blob_name}"
+        
+        return gcs_path, blob_name
+        
+    except Exception as e:
+        logger.error(f"Failed to upload bytes to GCS: {e}")
+        return None, None
+
+
+def get_signed_url(blob_name: str, expiration_minutes: int = 60) -> Optional[str]:
+    """
+    Generate a signed URL for temporary access to a file
+    
+    Args:
+        blob_name: The blob name (path within bucket)
+        expiration_minutes: URL expiration time in minutes
+    
+    Returns:
+        Signed URL string or None on failure
+    """
+    # Use provider abstraction if available
+    if USE_PROVIDER_ABSTRACTION:
+        try:
+            provider = get_storage_provider()
+            return provider.get_signed_url(blob_name, expiration_minutes)
+        except Exception as e:
+            logger.error(f"Provider get_signed_url failed, trying legacy GCS: {e}")
+    
+    # Legacy GCS implementation
+    client, bucket = get_gcs_client()
+    
+    if not client or not bucket:
+        logger.error("GCS client not available")
+        return None
+    
+    try:
+        blob = bucket.blob(blob_name)
+        
+        # Check if blob exists
+        if not blob.exists():
+            logger.warning(f"Blob does not exist: {blob_name}")
+            return None
+        
+        # Generate signed URL
+        url = blob.generate_signed_url(
+            version="v4",
+            expiration=timedelta(minutes=expiration_minutes),
+            method="GET"
+        )
+        
+        logger.info(f"Generated signed URL for {blob_name}, expires in {expiration_minutes} minutes")
+        return url
+        
+    except Exception as e:
+        logger.error(f"Failed to generate signed URL: {e}")
+        return None
+
+
+def download_from_gcs(blob_name: str, destination_path: Path) -> bool:
+    """
+    Download a file from cloud storage to local path
+    
+    Args:
+        blob_name: The blob name (path within bucket)
+        destination_path: Local path to save the file
+    
+    Returns:
+        True on success, False on failure
+    """
+    # Use provider abstraction if available
+    if USE_PROVIDER_ABSTRACTION:
+        try:
+            provider = get_storage_provider()
+            return provider.download(blob_name, destination_path)
+        except Exception as e:
+            logger.error(f"Provider download failed, trying legacy GCS: {e}")
+    
+    # Legacy GCS implementation
+    client, bucket = get_gcs_client()
+    
+    if not client or not bucket:
+        logger.error("GCS client not available")
+        return False
+    
+    try:
+        blob = bucket.blob(blob_name)
+        
+        # Download
+        blob.download_to_filename(str(destination_path))
+        
+        logger.info(f"File downloaded from GCS: {blob_name} -> {destination_path}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Failed to download file from GCS: {e}")
+        return False
+
+
+def delete_from_gcs(blob_name: str) -> bool:
+    """
+    Delete a file from cloud storage
+    
+    Args:
+        blob_name: The blob name (path within bucket)
+    
+    Returns:
+        True on success, False on failure
+    """
+    # Use provider abstraction if available
+    if USE_PROVIDER_ABSTRACTION:
+        try:
+            provider = get_storage_provider()
+            return provider.delete(blob_name)
+        except Exception as e:
+            logger.error(f"Provider delete failed, trying legacy GCS: {e}")
+    
+    # Legacy GCS implementation
+    client, bucket = get_gcs_client()
+    
+    if not client or not bucket:
+        logger.error("GCS client not available")
+        return False
+    
+    try:
+        blob = bucket.blob(blob_name)
+        
+        if blob.exists():
+            blob.delete()
+            logger.info(f"File deleted from GCS: {blob_name}")
+            return True
+        else:
+            logger.warning(f"Blob does not exist for deletion: {blob_name}")
+            return True  # Consider non-existent as success
+        
+    except Exception as e:
+        logger.error(f"Failed to delete file from GCS: {e}")
+        return False
+
+
+def get_blob_metadata(blob_name: str) -> Optional[dict]:
+    """
+    Get metadata for a blob in cloud storage
+    
+    Args:
+        blob_name: The blob name (path within bucket)
+    
+    Returns:
+        Dict with blob metadata or None on failure
+    """
+    # Use provider abstraction if available
+    if USE_PROVIDER_ABSTRACTION:
+        try:
+            provider = get_storage_provider()
+            return provider.get_metadata(blob_name)
+        except Exception as e:
+            logger.error(f"Provider get_metadata failed, trying legacy GCS: {e}")
+    
+    # Legacy GCS implementation
+    client, bucket = get_gcs_client()
+    
+    if not client or not bucket:
+        return None
+    
+    try:
+        blob = bucket.blob(blob_name)
+        
+        if not blob.exists():
+            return None
+        
+        blob.reload()
+        
+        return {
+            "name": blob.name,
+            "size": blob.size,
+            "content_type": blob.content_type,
+            "created": blob.time_created,
+            "updated": blob.updated,
+            "md5_hash": blob.md5_hash,
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get blob metadata: {e}")
+        return None

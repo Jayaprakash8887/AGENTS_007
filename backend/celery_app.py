@@ -61,6 +61,10 @@ celery_app.conf.beat_schedule = {
         "task": "agents.integration_agent.sync_external_data",
         "schedule": 3600.0,  # Run hourly if enabled
     },
+    "cleanup-old-local-files": {
+        "task": "celery_app.cleanup_old_local_files",
+        "schedule": 86400.0,  # Run daily
+    },
 }
 
 
@@ -69,6 +73,84 @@ def debug_task(self):
     """Debug task to test Celery"""
     print(f"Request: {self.request!r}")
     return "Celery is working!"
+
+
+@celery_app.task(name="celery_app.cleanup_old_local_files")
+def cleanup_old_local_files():
+    """
+    Periodic task to delete local files older than LOCAL_FILE_RETENTION_DAYS.
+    Only deletes files that have been successfully uploaded to GCS.
+    """
+    import os
+    import logging
+    from pathlib import Path
+    from datetime import datetime, timedelta
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    
+    logger = logging.getLogger(__name__)
+    
+    try:
+        retention_days = settings.LOCAL_FILE_RETENTION_DAYS
+        cutoff_date = datetime.utcnow() - timedelta(days=retention_days)
+        upload_dir = Path(os.environ.get("UPLOAD_DIR", "./uploads"))
+        
+        if not upload_dir.exists():
+            logger.info(f"Upload directory {upload_dir} does not exist, skipping cleanup")
+            return {"deleted": 0, "errors": 0}
+        
+        # Create database session
+        engine = create_engine(settings.DATABASE_URL)
+        Session = sessionmaker(bind=engine)
+        session = Session()
+        
+        deleted_count = 0
+        error_count = 0
+        
+        try:
+            # Find documents with GCS storage that have local files older than retention period
+            from models import Document
+            
+            old_docs = session.query(Document).filter(
+                Document.storage_type == "gcs",
+                Document.gcs_uri.isnot(None),
+                Document.uploaded_at < cutoff_date
+            ).all()
+            
+            for doc in old_docs:
+                if doc.storage_path:
+                    local_path = upload_dir / Path(doc.storage_path).name
+                    if local_path.exists():
+                        try:
+                            local_path.unlink()
+                            logger.info(f"Deleted local file: {local_path} (GCS backup: {doc.gcs_uri})")
+                            deleted_count += 1
+                        except Exception as e:
+                            logger.error(f"Failed to delete {local_path}: {e}")
+                            error_count += 1
+            
+            # Also clean up orphaned temp files older than retention period
+            for file_path in upload_dir.glob("temp_ocr_*"):
+                try:
+                    file_stat = file_path.stat()
+                    file_age = datetime.utcnow() - datetime.fromtimestamp(file_stat.st_mtime)
+                    if file_age.days > retention_days:
+                        file_path.unlink()
+                        logger.info(f"Deleted orphaned temp file: {file_path}")
+                        deleted_count += 1
+                except Exception as e:
+                    logger.error(f"Failed to delete temp file {file_path}: {e}")
+                    error_count += 1
+                    
+        finally:
+            session.close()
+        
+        logger.info(f"Local file cleanup completed: {deleted_count} deleted, {error_count} errors")
+        return {"deleted": deleted_count, "errors": error_count}
+        
+    except Exception as e:
+        logger.error(f"Local file cleanup task failed: {e}")
+        return {"deleted": 0, "errors": 1, "error": str(e)}
 
 
 if __name__ == "__main__":

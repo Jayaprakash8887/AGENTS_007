@@ -3,8 +3,6 @@ export type UserRole = 'employee' | 'manager' | 'hr' | 'finance' | 'admin';
 
 // Claim status
 export type ClaimStatus = 
-  | 'draft'
-  | 'submitted'
   | 'pending_manager'
   | 'pending_hr'
   | 'pending_finance'
@@ -16,10 +14,10 @@ export type ClaimStatus =
 // Claim type
 export type ClaimType = 'reimbursement' | 'allowance';
 
-// Data source tracking
-export type DataSource = 'ocr' | 'manual' | 'edited';
+// Data source tracking - 'auto'/'ocr' for auto-extracted, 'manual' for user-entered, 'edited' for user-modified
+export type DataSource = 'ocr' | 'auto' | 'manual' | 'edited';
 
-// User interface
+// User interface (extended with employee details for mock auth)
 export interface User {
   id: string;
   email: string;
@@ -28,6 +26,17 @@ export interface User {
   department: string;
   managerId?: string;
   avatar?: string;
+  // Extended employee fields
+  employeeId?: string;
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+  mobile?: string;
+  address?: string;
+  designation?: string;
+  joinDate?: string;
+  status?: 'active' | 'inactive' | 'on_leave';
+  projectIds?: string[];
 }
 
 // Category interface
@@ -45,35 +54,57 @@ export interface Claim {
   id: string;
   claimNumber: string;
   type: ClaimType;
-  category: ExpenseCategory;
+  category: ExpenseCategory | string;
   title: string;
   amount: number;
-  date: Date;
-  vendor: string;
+  date?: Date;
+  vendor?: string;
   description?: string;
   projectCode?: string;
   costCenter?: string;
+  transactionRef?: string;
   status: ClaimStatus;
-  submittedBy: User;
-  submittedAt: Date;
+  submittedBy?: User;
+  submittedAt?: Date;
+  submissionDate?: Date;
+  claimDate?: Date;
+  employeeId?: string;
+  employeeName?: string;
+  department?: string;
+  currency?: string;
   documents: ClaimDocument[];
-  comments: ClaimComment[];
-  approvalHistory: ApprovalHistoryItem[];
+  comments?: ClaimComment[];
+  approvalHistory?: ApprovalHistoryItem[];
   aiConfidenceScore?: number;
-  policyViolations: string[];
-  dataSource: Record<string, DataSource>;
+  aiConfidence?: number;
+  aiProcessed?: boolean;
+  complianceScore?: number;
+  policyViolations?: string[];
+  dataSource?: Record<string, DataSource>;
+  // Return workflow fields
+  returnReason?: string;
+  returnCount?: number;
+  returnedAt?: Date;
+  canEdit?: boolean;
 }
 
 // Document interface
 export interface ClaimDocument {
   id: string;
   name: string;
+  filename?: string;  // from backend
   url: string;
   type: string;
   size: number;
   uploadedAt: Date;
   ocrData?: Record<string, any>;
   ocrConfidence?: number;
+  // GCS storage fields
+  gcsUri?: string;
+  gcsBlobName?: string;
+  storageType?: 'local' | 'gcs';
+  contentType?: string;
+  downloadUrl?: string;
 }
 
 // Comment interface
@@ -104,4 +135,34 @@ export interface NavItem {
   badge?: number;
   roles?: UserRole[];
   children?: NavItem[];
+}
+
+// Employee interface
+export interface Employee extends User {
+  employeeId: string;
+  phone?: string;
+  mobile?: string;
+  address?: string;
+  firstName?: string;
+  lastName?: string;
+  designation?: string;
+  joinDate: Date | string;
+  status: 'active' | 'inactive' | 'on_leave';
+  managerId?: string;
+  projectIds: string[];
+}
+
+// Project interface
+export interface Project {
+  id: string;
+  code: string;
+  name: string;
+  description: string;
+  budget: number;
+  spent: number;
+  startDate: Date;
+  endDate?: Date;
+  status: 'active' | 'completed' | 'on_hold';
+  managerId: string;
+  memberIds: string[];
 }

@@ -16,6 +16,7 @@ class ClaimType(str, Enum):
 class ClaimCategory(str, Enum):
     CERTIFICATION = "CERTIFICATION"
     TRAVEL = "TRAVEL"
+    FOOD = "FOOD"
     TEAM_LUNCH = "TEAM_LUNCH"
     ONCALL = "ONCALL"
     OVERTIME = "OVERTIME"
@@ -25,8 +26,6 @@ class ClaimCategory(str, Enum):
 
 
 class ClaimStatus(str, Enum):
-    DRAFT = "DRAFT"
-    SUBMITTED = "SUBMITTED"
     AI_PROCESSING = "AI_PROCESSING"
     PENDING_MANAGER = "PENDING_MANAGER"
     RETURNED_TO_EMPLOYEE = "RETURNED_TO_EMPLOYEE"
@@ -79,6 +78,51 @@ class ClaimBase(BaseModel):
 class ClaimCreate(ClaimBase):
     """Schema for creating a new claim"""
     claim_payload: Dict[str, Any] = {}
+    employee_id: Optional[UUID] = None  # Optional - will use current user if not provided
+    title: Optional[str] = None
+    vendor: Optional[str] = None
+    transaction_ref: Optional[str] = None
+    payment_method: Optional[str] = None
+    project_code: Optional[str] = None
+
+
+class BatchClaimItem(BaseModel):
+    """Schema for a single claim in a batch"""
+    category: str  # Allow any string category
+    amount: float = Field(..., gt=0)
+    claim_date: date
+    title: Optional[str] = None
+    vendor: Optional[str] = None
+    description: Optional[str] = None
+    transaction_ref: Optional[str] = None
+    payment_method: Optional[str] = None
+    # Field source tracking: 'ocr' for auto-extracted, 'manual' for user-entered
+    category_source: Optional[str] = 'manual'
+    title_source: Optional[str] = 'manual'
+    amount_source: Optional[str] = 'manual'
+    date_source: Optional[str] = 'manual'
+    vendor_source: Optional[str] = 'manual'
+    description_source: Optional[str] = 'manual'
+    transaction_ref_source: Optional[str] = 'manual'
+    payment_method_source: Optional[str] = 'manual'
+
+
+class BatchClaimCreate(BaseModel):
+    """Schema for creating multiple claims at once"""
+    employee_id: UUID
+    claim_type: ClaimType = ClaimType.REIMBURSEMENT
+    project_code: Optional[str] = None
+    claims: List[BatchClaimItem]
+
+
+class BatchClaimResponse(BaseModel):
+    """Response for batch claim creation"""
+    success: bool
+    total_claims: int
+    total_amount: float
+    claim_ids: List[UUID]
+    claim_numbers: List[str]
+    message: str
 
 
 class ClaimUpdate(BaseModel):
@@ -87,6 +131,8 @@ class ClaimUpdate(BaseModel):
     claim_date: Optional[date] = None
     description: Optional[str] = None
     claim_payload: Optional[Dict[str, Any]] = None
+    status: Optional[str] = None  # For resubmission: 'PENDING_MANAGER'
+    edited_sources: Optional[List[str]] = None  # Fields edited by user (e.g., ['amount', 'date'])
 
 
 class ClaimResponse(ClaimBase):
@@ -118,9 +164,75 @@ class ClaimListResponse(BaseModel):
     claims: List[ClaimResponse]
 
 
-# Employee Schemas
-class EmployeeBase(BaseModel):
-    employee_id: str
+# User Schemas (Unified - combines User and Employee)
+class UserBase(BaseModel):
+    """Base user schema with common fields"""
+    username: str
+    email: EmailStr
+    full_name: Optional[str] = None
+    # Employee fields
+    employee_code: Optional[str] = None  # e.g., EMP001
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    phone: Optional[str] = None
+    mobile: Optional[str] = None
+    address: Optional[str] = None
+    department: Optional[str] = None
+    designation: Optional[str] = None
+
+
+class UserCreate(UserBase):
+    """Schema for creating a new user"""
+    password: str
+    roles: List[UserRole] = [UserRole.EMPLOYEE]
+    date_of_joining: Optional[date] = None
+    manager_id: Optional[UUID] = None
+    user_data: Dict[str, Any] = {}
+
+
+class UserUpdate(BaseModel):
+    """Schema for updating a user"""
+    full_name: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    phone: Optional[str] = None
+    mobile: Optional[str] = None
+    address: Optional[str] = None
+    department: Optional[str] = None
+    designation: Optional[str] = None
+    roles: Optional[List[UserRole]] = None
+    employment_status: Optional[str] = None
+    manager_id: Optional[UUID] = None
+    user_data: Optional[Dict[str, Any]] = None
+
+
+class UserResponse(UserBase):
+    """Schema for user response"""
+    id: UUID
+    roles: List[str]
+    is_active: bool
+    employment_status: Optional[str] = "ACTIVE"
+    date_of_joining: Optional[date] = None
+    manager_id: Optional[UUID] = None
+    user_data: Dict[str, Any] = {}
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+# Backward compatibility aliases (Employee schemas now map to User schemas)
+class EmployeeBase(UserBase):
+    """Alias for UserBase for backward compatibility"""
+    employee_id: Optional[str] = None  # Maps to employee_code
+    
+    class Config:
+        from_attributes = True
+
+
+class EmployeeCreate(BaseModel):
+    """Backward compatible employee create schema"""
+    employee_id: str  # Will be stored as employee_code
     first_name: str
     last_name: str
     email: EmailStr
@@ -129,44 +241,28 @@ class EmployeeBase(BaseModel):
     address: Optional[str] = None
     department: Optional[str] = None
     designation: Optional[str] = None
-
-
-class EmployeeCreate(EmployeeBase):
     date_of_joining: Optional[date] = None
     manager_id: Optional[str] = None
     project_ids: Optional[List[str]] = []
     employee_data: Dict[str, Any] = {}
 
 
-class EmployeeResponse(EmployeeBase):
+class EmployeeResponse(BaseModel):
+    """Backward compatible employee response schema"""
     id: UUID
+    employee_id: Optional[str] = None  # employee_code
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    email: str
+    phone: Optional[str] = None
+    mobile: Optional[str] = None
+    address: Optional[str] = None
+    department: Optional[str] = None
+    designation: Optional[str] = None
     manager_id: Optional[UUID] = None
-    date_of_joining: Optional[date]
-    employment_status: str
+    date_of_joining: Optional[date] = None
+    employment_status: str = "ACTIVE"
     employee_data: Dict[str, Any] = {}
-    created_at: datetime
-    
-    class Config:
-        from_attributes = True
-
-
-# User Schemas
-class UserBase(BaseModel):
-    username: str
-    email: EmailStr
-    full_name: Optional[str] = None
-
-
-class UserCreate(UserBase):
-    password: str
-    roles: List[UserRole] = [UserRole.EMPLOYEE]
-
-
-class UserResponse(UserBase):
-    id: UUID
-    roles: List[str]
-    is_active: bool
-    employee_id: Optional[UUID] = None
     created_at: datetime
     
     class Config:
@@ -183,7 +279,6 @@ class Token(BaseModel):
     refresh_token: str
     token_type: str = "bearer"
 
-
 # Document Schemas
 class DocumentBase(BaseModel):
     filename: str
@@ -195,6 +290,10 @@ class DocumentCreate(DocumentBase):
     claim_id: UUID
     storage_path: str
     file_size: int
+    gcs_uri: Optional[str] = None
+    gcs_blob_name: Optional[str] = None
+    storage_type: str = "local"
+    content_type: Optional[str] = None
 
 
 class DocumentResponse(DocumentBase):
@@ -205,6 +304,11 @@ class DocumentResponse(DocumentBase):
     ocr_processed: bool
     ocr_confidence: Optional[float] = None
     uploaded_at: datetime
+    gcs_uri: Optional[str] = None
+    gcs_blob_name: Optional[str] = None
+    storage_type: Optional[str] = "local"
+    content_type: Optional[str] = None
+    download_url: Optional[str] = None  # Populated dynamically for viewing
     
     class Config:
         from_attributes = True
@@ -284,6 +388,7 @@ class ProjectUpdate(BaseModel):
     end_date: Optional[date] = None
     status: Optional[str] = None
     is_active: Optional[bool] = None
+    manager_id: Optional[UUID] = None
 
 
 class ProjectResponse(ProjectBase):
@@ -294,6 +399,7 @@ class ProjectResponse(ProjectBase):
     status: str
     start_date: Optional[date]
     end_date: Optional[date]
+    manager_id: Optional[UUID]
     created_at: datetime
     
     class Config:
@@ -302,8 +408,12 @@ class ProjectResponse(ProjectBase):
 
 # Return to Employee Schema
 class ReturnToEmployee(BaseModel):
-    claim_id: UUID
     return_reason: str = Field(..., min_length=10)
+
+
+# Approve/Reject Claim Schema
+class ApproveRejectClaim(BaseModel):
+    comment: Optional[str] = None
 
 
 # Settlement Schema
@@ -388,3 +498,58 @@ class DashboardData(BaseModel):
     stats: ClaimStats
     recent_claims: List[ClaimResponse]
     pending_approvals: List[ClaimResponse]
+
+
+# Employee Project Allocation Schemas
+class EmployeeProjectAllocationBase(BaseModel):
+    employee_id: UUID
+    project_id: UUID
+    role: Optional[str] = None
+    allocation_percentage: int = 100
+    allocated_date: date
+    deallocated_date: Optional[date] = None
+    notes: Optional[str] = None
+
+
+class EmployeeProjectAllocationCreate(BaseModel):
+    project_id: UUID
+    role: Optional[str] = None
+    allocation_percentage: int = 100
+    allocated_date: Optional[date] = None
+    notes: Optional[str] = None
+
+
+class EmployeeProjectAllocationUpdate(BaseModel):
+    role: Optional[str] = None
+    allocation_percentage: Optional[int] = None
+    deallocated_date: Optional[date] = None
+    status: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class EmployeeProjectAllocationResponse(EmployeeProjectAllocationBase):
+    id: UUID
+    status: str
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+class EmployeeProjectHistoryResponse(BaseModel):
+    """Response model for employee project history with project details"""
+    id: UUID
+    employee_id: UUID
+    project_id: UUID
+    project_code: str
+    project_name: str
+    project_status: str
+    role: Optional[str]
+    allocation_percentage: int
+    status: str  # ACTIVE, COMPLETED, REMOVED
+    allocated_date: date
+    deallocated_date: Optional[date]
+    
+    class Config:
+        from_attributes = True

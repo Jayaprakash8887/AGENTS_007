@@ -5,7 +5,10 @@ import uuid
 from sqlalchemy.orm import Session
 from passlib.context import CryptContext
 from database import sync_engine
-from models import Base, User, Employee, Project
+from models import Base, User, Project
+
+# Employee is now an alias for User (tables merged)
+Employee = User
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
