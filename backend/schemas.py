@@ -554,3 +554,237 @@ class EmployeeProjectHistoryResponse(BaseModel):
     
     class Config:
         from_attributes = True
+
+
+# ==================== POLICY MANAGEMENT SCHEMAS ====================
+
+class PolicyStatus(str, Enum):
+    PENDING = "PENDING"
+    AI_PROCESSING = "AI_PROCESSING"
+    EXTRACTED = "EXTRACTED"
+    APPROVED = "APPROVED"
+    ACTIVE = "ACTIVE"
+    REJECTED = "REJECTED"
+    ARCHIVED = "ARCHIVED"
+
+
+class CategoryType(str, Enum):
+    REIMBURSEMENT = "REIMBURSEMENT"
+    ALLOWANCE = "ALLOWANCE"
+
+
+class FrequencyType(str, Enum):
+    ONCE = "ONCE"
+    DAILY = "DAILY"
+    WEEKLY = "WEEKLY"
+    MONTHLY = "MONTHLY"
+    QUARTERLY = "QUARTERLY"
+    YEARLY = "YEARLY"
+    UNLIMITED = "UNLIMITED"
+
+
+class ValidationStatus(str, Enum):
+    PASS = "PASS"
+    WARNING = "WARNING"
+    FAIL = "FAIL"
+
+
+# Policy Category Schemas (extracted from policy document)
+class PolicyCategoryBase(BaseModel):
+    category_name: str = Field(..., min_length=1, max_length=100)
+    category_code: str = Field(..., min_length=1, max_length=50)
+    category_type: CategoryType
+    description: Optional[str] = None
+    max_amount: Optional[float] = None
+    min_amount: Optional[float] = None
+    currency: str = "INR"
+    frequency_limit: Optional[str] = None
+    frequency_count: Optional[int] = None
+    eligibility_criteria: Optional[Dict[str, Any]] = {}
+    requires_receipt: bool = True
+    requires_approval_above: Optional[float] = None
+    allowed_document_types: List[str] = ["PDF", "JPG", "PNG"]
+    submission_window_days: Optional[int] = None
+    is_active: bool = True
+    display_order: int = 0
+
+
+class PolicyCategoryCreate(PolicyCategoryBase):
+    pass
+
+
+class PolicyCategoryUpdate(BaseModel):
+    category_name: Optional[str] = Field(None, min_length=1, max_length=100)
+    category_code: Optional[str] = Field(None, min_length=1, max_length=50)
+    category_type: Optional[CategoryType] = None
+    description: Optional[str] = None
+    max_amount: Optional[float] = None
+    min_amount: Optional[float] = None
+    currency: Optional[str] = None
+    frequency_limit: Optional[str] = None
+    frequency_count: Optional[int] = None
+    eligibility_criteria: Optional[Dict[str, Any]] = None
+    requires_receipt: Optional[bool] = None
+    requires_approval_above: Optional[float] = None
+    allowed_document_types: Optional[List[str]] = None
+    submission_window_days: Optional[int] = None
+    is_active: Optional[bool] = None
+    display_order: Optional[int] = None
+
+
+class PolicyCategoryResponse(BaseModel):
+    id: UUID
+    tenant_id: UUID
+    policy_upload_id: UUID
+    category_name: str
+    category_code: str
+    category_type: str
+    description: Optional[str]
+    max_amount: Optional[float]
+    min_amount: Optional[float]
+    currency: str
+    frequency_limit: Optional[str]
+    frequency_count: Optional[int]
+    eligibility_criteria: Dict[str, Any]
+    requires_receipt: bool
+    requires_approval_above: Optional[float]
+    allowed_document_types: List[str]
+    submission_window_days: Optional[int]
+    is_active: bool
+    display_order: int
+    source_text: Optional[str]
+    ai_confidence: Optional[float]
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+# Policy Upload Schemas
+class PolicyUploadResponse(BaseModel):
+    id: UUID
+    tenant_id: UUID
+    policy_name: str
+    policy_number: str
+    description: Optional[str]
+    file_name: str
+    file_type: str
+    file_size: Optional[int]
+    storage_path: Optional[str]
+    gcs_uri: Optional[str]
+    storage_type: str
+    status: str
+    extracted_text: Optional[str]
+    extraction_error: Optional[str]
+    extracted_at: Optional[datetime]
+    extracted_data: Dict[str, Any]
+    version: int
+    is_active: bool
+    effective_from: Optional[date]
+    effective_to: Optional[date]
+    uploaded_by: UUID
+    approved_by: Optional[UUID]
+    approved_at: Optional[datetime]
+    review_notes: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+    categories: List[PolicyCategoryResponse] = []
+    
+    class Config:
+        from_attributes = True
+
+
+class PolicyUploadListResponse(BaseModel):
+    id: UUID
+    policy_name: str
+    policy_number: str
+    file_name: str
+    status: str
+    version: int
+    is_active: bool
+    effective_from: Optional[date]
+    categories_count: int = 0
+    uploaded_by: UUID
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+class PolicyApprovalRequest(BaseModel):
+    review_notes: Optional[str] = None
+    effective_from: Optional[date] = None
+    approved_by: Optional[UUID] = None  # User ID of approver, defaults to HR Manager
+    categories: Optional[List[PolicyCategoryUpdate]] = None  # Optional updates to categories before approval
+
+
+class PolicyRejectRequest(BaseModel):
+    review_notes: str = Field(..., min_length=1)
+
+
+# Claim Validation Schemas
+class ClaimValidationRequest(BaseModel):
+    category_code: str
+    category_type: CategoryType
+    amount: float
+    currency: str = "INR"
+    employee_id: Optional[UUID] = None
+    employee_grade: Optional[str] = None
+    employee_department: Optional[str] = None
+    employee_location: Optional[str] = None
+    claim_date: Optional[date] = None
+    has_receipt: bool = False
+    additional_data: Optional[Dict[str, Any]] = None
+
+
+class ValidationCheckResult(BaseModel):
+    check_name: str
+    status: ValidationStatus
+    message: str
+    details: Optional[Dict[str, Any]] = None
+
+
+class ClaimValidationResponse(BaseModel):
+    status: ValidationStatus
+    category_name: str
+    category_code: str
+    checks: List[ValidationCheckResult] = []
+    checks_total: int
+    checks_passed: int
+    checks_warned: int
+    checks_failed: int
+
+
+# Active Categories Response (for claim submission dropdown)
+class ActiveCategoryResponse(BaseModel):
+    id: UUID
+    category_name: str
+    category_code: str
+    category_type: str
+    description: Optional[str]
+    max_amount: Optional[float]
+    min_amount: Optional[float]
+    currency: str
+    requires_receipt: bool
+    
+    class Config:
+        from_attributes = True
+
+
+# Policy Audit Log Schemas
+class PolicyAuditLogResponse(BaseModel):
+    id: UUID
+    tenant_id: UUID
+    entity_type: str
+    entity_id: UUID
+    action: str
+    old_values: Optional[Dict[str, Any]]
+    new_values: Optional[Dict[str, Any]]
+    description: Optional[str]
+    performed_by: UUID
+    performed_at: datetime
+    
+    class Config:
+        from_attributes = True
+

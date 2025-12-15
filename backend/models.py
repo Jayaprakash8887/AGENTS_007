@@ -439,3 +439,248 @@ class EmployeeProjectAllocation(Base):
         Index("idx_allocations_employee_status", "employee_id", "status"),
         Index("idx_allocations_dates", "allocated_date", "deallocated_date"),
     )
+
+
+class SystemSettings(Base):
+    """System-wide settings and configurations"""
+    __tablename__ = "system_settings"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(UUID(as_uuid=True), nullable=False)
+    
+    # Setting identification
+    setting_key = Column(String(100), nullable=False, unique=True)
+    setting_value = Column(Text, nullable=False)
+    setting_type = Column(String(20), nullable=False, default="string")  # string, boolean, number, json
+    
+    # Metadata
+    description = Column(Text)
+    category = Column(String(50), default="general")  # general, notifications, policies
+    
+    # Audit
+    updated_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    
+    __table_args__ = (
+        Index("idx_settings_tenant", "tenant_id"),
+        Index("idx_settings_key", "setting_key"),
+        Index("idx_settings_category", "category"),
+    )
+
+
+# ==================== POLICY & CRITERIA MANAGEMENT ====================
+
+class PolicyUpload(Base):
+    """
+    Policy documents uploaded by Admin.
+    Similar to how claims are uploaded - AI extracts categories and rules from the document.
+    """
+    __tablename__ = "policy_uploads"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(UUID(as_uuid=True), nullable=False)
+    
+    # Policy identification
+    policy_name = Column(String(255), nullable=False)
+    policy_number = Column(String(50), unique=True, nullable=False)  # Auto-generated like claim numbers
+    description = Column(Text)
+    
+    # File details
+    file_name = Column(String(255), nullable=False)
+    file_type = Column(String(20), nullable=False)  # PDF, DOCX, JPG, PNG
+    file_size = Column(Integer)
+    storage_path = Column(String(500))
+    gcs_uri = Column(String(500))
+    gcs_blob_name = Column(String(500))
+    storage_type = Column(String(20), default="local")
+    content_type = Column(String(100))
+    
+    # Processing status (like claims AI processing)
+    status = Column(String(30), nullable=False, default="PENDING")
+    # PENDING -> AI_PROCESSING -> EXTRACTED -> APPROVED -> ACTIVE / REJECTED
+    
+    # AI Extraction
+    extracted_text = Column(Text)  # OCR/parsed text
+    extraction_error = Column(Text)
+    extracted_at = Column(DateTime(timezone=True))
+    
+    # AI extracted data (raw JSON from AI)
+    extracted_data = Column(JSONB, default={})
+    # Structure: {
+    #   "claim_types": ["REIMBURSEMENT", "ALLOWANCE"],
+    #   "categories": [
+    #     {
+    #       "name": "Travel",
+    #       "code": "TRAVEL", 
+    #       "type": "REIMBURSEMENT",
+    #       "description": "...",
+    #       "rules": [...]
+    #     }
+    #   ]
+    # }
+    
+    # Versioning
+    version = Column(Integer, default=1)
+    is_active = Column(Boolean, default=False)
+    replaces_policy_id = Column(UUID(as_uuid=True), ForeignKey("policy_uploads.id"))
+    
+    # Effective dates (set on approval)
+    effective_from = Column(Date)
+    effective_to = Column(Date)
+    
+    # Audit
+    uploaded_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    approved_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    approved_at = Column(DateTime(timezone=True))
+    review_notes = Column(Text)
+    
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    
+    # Relationships
+    categories = relationship("PolicyCategory", back_populates="policy_upload", cascade="all, delete-orphan")
+    
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('PENDING', 'AI_PROCESSING', 'EXTRACTED', 'APPROVED', 'ACTIVE', 'REJECTED', 'ARCHIVED')",
+            name="valid_policy_status"
+        ),
+        Index("idx_policy_uploads_tenant", "tenant_id"),
+        Index("idx_policy_uploads_status", "status"),
+        Index("idx_policy_uploads_active", "is_active"),
+        Index("idx_policy_uploads_number", "policy_number"),
+    )
+
+
+class PolicyCategory(Base):
+    """
+    Categories extracted from policy documents.
+    Each category has its rules and becomes available for claim submission once approved.
+    """
+    __tablename__ = "policy_categories"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(UUID(as_uuid=True), nullable=False)
+    policy_upload_id = Column(UUID(as_uuid=True), ForeignKey("policy_uploads.id"), nullable=False)
+    
+    # Category details (extracted by AI, editable by admin)
+    category_name = Column(String(100), nullable=False)
+    category_code = Column(String(50), nullable=False)  # e.g., TRAVEL, CERTIFICATION
+    category_type = Column(String(20), nullable=False)  # REIMBURSEMENT or ALLOWANCE
+    description = Column(Text)
+    
+    # Limits
+    max_amount = Column(Numeric(12, 2))
+    min_amount = Column(Numeric(12, 2))
+    currency = Column(String(3), default="INR")
+    
+    # Frequency
+    frequency_limit = Column(String(50))  # ONCE, DAILY, WEEKLY, MONTHLY, QUARTERLY, YEARLY, UNLIMITED
+    frequency_count = Column(Integer)  # Number of times allowed per frequency period
+    
+    # Eligibility (JSON for flexibility)
+    eligibility_criteria = Column(JSONB, default={})
+    # Structure: {"grades": ["L3", "L4"], "departments": ["Engineering"], "locations": ["Domestic"]}
+    
+    # Documentation requirements
+    requires_receipt = Column(Boolean, default=True)
+    requires_approval_above = Column(Numeric(12, 2))  # Amount above which needs approval
+    allowed_document_types = Column(ARRAY(String), default=["PDF", "JPG", "PNG"])
+    
+    # Time constraints
+    submission_window_days = Column(Integer)  # Days within which claim must be submitted
+    
+    # Status
+    is_active = Column(Boolean, default=True)
+    display_order = Column(Integer, default=0)
+    
+    # Source tracking
+    source_text = Column(Text)  # Original text from policy for reference
+    ai_confidence = Column(Float)  # AI confidence score for extraction
+    
+    # Audit
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    
+    # Relationships
+    policy_upload = relationship("PolicyUpload", back_populates="categories")
+    
+    __table_args__ = (
+        CheckConstraint("category_type IN ('REIMBURSEMENT', 'ALLOWANCE')", name="valid_policy_category_type"),
+        Index("idx_policy_categories_tenant", "tenant_id"),
+        Index("idx_policy_categories_policy", "policy_upload_id"),
+        Index("idx_policy_categories_type", "category_type"),
+        Index("idx_policy_categories_code", "category_code"),
+        Index("idx_policy_categories_active", "is_active"),
+    )
+
+
+class ClaimValidation(Base):
+    """
+    Records of claim validation results against policy rules.
+    """
+    __tablename__ = "claim_validations"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(UUID(as_uuid=True), nullable=False)
+    claim_id = Column(UUID(as_uuid=True), ForeignKey("claims.id"), nullable=False)
+    policy_category_id = Column(UUID(as_uuid=True), ForeignKey("policy_categories.id"))
+    
+    # Validation result
+    validation_status = Column(String(20), nullable=False)  # PASS, WARNING, FAIL
+    
+    # Detailed results
+    validation_results = Column(JSONB, nullable=False, default=[])
+    # Example: [{"check": "amount_limit", "status": "PASS", "message": "Within limit"}]
+    
+    # Summary
+    checks_total = Column(Integer, default=0)
+    checks_passed = Column(Integer, default=0)
+    checks_warned = Column(Integer, default=0)
+    checks_failed = Column(Integer, default=0)
+    
+    # Timestamps
+    validated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    
+    __table_args__ = (
+        CheckConstraint("validation_status IN ('PASS', 'WARNING', 'FAIL')", name="valid_claim_validation_status"),
+        Index("idx_claim_validations_tenant", "tenant_id"),
+        Index("idx_claim_validations_claim", "claim_id"),
+        Index("idx_claim_validations_status", "validation_status"),
+    )
+
+
+class PolicyAuditLog(Base):
+    """
+    Audit log for policy changes.
+    """
+    __tablename__ = "policy_audit_logs"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(UUID(as_uuid=True), nullable=False)
+    
+    # Entity
+    entity_type = Column(String(50), nullable=False)  # POLICY_UPLOAD, POLICY_CATEGORY
+    entity_id = Column(UUID(as_uuid=True), nullable=False)
+    
+    # Action
+    action = Column(String(50), nullable=False)  # CREATE, UPDATE, APPROVE, REJECT, ACTIVATE, DEACTIVATE
+    
+    # Changes
+    old_values = Column(JSONB)
+    new_values = Column(JSONB)
+    description = Column(Text)
+    
+    # Actor
+    performed_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    performed_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    
+    __table_args__ = (
+        Index("idx_policy_audit_tenant", "tenant_id"),
+        Index("idx_policy_audit_entity", "entity_type", "entity_id"),
+        Index("idx_policy_audit_action", "action"),
+        Index("idx_policy_audit_date", "performed_at"),
+    )
+

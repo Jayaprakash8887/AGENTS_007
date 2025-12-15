@@ -67,7 +67,36 @@ export const userNavigation: NavItem[] = [
   },
 ];
 
+// Admin-only navigation - only these menus are shown for admin role
+export const adminOnlyNavigation: NavItem[] = [
+  {
+    label: 'Employees',
+    href: '/employees',
+    icon: 'Users',
+  },
+  {
+    label: 'Projects',
+    href: '/projects',
+    icon: 'FolderKanban',
+  },
+  {
+    label: 'Policies',
+    href: '/policies',
+    icon: 'FileText',
+  },
+  {
+    label: 'Settings',
+    href: '/settings',
+    icon: 'Settings',
+  },
+];
+
 export function getNavigationForRole(role: UserRole): NavItem[] {
+  // Admin users only see Employees, Projects, and Settings
+  if (role === 'admin') {
+    return adminOnlyNavigation;
+  }
+  
   const filterByRole = (items: NavItem[]) =>
     items.filter((item) => !item.roles || item.roles.includes(role));
 

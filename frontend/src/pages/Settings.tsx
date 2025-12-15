@@ -1,18 +1,13 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Settings as SettingsIcon,
-  Database,
-  Shield,
-  Bell,
-  Palette,
-  Globe,
-  Server,
-  Activity,
+  Save,
+  X,
+  Loader2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
@@ -23,34 +18,179 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
+import { toast } from '@/hooks/use-toast';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+
+// Types
+interface GeneralSettings {
+  ai_processing: boolean;
+  auto_approval: boolean;
+  default_currency: string;
+  fiscal_year_start: string;
+  email_notifications: boolean;
+  notification_email: string;
+}
+
+// API functions
+async function fetchGeneralSettings(): Promise<GeneralSettings> {
+  const response = await fetch(`${API_BASE_URL}/settings/general`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch settings');
+  }
+  return response.json();
+}
+
+async function updateGeneralSettings(settings: Partial<GeneralSettings>): Promise<GeneralSettings> {
+  const response = await fetch(`${API_BASE_URL}/settings/general`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(settings),
+  });
+  if (!response.ok) {
+    throw new Error('Failed to update settings');
+  }
+  return response.json();
+}
 
 export default function Settings() {
-  const [autoApproval, setAutoApproval] = useState(true);
-  const [aiProcessing, setAiProcessing] = useState(true);
-  const [emailNotifications, setEmailNotifications] = useState(true);
+  const queryClient = useQueryClient();
+  
+  // Fetch settings from backend
+  const { data: savedSettings, isLoading, error } = useQuery({
+    queryKey: ['generalSettings'],
+    queryFn: fetchGeneralSettings,
+  });
+
+  // Local state for form
+  const [formData, setFormData] = useState<GeneralSettings>({
+    ai_processing: true,
+    auto_approval: true,
+    default_currency: 'inr',
+    fiscal_year_start: 'apr',
+    email_notifications: true,
+    notification_email: '',
+  });
+
+  // Track if form has changes
+  const [hasChanges, setHasChanges] = useState(false);
+
+  // Update local state when saved settings load
+  useEffect(() => {
+    if (savedSettings) {
+      setFormData(savedSettings);
+      setHasChanges(false);
+    }
+  }, [savedSettings]);
+
+  // Check for changes
+  useEffect(() => {
+    if (savedSettings) {
+      const changed = JSON.stringify(formData) !== JSON.stringify(savedSettings);
+      setHasChanges(changed);
+    }
+  }, [formData, savedSettings]);
+
+  // Mutation for saving settings
+  const saveMutation = useMutation({
+    mutationFn: updateGeneralSettings,
+    onSuccess: (data) => {
+      queryClient.setQueryData(['generalSettings'], data);
+      setHasChanges(false);
+      toast({
+        title: 'Settings saved',
+        description: 'Your settings have been saved successfully.',
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: 'Error',
+        description: 'Failed to save settings. Please try again.',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  // Handle form changes
+  const handleChange = (key: keyof GeneralSettings, value: boolean | string) => {
+    setFormData(prev => ({ ...prev, [key]: value }));
+  };
+
+  // Handle save
+  const handleSave = () => {
+    saveMutation.mutate(formData);
+  };
+
+  // Handle cancel
+  const handleCancel = () => {
+    if (savedSettings) {
+      setFormData(savedSettings);
+      setHasChanges(false);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <span className="ml-2">Loading settings...</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-4">
+        <p className="text-destructive">Failed to load settings</p>
+        <Button onClick={() => queryClient.invalidateQueries({ queryKey: ['generalSettings'] })}>
+          Retry
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">System Settings</h1>
-        <p className="text-muted-foreground">
-          Configure system-wide settings and integrations
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">System Settings</h1>
+          <p className="text-muted-foreground">
+            Configure system-wide settings and integrations
+          </p>
+        </div>
+        
+        {/* Save/Cancel buttons - shown when there are changes */}
+        {hasChanges && (
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={handleCancel}
+              disabled={saveMutation.isPending}
+            >
+              <X className="h-4 w-4 mr-2" />
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSave}
+              disabled={saveMutation.isPending}
+            >
+              {saveMutation.isPending ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4 mr-2" />
+              )}
+              Save Changes
+            </Button>
+          </div>
+        )}
       </div>
 
-      <Tabs defaultValue="general" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-grid">
-          <TabsTrigger value="general">General</TabsTrigger>
-          <TabsTrigger value="integrations">Integrations</TabsTrigger>
-          <TabsTrigger value="policies">Policies</TabsTrigger>
-          <TabsTrigger value="system">System</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="general" className="space-y-4">
-          <Card>
-            <CardHeader>
+      <div className={`space-y-4 ${hasChanges ? 'pb-24' : ''}`}>
+        <Card>
+          <CardHeader>
               <CardTitle>General Settings</CardTitle>
               <CardDescription>
                 Basic configuration for the expense system
@@ -64,7 +204,10 @@ export default function Settings() {
                     Enable AI for OCR and validation
                   </p>
                 </div>
-                <Switch checked={aiProcessing} onCheckedChange={setAiProcessing} />
+                <Switch 
+                  checked={formData.ai_processing} 
+                  onCheckedChange={(checked) => handleChange('ai_processing', checked)} 
+                />
               </div>
               <Separator />
               <div className="flex items-center justify-between">
@@ -74,12 +217,18 @@ export default function Settings() {
                     Auto-approve high confidence claims (≥95%)
                   </p>
                 </div>
-                <Switch checked={autoApproval} onCheckedChange={setAutoApproval} />
+                <Switch 
+                  checked={formData.auto_approval} 
+                  onCheckedChange={(checked) => handleChange('auto_approval', checked)} 
+                />
               </div>
               <Separator />
               <div className="space-y-2">
                 <Label>Default Currency</Label>
-                <Select defaultValue="usd">
+                <Select 
+                  value={formData.default_currency}
+                  onValueChange={(value) => handleChange('default_currency', value)}
+                >
                   <SelectTrigger className="w-[200px]">
                     <SelectValue />
                   </SelectTrigger>
@@ -93,7 +242,10 @@ export default function Settings() {
               </div>
               <div className="space-y-2">
                 <Label>Fiscal Year Start</Label>
-                <Select defaultValue="jan">
+                <Select 
+                  value={formData.fiscal_year_start}
+                  onValueChange={(value) => handleChange('fiscal_year_start', value)}
+                >
                   <SelectTrigger className="w-[200px]">
                     <SelectValue />
                   </SelectTrigger>
@@ -124,250 +276,56 @@ export default function Settings() {
                   </p>
                 </div>
                 <Switch
-                  checked={emailNotifications}
-                  onCheckedChange={setEmailNotifications}
+                  checked={formData.email_notifications}
+                  onCheckedChange={(checked) => handleChange('email_notifications', checked)}
                 />
               </div>
               <div className="space-y-2">
                 <Label>Notification Email</Label>
-                <Input placeholder="noreply@company.com" />
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="integrations" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Connected Integrations</CardTitle>
-              <CardDescription>
-                Manage external system connections
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between p-4 border rounded-lg">
-                <div className="flex items-center gap-4">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100 dark:bg-blue-900">
-                    <Database className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                  </div>
-                  <div>
-                    <p className="font-medium">HRMS Integration</p>
-                    <p className="text-sm text-muted-foreground">
-                      Sync employee data from HRMS
-                    </p>
-                  </div>
-                </div>
-                <Badge variant="outline">Not Connected</Badge>
-              </div>
-              <div className="flex items-center justify-between p-4 border rounded-lg">
-                <div className="flex items-center gap-4">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-100 dark:bg-green-900">
-                    <Globe className="h-5 w-5 text-green-600 dark:text-green-400" />
-                  </div>
-                  <div>
-                    <p className="font-medium">Kronos Timesheet</p>
-                    <p className="text-sm text-muted-foreground">
-                      Import timesheet data for validation
-                    </p>
-                  </div>
-                </div>
-                <Badge variant="outline">Not Connected</Badge>
-              </div>
-              <div className="flex items-center justify-between p-4 border rounded-lg">
-                <div className="flex items-center gap-4">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-100 dark:bg-purple-900">
-                    <Server className="h-5 w-5 text-purple-600 dark:text-purple-400" />
-                  </div>
-                  <div>
-                    <p className="font-medium">Payroll System</p>
-                    <p className="text-sm text-muted-foreground">
-                      Process settlements through payroll
-                    </p>
-                  </div>
-                </div>
-                <Badge variant="outline">Not Connected</Badge>
+                <Input 
+                  placeholder="noreply@company.com" 
+                  value={formData.notification_email}
+                  onChange={(e) => handleChange('notification_email', e.target.value)}
+                />
               </div>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>API Configuration</CardTitle>
-              <CardDescription>
-                Configure API keys for external services
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label>OpenAI API Key</Label>
-                <Input type="password" placeholder="sk-..." />
-                <p className="text-xs text-muted-foreground">
-                  Used for AI-powered validation and OCR
+          {/* Spacer to prevent overlap with floating save bar */}
+          {hasChanges && <div className="h-20" />}
+
+          {/* Floating save bar at bottom when changes exist */}
+          {hasChanges && (
+            <div className="fixed bottom-0 left-0 right-0 bg-background/95 backdrop-blur border-t p-4 flex justify-end gap-2 z-50">
+              <div className="container mx-auto flex justify-between items-center">
+                <p className="text-sm text-muted-foreground">
+                  You have unsaved changes
                 </p>
-              </div>
-              <div className="space-y-2">
-                <Label>Google Cloud Vision API Key</Label>
-                <Input type="password" placeholder="AIza..." />
-                <p className="text-xs text-muted-foreground">
-                  Used for document OCR processing
-                </p>
-              </div>
-              <Button>Save API Keys</Button>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="policies" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Expense Policies</CardTitle>
-              <CardDescription>
-                Configure expense limits and approval thresholds
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Travel (per day)</Label>
-                  <Input type="number" defaultValue="500" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Meals (per day)</Label>
-                  <Input type="number" defaultValue="100" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Equipment (per item)</Label>
-                  <Input type="number" defaultValue="5000" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Supplies (per month)</Label>
-                  <Input type="number" defaultValue="200" />
-                </div>
-              </div>
-              <Separator />
-              <div className="space-y-4">
-                <h4 className="font-medium">Approval Thresholds</h4>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label>Manager Approval Required</Label>
-                    <Input type="number" defaultValue="100" />
-                    <p className="text-xs text-muted-foreground">
-                      Claims above this require manager approval
-                    </p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>HR Approval Required</Label>
-                    <Input type="number" defaultValue="2500" />
-                    <p className="text-xs text-muted-foreground">
-                      Claims above this require HR approval
-                    </p>
-                  </div>
-                </div>
-              </div>
-              <Button>Save Policy Settings</Button>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="system" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>System Health</CardTitle>
-              <CardDescription>
-                Monitor system performance and status
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <Activity className="h-5 w-5 text-green-600" />
-                  <span>API Status</span>
-                </div>
-                <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300">
-                  Operational
-                </Badge>
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <Database className="h-5 w-5 text-green-600" />
-                  <span>Database</span>
-                </div>
-                <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300">
-                  Healthy
-                </Badge>
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <Server className="h-5 w-5 text-green-600" />
-                  <span>AI Services</span>
-                </div>
-                <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300">
-                  Online
-                </Badge>
-              </div>
-              <Separator />
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span>Storage Usage</span>
-                  <span>45%</span>
-                </div>
-                <Progress value={45} />
-              </div>
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span>API Rate Limit</span>
-                  <span>23%</span>
-                </div>
-                <Progress value={23} />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Audit Logs</CardTitle>
-              <CardDescription>
-                Recent system activity and changes
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {[
-                  {
-                    action: 'Policy Updated',
-                    user: 'Admin',
-                    time: '2 hours ago',
-                  },
-                  {
-                    action: 'User Role Changed',
-                    user: 'HR Manager',
-                    time: '5 hours ago',
-                  },
-                  {
-                    action: 'Bulk Import Completed',
-                    user: 'System',
-                    time: '1 day ago',
-                  },
-                ].map((log, index) => (
-                  <div
-                    key={index}
-                    className="flex items-center justify-between text-sm"
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={handleCancel}
+                    disabled={saveMutation.isPending}
                   >
-                    <div>
-                      <p className="font-medium">{log.action}</p>
-                      <p className="text-muted-foreground">by {log.user}</p>
-                    </div>
-                    <span className="text-muted-foreground">{log.time}</span>
-                  </div>
-                ))}
+                    <X className="h-4 w-4 mr-2" />
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleSave}
+                    disabled={saveMutation.isPending}
+                  >
+                    {saveMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Save className="h-4 w-4 mr-2" />
+                    )}
+                    Save Changes
+                  </Button>
+                </div>
               </div>
-              <Button variant="outline" className="w-full mt-4">
-                View All Logs
-              </Button>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+            </div>
+          )}
+        </div>
     </div>
   );
 }

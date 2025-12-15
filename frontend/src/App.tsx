@@ -22,6 +22,7 @@ const NewAllowance = lazy(() => import('./pages/NewAllowance'));
 const Employees = lazy(() => import('./pages/Employees'));
 const EmployeeDetails = lazy(() => import('./pages/EmployeeDetails'));
 const Projects = lazy(() => import('./pages/Projects'));
+const Policies = lazy(() => import('./pages/Policies'));
 const Settlements = lazy(() => import('./pages/Settlements'));
 const Reports = lazy(() => import('./pages/Reports'));
 const Profile = lazy(() => import('./pages/Profile'));
@@ -163,6 +164,16 @@ const App = () => (
                   <Suspense fallback={<PageLoader />}>
                     <ProtectedRoute allowedRoles={['hr', 'finance', 'admin']}>
                       <Projects />
+                    </ProtectedRoute>
+                  </Suspense>
+                }
+              />
+              <Route
+                path="/policies"
+                element={
+                  <Suspense fallback={<PageLoader />}>
+                    <ProtectedRoute allowedRoles={['admin']}>
+                      <Policies />
                     </ProtectedRoute>
                   </Suspense>
                 }

@@ -10,6 +10,7 @@ import {
   FolderKanban,
   Wallet,
   Settings,
+  FileText,
   ChevronLeft,
   ChevronRight,
   LucideIcon,
@@ -37,6 +38,7 @@ const iconMap: Record<string, LucideIcon> = {
   FolderKanban,
   Wallet,
   Settings,
+  FileText,
   Coins: Wallet,
 };
 

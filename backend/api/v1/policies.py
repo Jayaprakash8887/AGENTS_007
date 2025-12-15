@@ -1,0 +1,823 @@
+"""
+Policy Management API endpoints.
+Handles policy document upload, AI extraction, review, and approval workflow.
+"""
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, BackgroundTasks
+from sqlalchemy.orm import Session
+from sqlalchemy import and_, or_, func
+from typing import List, Optional
+from uuid import UUID
+from datetime import datetime, date
+import os
+import logging
+
+from database import get_sync_db
+from models import PolicyUpload, PolicyCategory, PolicyAuditLog, User
+from schemas import (
+    PolicyUploadResponse, PolicyUploadListResponse, PolicyCategoryResponse,
+    PolicyCategoryUpdate, PolicyApprovalRequest, PolicyRejectRequest,
+    ClaimValidationRequest, ClaimValidationResponse, ValidationCheckResult,
+    ValidationStatus, ActiveCategoryResponse, PolicyAuditLogResponse
+)
+from config import settings
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter()
+
+# Upload directory for policy documents
+POLICY_UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "uploads", "policies")
+os.makedirs(POLICY_UPLOAD_DIR, exist_ok=True)
+
+
+def generate_policy_number(db: Session) -> str:
+    """Generate unique policy number like POL-2024-0001"""
+    year = datetime.now().year
+    prefix = f"POL-{year}-"
+    
+    # Get the latest policy number for this year
+    latest = db.query(PolicyUpload).filter(
+        PolicyUpload.policy_number.like(f"{prefix}%")
+    ).order_by(PolicyUpload.policy_number.desc()).first()
+    
+    if latest:
+        try:
+            last_num = int(latest.policy_number.split("-")[-1])
+            new_num = last_num + 1
+        except:
+            new_num = 1
+    else:
+        new_num = 1
+    
+    return f"{prefix}{new_num:04d}"
+
+
+def log_policy_action(
+    db: Session,
+    entity_type: str,
+    entity_id: UUID,
+    action: str,
+    performed_by: UUID,
+    old_values: dict = None,
+    new_values: dict = None,
+    description: str = None
+):
+    """Create audit log entry for policy actions"""
+    audit_log = PolicyAuditLog(
+        tenant_id=UUID(settings.DEFAULT_TENANT_ID),
+        entity_type=entity_type,
+        entity_id=entity_id,
+        action=action,
+        old_values=old_values,
+        new_values=new_values,
+        description=description,
+        performed_by=performed_by
+    )
+    db.add(audit_log)
+
+
+# ==================== POLICY UPLOAD ENDPOINTS ====================
+
+@router.post("/upload", response_model=PolicyUploadResponse)
+async def upload_policy(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    policy_name: str = Form(...),
+    description: str = Form(None),
+    uploaded_by: UUID = Form(...),
+    db: Session = Depends(get_sync_db)
+):
+    """
+    Upload a policy document for AI extraction.
+    Supported formats: PDF, DOCX, JPG, PNG
+    """
+    # Validate file type
+    allowed_types = ["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", 
+                     "image/jpeg", "image/png"]
+    if file.content_type not in allowed_types:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"File type {file.content_type} not supported. Allowed: PDF, DOCX, JPG, PNG"
+        )
+    
+    # Determine file type
+    file_type_map = {
+        "application/pdf": "PDF",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "DOCX",
+        "image/jpeg": "JPG",
+        "image/png": "PNG"
+    }
+    file_type = file_type_map.get(file.content_type, "PDF")
+    
+    # Generate policy number
+    policy_number = generate_policy_number(db)
+    
+    # Save file locally
+    file_extension = file.filename.split(".")[-1] if "." in file.filename else file_type.lower()
+    storage_filename = f"{policy_number}.{file_extension}"
+    storage_path = os.path.join(POLICY_UPLOAD_DIR, storage_filename)
+    
+    content = await file.read()
+    with open(storage_path, "wb") as f:
+        f.write(content)
+    
+    # Create policy upload record
+    policy_upload = PolicyUpload(
+        tenant_id=UUID(settings.DEFAULT_TENANT_ID),
+        policy_name=policy_name,
+        policy_number=policy_number,
+        description=description,
+        file_name=file.filename,
+        file_type=file_type,
+        file_size=len(content),
+        storage_path=storage_path,
+        storage_type="local",
+        content_type=file.content_type,
+        status="PENDING",
+        uploaded_by=uploaded_by
+    )
+    
+    db.add(policy_upload)
+    db.commit()
+    db.refresh(policy_upload)
+    
+    # Log the action
+    log_policy_action(
+        db, "POLICY_UPLOAD", policy_upload.id, "CREATE",
+        uploaded_by, None, {"policy_number": policy_number, "file_name": file.filename},
+        f"Policy document uploaded: {policy_name}"
+    )
+    db.commit()
+    
+    # Trigger AI extraction in background
+    background_tasks.add_task(extract_policy_categories, policy_upload.id, db)
+    
+    # Update status to processing
+    policy_upload.status = "AI_PROCESSING"
+    db.commit()
+    db.refresh(policy_upload)
+    
+    return PolicyUploadResponse(
+        id=policy_upload.id,
+        tenant_id=policy_upload.tenant_id,
+        policy_name=policy_upload.policy_name,
+        policy_number=policy_upload.policy_number,
+        description=policy_upload.description,
+        file_name=policy_upload.file_name,
+        file_type=policy_upload.file_type,
+        file_size=policy_upload.file_size,
+        storage_path=policy_upload.storage_path,
+        gcs_uri=policy_upload.gcs_uri,
+        storage_type=policy_upload.storage_type,
+        status=policy_upload.status,
+        extracted_text=policy_upload.extracted_text,
+        extraction_error=policy_upload.extraction_error,
+        extracted_at=policy_upload.extracted_at,
+        extracted_data=policy_upload.extracted_data or {},
+        version=policy_upload.version,
+        is_active=policy_upload.is_active,
+        effective_from=policy_upload.effective_from,
+        effective_to=policy_upload.effective_to,
+        uploaded_by=policy_upload.uploaded_by,
+        approved_by=policy_upload.approved_by,
+        approved_at=policy_upload.approved_at,
+        review_notes=policy_upload.review_notes,
+        created_at=policy_upload.created_at,
+        updated_at=policy_upload.updated_at,
+        categories=[]
+    )
+
+
+async def extract_policy_categories(policy_id: UUID, db: Session):
+    """
+    Background task to extract categories from policy document using AI.
+    This function will be called asynchronously after upload.
+    """
+    from services.policy_extraction_service import PolicyExtractionService
+    from database import SyncSessionLocal
+    
+    # Create a new session for background task since original may be closed
+    new_db = SyncSessionLocal()
+    
+    try:
+        service = PolicyExtractionService(new_db)
+        await service.extract_and_save_categories(policy_id)
+    except Exception as e:
+        logger.error(f"Error extracting policy categories: {e}")
+        # Update policy status to failed
+        policy = new_db.query(PolicyUpload).filter(PolicyUpload.id == policy_id).first()
+        if policy:
+            policy.status = "EXTRACTED"  # Still mark as extracted even if AI fails, use defaults
+            policy.extraction_error = str(e)
+            new_db.commit()
+    finally:
+        new_db.close()
+
+
+@router.get("/", response_model=List[PolicyUploadListResponse])
+def list_policies(
+    status: Optional[str] = None,
+    is_active: Optional[bool] = None,
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_sync_db)
+):
+    """List all policy uploads with optional filtering"""
+    query = db.query(PolicyUpload).filter(
+        PolicyUpload.tenant_id == UUID(settings.DEFAULT_TENANT_ID)
+    )
+    
+    if status:
+        query = query.filter(PolicyUpload.status == status)
+    if is_active is not None:
+        query = query.filter(PolicyUpload.is_active == is_active)
+    
+    policies = query.order_by(PolicyUpload.created_at.desc()).offset(skip).limit(limit).all()
+    
+    result = []
+    for policy in policies:
+        categories_count = db.query(func.count(PolicyCategory.id)).filter(
+            PolicyCategory.policy_upload_id == policy.id
+        ).scalar()
+        
+        result.append(PolicyUploadListResponse(
+            id=policy.id,
+            policy_name=policy.policy_name,
+            policy_number=policy.policy_number,
+            file_name=policy.file_name,
+            status=policy.status,
+            version=policy.version,
+            is_active=policy.is_active,
+            effective_from=policy.effective_from,
+            categories_count=categories_count,
+            uploaded_by=policy.uploaded_by,
+            created_at=policy.created_at
+        ))
+    
+    return result
+
+
+@router.get("/{policy_id}", response_model=PolicyUploadResponse)
+def get_policy(policy_id: UUID, db: Session = Depends(get_sync_db)):
+    """Get policy details with extracted categories"""
+    policy = db.query(PolicyUpload).filter(
+        and_(
+            PolicyUpload.id == policy_id,
+            PolicyUpload.tenant_id == UUID(settings.DEFAULT_TENANT_ID)
+        )
+    ).first()
+    
+    if not policy:
+        raise HTTPException(status_code=404, detail="Policy not found")
+    
+    categories = db.query(PolicyCategory).filter(
+        PolicyCategory.policy_upload_id == policy_id
+    ).order_by(PolicyCategory.display_order, PolicyCategory.category_name).all()
+    
+    return PolicyUploadResponse(
+        id=policy.id,
+        tenant_id=policy.tenant_id,
+        policy_name=policy.policy_name,
+        policy_number=policy.policy_number,
+        description=policy.description,
+        file_name=policy.file_name,
+        file_type=policy.file_type,
+        file_size=policy.file_size,
+        storage_path=policy.storage_path,
+        gcs_uri=policy.gcs_uri,
+        storage_type=policy.storage_type,
+        status=policy.status,
+        extracted_text=policy.extracted_text,
+        extraction_error=policy.extraction_error,
+        extracted_at=policy.extracted_at,
+        extracted_data=policy.extracted_data or {},
+        version=policy.version,
+        is_active=policy.is_active,
+        effective_from=policy.effective_from,
+        effective_to=policy.effective_to,
+        uploaded_by=policy.uploaded_by,
+        approved_by=policy.approved_by,
+        approved_at=policy.approved_at,
+        review_notes=policy.review_notes,
+        created_at=policy.created_at,
+        updated_at=policy.updated_at,
+        categories=[PolicyCategoryResponse(
+            id=cat.id,
+            tenant_id=cat.tenant_id,
+            policy_upload_id=cat.policy_upload_id,
+            category_name=cat.category_name,
+            category_code=cat.category_code,
+            category_type=cat.category_type,
+            description=cat.description,
+            max_amount=float(cat.max_amount) if cat.max_amount else None,
+            min_amount=float(cat.min_amount) if cat.min_amount else None,
+            currency=cat.currency,
+            frequency_limit=cat.frequency_limit,
+            frequency_count=cat.frequency_count,
+            eligibility_criteria=cat.eligibility_criteria or {},
+            requires_receipt=cat.requires_receipt,
+            requires_approval_above=float(cat.requires_approval_above) if cat.requires_approval_above else None,
+            allowed_document_types=cat.allowed_document_types or [],
+            submission_window_days=cat.submission_window_days,
+            is_active=cat.is_active,
+            display_order=cat.display_order,
+            source_text=cat.source_text,
+            ai_confidence=cat.ai_confidence,
+            created_at=cat.created_at,
+            updated_at=cat.updated_at
+        ) for cat in categories]
+    )
+
+
+@router.post("/{policy_id}/reextract")
+async def reextract_policy(
+    policy_id: UUID,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_sync_db)
+):
+    """Re-trigger AI extraction for a policy document"""
+    policy = db.query(PolicyUpload).filter(
+        and_(
+            PolicyUpload.id == policy_id,
+            PolicyUpload.tenant_id == UUID(settings.DEFAULT_TENANT_ID)
+        )
+    ).first()
+    
+    if not policy:
+        raise HTTPException(status_code=404, detail="Policy not found")
+    
+    if policy.status == "ACTIVE":
+        raise HTTPException(status_code=400, detail="Cannot re-extract active policy")
+    
+    # Update status
+    policy.status = "AI_PROCESSING"
+    policy.extraction_error = None
+    db.commit()
+    
+    # Trigger extraction
+    background_tasks.add_task(extract_policy_categories, policy_id, db)
+    
+    return {"message": "Re-extraction started", "policy_id": str(policy_id)}
+
+
+@router.post("/{policy_id}/new-version", response_model=PolicyUploadResponse)
+async def upload_new_version(
+    policy_id: UUID,
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    description: str = Form(None),
+    uploaded_by: UUID = Form(...),
+    db: Session = Depends(get_sync_db)
+):
+    """
+    Upload a new version of an existing policy document.
+    The old policy will be archived when this new version is approved.
+    """
+    # Get the existing policy
+    existing_policy = db.query(PolicyUpload).filter(
+        and_(
+            PolicyUpload.id == policy_id,
+            PolicyUpload.tenant_id == UUID(settings.DEFAULT_TENANT_ID)
+        )
+    ).first()
+    
+    if not existing_policy:
+        raise HTTPException(status_code=404, detail="Policy not found")
+    
+    # Validate file type
+    allowed_types = ["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", 
+                     "image/jpeg", "image/png"]
+    if file.content_type not in allowed_types:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"File type {file.content_type} not supported. Allowed: PDF, DOCX, JPG, PNG"
+        )
+    
+    # Determine file type
+    file_type_map = {
+        "application/pdf": "PDF",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "DOCX",
+        "image/jpeg": "JPG",
+        "image/png": "PNG"
+    }
+    file_type = file_type_map.get(file.content_type, "PDF")
+    
+    # Generate new policy number (same base, increment version)
+    new_version = (existing_policy.version or 1) + 1
+    policy_number = generate_policy_number(db)
+    
+    # Save file locally
+    file_extension = file.filename.split(".")[-1] if "." in file.filename else file_type.lower()
+    storage_filename = f"{policy_number}.{file_extension}"
+    storage_path = os.path.join(POLICY_UPLOAD_DIR, storage_filename)
+    
+    content = await file.read()
+    with open(storage_path, "wb") as f:
+        f.write(content)
+    
+    # Create new policy upload record with reference to old policy
+    new_policy = PolicyUpload(
+        tenant_id=UUID(settings.DEFAULT_TENANT_ID),
+        policy_name=existing_policy.policy_name,  # Keep same name
+        policy_number=policy_number,
+        description=description or existing_policy.description,
+        file_name=file.filename,
+        file_type=file_type,
+        file_size=len(content),
+        storage_path=storage_path,
+        storage_type="local",
+        content_type=file.content_type,
+        status="PENDING",
+        version=new_version,
+        replaces_policy_id=existing_policy.id,  # Link to old policy
+        uploaded_by=uploaded_by
+    )
+    
+    db.add(new_policy)
+    db.commit()
+    db.refresh(new_policy)
+    
+    # Log the action
+    log_policy_action(
+        db, "POLICY_VERSION_UPLOAD", new_policy.id, "CREATE",
+        uploaded_by, None, 
+        {"policy_number": policy_number, "file_name": file.filename, "version": new_version, "replaces": str(existing_policy.id)},
+        f"New version (v{new_version}) uploaded for policy: {existing_policy.policy_name}"
+    )
+    db.commit()
+    
+    # Trigger AI extraction in background
+    background_tasks.add_task(extract_policy_categories, new_policy.id, db)
+    
+    # Update status to processing
+    new_policy.status = "AI_PROCESSING"
+    db.commit()
+    db.refresh(new_policy)
+    
+    return PolicyUploadResponse(
+        id=new_policy.id,
+        tenant_id=new_policy.tenant_id,
+        policy_name=new_policy.policy_name,
+        policy_number=new_policy.policy_number,
+        description=new_policy.description,
+        file_name=new_policy.file_name,
+        file_type=new_policy.file_type,
+        file_size=new_policy.file_size,
+        storage_path=new_policy.storage_path,
+        gcs_uri=new_policy.gcs_uri,
+        storage_type=new_policy.storage_type,
+        content_type=new_policy.content_type,
+        status=new_policy.status,
+        version=new_policy.version,
+        is_active=new_policy.is_active,
+        replaces_policy_id=new_policy.replaces_policy_id,
+        effective_from=new_policy.effective_from,
+        effective_to=new_policy.effective_to,
+        uploaded_by=new_policy.uploaded_by,
+        approved_by=new_policy.approved_by,
+        approved_at=new_policy.approved_at,
+        created_at=new_policy.created_at,
+        updated_at=new_policy.updated_at,
+        categories=[]
+    )
+
+
+# ==================== CATEGORY ENDPOINTS ====================
+
+@router.get("/{policy_id}/categories", response_model=List[PolicyCategoryResponse])
+def get_policy_categories(policy_id: UUID, db: Session = Depends(get_sync_db)):
+    """Get all categories for a policy"""
+    categories = db.query(PolicyCategory).filter(
+        PolicyCategory.policy_upload_id == policy_id
+    ).order_by(PolicyCategory.display_order, PolicyCategory.category_name).all()
+    
+    return [PolicyCategoryResponse(
+        id=cat.id,
+        tenant_id=cat.tenant_id,
+        policy_upload_id=cat.policy_upload_id,
+        category_name=cat.category_name,
+        category_code=cat.category_code,
+        category_type=cat.category_type,
+        description=cat.description,
+        max_amount=float(cat.max_amount) if cat.max_amount else None,
+        min_amount=float(cat.min_amount) if cat.min_amount else None,
+        currency=cat.currency,
+        frequency_limit=cat.frequency_limit,
+        frequency_count=cat.frequency_count,
+        eligibility_criteria=cat.eligibility_criteria or {},
+        requires_receipt=cat.requires_receipt,
+        requires_approval_above=float(cat.requires_approval_above) if cat.requires_approval_above else None,
+        allowed_document_types=cat.allowed_document_types or [],
+        submission_window_days=cat.submission_window_days,
+        is_active=cat.is_active,
+        display_order=cat.display_order,
+        source_text=cat.source_text,
+        ai_confidence=cat.ai_confidence,
+        created_at=cat.created_at,
+        updated_at=cat.updated_at
+    ) for cat in categories]
+
+
+@router.put("/categories/{category_id}", response_model=PolicyCategoryResponse)
+def update_category(
+    category_id: UUID,
+    updates: PolicyCategoryUpdate,
+    updated_by: UUID = None,
+    db: Session = Depends(get_sync_db)
+):
+    """Update a policy category (admin can edit AI-extracted values)"""
+    category = db.query(PolicyCategory).filter(PolicyCategory.id == category_id).first()
+    
+    if not category:
+        raise HTTPException(status_code=404, detail="Category not found")
+    
+    # Check if parent policy is still editable
+    policy = db.query(PolicyUpload).filter(PolicyUpload.id == category.policy_upload_id).first()
+    if policy and policy.status == "ACTIVE":
+        raise HTTPException(status_code=400, detail="Cannot edit category of active policy")
+    
+    # Store old values for audit
+    old_values = {
+        "category_name": category.category_name,
+        "max_amount": float(category.max_amount) if category.max_amount else None,
+        "requires_receipt": category.requires_receipt
+    }
+    
+    # Apply updates
+    update_data = updates.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(category, key, value)
+    
+    db.commit()
+    db.refresh(category)
+    
+    # Log the update
+    if updated_by:
+        log_policy_action(
+            db, "POLICY_CATEGORY", category_id, "UPDATE",
+            updated_by, old_values, update_data,
+            f"Category updated: {category.category_name}"
+        )
+        db.commit()
+    
+    return PolicyCategoryResponse(
+        id=category.id,
+        tenant_id=category.tenant_id,
+        policy_upload_id=category.policy_upload_id,
+        category_name=category.category_name,
+        category_code=category.category_code,
+        category_type=category.category_type,
+        description=category.description,
+        max_amount=float(category.max_amount) if category.max_amount else None,
+        min_amount=float(category.min_amount) if category.min_amount else None,
+        currency=category.currency,
+        frequency_limit=category.frequency_limit,
+        frequency_count=category.frequency_count,
+        eligibility_criteria=category.eligibility_criteria or {},
+        requires_receipt=category.requires_receipt,
+        requires_approval_above=float(category.requires_approval_above) if category.requires_approval_above else None,
+        allowed_document_types=category.allowed_document_types or [],
+        submission_window_days=category.submission_window_days,
+        is_active=category.is_active,
+        display_order=category.display_order,
+        source_text=category.source_text,
+        ai_confidence=category.ai_confidence,
+        created_at=category.created_at,
+        updated_at=category.updated_at
+    )
+
+
+# ==================== APPROVAL ENDPOINTS ====================
+
+@router.post("/{policy_id}/approve", response_model=PolicyUploadResponse)
+def approve_policy(
+    policy_id: UUID,
+    approval: PolicyApprovalRequest,
+    db: Session = Depends(get_sync_db)
+):
+    """Approve a policy and make its categories active for claim submission"""
+    policy = db.query(PolicyUpload).filter(
+        and_(
+            PolicyUpload.id == policy_id,
+            PolicyUpload.tenant_id == UUID(settings.DEFAULT_TENANT_ID)
+        )
+    ).first()
+    
+    # Get approver - use provided ID or find HR Manager as default
+    approved_by = approval.approved_by
+    if not approved_by:
+        # Find HR Manager user as default approver
+        hr_manager = db.query(User).filter(
+            and_(
+                User.tenant_id == UUID(settings.DEFAULT_TENANT_ID),
+                User.roles.any("HR")
+            )
+        ).first()
+        if hr_manager:
+            approved_by = hr_manager.id
+        else:
+            # Fallback to any admin user
+            admin_user = db.query(User).filter(
+                and_(
+                    User.tenant_id == UUID(settings.DEFAULT_TENANT_ID),
+                    User.roles.any("ADMIN")
+                )
+            ).first()
+            if admin_user:
+                approved_by = admin_user.id
+            else:
+                raise HTTPException(status_code=400, detail="No approver found. Please provide approved_by.")
+    
+    if not policy:
+        raise HTTPException(status_code=404, detail="Policy not found")
+    
+    if policy.status not in ["EXTRACTED", "PENDING"]:
+        raise HTTPException(status_code=400, detail=f"Policy in {policy.status} status cannot be approved")
+    
+    # Only archive the specific policy being replaced (if this is a new version)
+    if policy.replaces_policy_id:
+        old_policy = db.query(PolicyUpload).filter(
+            PolicyUpload.id == policy.replaces_policy_id
+        ).first()
+        if old_policy:
+            old_policy.is_active = False
+            old_policy.status = "ARCHIVED"
+    
+    # Update policy status
+    policy.status = "ACTIVE"
+    policy.is_active = True
+    policy.approved_by = approved_by
+    policy.approved_at = datetime.utcnow()
+    policy.review_notes = approval.review_notes
+    policy.effective_from = approval.effective_from or date.today()
+    
+    # Apply any category updates from approval request
+    if approval.categories:
+        for cat_update in approval.categories:
+            if hasattr(cat_update, 'id') and cat_update.id:
+                category = db.query(PolicyCategory).filter(PolicyCategory.id == cat_update.id).first()
+                if category:
+                    update_data = cat_update.model_dump(exclude_unset=True, exclude={'id'})
+                    for key, value in update_data.items():
+                        setattr(category, key, value)
+    
+    db.commit()
+    db.refresh(policy)
+    
+    # Log approval
+    log_policy_action(
+        db, "POLICY_UPLOAD", policy_id, "APPROVE",
+        approved_by, {"status": "EXTRACTED"}, {"status": "ACTIVE"},
+        f"Policy approved and activated: {policy.policy_name}"
+    )
+    db.commit()
+    
+    return get_policy(policy_id, db)
+
+
+@router.post("/{policy_id}/reject")
+def reject_policy(
+    policy_id: UUID,
+    rejection: PolicyRejectRequest,
+    db: Session = Depends(get_sync_db)
+):
+    """Reject a policy"""
+    policy = db.query(PolicyUpload).filter(
+        and_(
+            PolicyUpload.id == policy_id,
+            PolicyUpload.tenant_id == UUID(settings.DEFAULT_TENANT_ID)
+        )
+    ).first()
+    
+    if not policy:
+        raise HTTPException(status_code=404, detail="Policy not found")
+    
+    # Find rejector - use HR Manager as default
+    hr_manager = db.query(User).filter(
+        and_(
+            User.tenant_id == UUID(settings.DEFAULT_TENANT_ID),
+            User.roles.any("HR")
+        )
+    ).first()
+    rejected_by = hr_manager.id if hr_manager else policy.uploaded_by
+    
+    old_status = policy.status
+    policy.status = "REJECTED"
+    policy.review_notes = rejection.review_notes
+    
+    db.commit()
+    
+    # Log rejection
+    log_policy_action(
+        db, "POLICY_UPLOAD", policy_id, "REJECT",
+        rejected_by, {"status": old_status}, {"status": "REJECTED"},
+        f"Policy rejected: {rejection.review_notes}"
+    )
+    db.commit()
+    
+    return {"message": "Policy rejected", "policy_id": str(policy_id)}
+
+
+# ==================== ACTIVE CATEGORIES ENDPOINT ====================
+
+@router.get("/categories/active", response_model=List[ActiveCategoryResponse])
+def get_active_categories(
+    category_type: Optional[str] = None,
+    db: Session = Depends(get_sync_db)
+):
+    """
+    Get all active categories from the currently active policy.
+    Used for claim submission dropdown.
+    """
+    # Find active policy
+    active_policy = db.query(PolicyUpload).filter(
+        and_(
+            PolicyUpload.tenant_id == UUID(settings.DEFAULT_TENANT_ID),
+            PolicyUpload.is_active == True,
+            PolicyUpload.status == "ACTIVE"
+        )
+    ).first()
+    
+    if not active_policy:
+        return []
+    
+    # Get categories
+    query = db.query(PolicyCategory).filter(
+        and_(
+            PolicyCategory.policy_upload_id == active_policy.id,
+            PolicyCategory.is_active == True
+        )
+    )
+    
+    if category_type:
+        query = query.filter(PolicyCategory.category_type == category_type)
+    
+    categories = query.order_by(PolicyCategory.display_order, PolicyCategory.category_name).all()
+    
+    return [ActiveCategoryResponse(
+        id=cat.id,
+        category_name=cat.category_name,
+        category_code=cat.category_code,
+        category_type=cat.category_type,
+        description=cat.description,
+        max_amount=float(cat.max_amount) if cat.max_amount else None,
+        min_amount=float(cat.min_amount) if cat.min_amount else None,
+        currency=cat.currency,
+        requires_receipt=cat.requires_receipt
+    ) for cat in categories]
+
+
+# ==================== VALIDATION ENDPOINT ====================
+
+@router.post("/validate-claim", response_model=ClaimValidationResponse)
+def validate_claim(
+    request: ClaimValidationRequest,
+    db: Session = Depends(get_sync_db)
+):
+    """
+    Validate a claim against policy rules.
+    Called during claim submission to check compliance.
+    """
+    from services.claim_validation_service import ClaimValidationService
+    
+    service = ClaimValidationService(db)
+    return service.validate_claim(request)
+
+
+# ==================== AUDIT LOG ENDPOINT ====================
+
+@router.get("/audit-logs", response_model=List[PolicyAuditLogResponse])
+def get_audit_logs(
+    entity_type: Optional[str] = None,
+    entity_id: Optional[UUID] = None,
+    action: Optional[str] = None,
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_sync_db)
+):
+    """Get policy audit logs"""
+    query = db.query(PolicyAuditLog).filter(
+        PolicyAuditLog.tenant_id == UUID(settings.DEFAULT_TENANT_ID)
+    )
+    
+    if entity_type:
+        query = query.filter(PolicyAuditLog.entity_type == entity_type)
+    if entity_id:
+        query = query.filter(PolicyAuditLog.entity_id == entity_id)
+    if action:
+        query = query.filter(PolicyAuditLog.action == action)
+    
+    logs = query.order_by(PolicyAuditLog.performed_at.desc()).offset(skip).limit(limit).all()
+    
+    return [PolicyAuditLogResponse(
+        id=log.id,
+        tenant_id=log.tenant_id,
+        entity_type=log.entity_type,
+        entity_id=log.entity_id,
+        action=log.action,
+        old_values=log.old_values,
+        new_values=log.new_values,
+        description=log.description,
+        performed_by=log.performed_by,
+        performed_at=log.performed_at
+    ) for log in logs]

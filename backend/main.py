@@ -153,7 +153,7 @@ async def health_check():
 
 
 # API v1 routes
-from api.v1 import claims, employees, projects, approvals, documents, dashboard, comments
+from api.v1 import claims, employees, projects, approvals, documents, dashboard, comments, settings as settings_api, policies
 
 app.include_router(claims.router, prefix="/api/v1/claims", tags=["Claims"])
 app.include_router(employees.router, prefix="/api/v1/employees", tags=["Employees"])
@@ -162,6 +162,8 @@ app.include_router(approvals.router, prefix="/api/v1/approvals", tags=["Approval
 app.include_router(documents.router, prefix="/api/v1/documents", tags=["Documents"])
 app.include_router(dashboard.router, prefix="/api/v1/dashboard", tags=["Dashboard"])
 app.include_router(comments.router, prefix="/api/v1/comments", tags=["Comments"])
+app.include_router(settings_api.router, prefix="/api/v1/settings", tags=["Settings"])
+app.include_router(policies.router, prefix="/api/v1/policies", tags=["Policies"])
 
 
 # Root endpoint
