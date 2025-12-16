@@ -33,6 +33,7 @@ function mapBackendEmployeeToUser(backendEmployee: any): User {
     mobile: backendEmployee.mobile || '',
     address: backendEmployee.address || '',
     designation: backendEmployee.designation || '',
+    region: backendEmployee.region || '',
     joinDate: backendEmployee.date_of_joining || '',
     status: backendEmployee.employment_status === 'ACTIVE' ? 'active' : 
             backendEmployee.employment_status === 'ON_LEAVE' ? 'on_leave' : 'inactive',

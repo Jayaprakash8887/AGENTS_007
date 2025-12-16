@@ -17,7 +17,8 @@ from schemas import (
     PolicyUploadResponse, PolicyUploadListResponse, PolicyCategoryResponse,
     PolicyCategoryUpdate, PolicyApprovalRequest, PolicyRejectRequest,
     ClaimValidationRequest, ClaimValidationResponse, ValidationCheckResult,
-    ValidationStatus, ActiveCategoryResponse, PolicyAuditLogResponse
+    ValidationStatus, ActiveCategoryResponse, PolicyAuditLogResponse,
+    ExtractedClaimListResponse
 )
 from config import settings
 
@@ -84,6 +85,7 @@ async def upload_policy(
     file: UploadFile = File(...),
     policy_name: str = Form(...),
     description: str = Form(None),
+    region: str = Form(None),  # Region/location this policy applies to
     uploaded_by: UUID = Form(...),
     db: Session = Depends(get_sync_db)
 ):
@@ -127,6 +129,7 @@ async def upload_policy(
         policy_name=policy_name,
         policy_number=policy_number,
         description=description,
+        region=region,  # Region/location this policy applies to
         file_name=file.filename,
         file_type=file_type,
         file_size=len(content),
@@ -178,6 +181,7 @@ async def upload_policy(
         is_active=policy_upload.is_active,
         effective_from=policy_upload.effective_from,
         effective_to=policy_upload.effective_to,
+        region=policy_upload.region,
         uploaded_by=policy_upload.uploaded_by,
         approved_by=policy_upload.approved_by,
         approved_at=policy_upload.approved_at,
@@ -249,9 +253,61 @@ def list_policies(
             version=policy.version,
             is_active=policy.is_active,
             effective_from=policy.effective_from,
+            region=policy.region,
             categories_count=categories_count,
             uploaded_by=policy.uploaded_by,
             created_at=policy.created_at
+        ))
+    
+    return result
+
+
+@router.get("/extracted-claims", response_model=List[ExtractedClaimListResponse])
+def list_extracted_claims(
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_sync_db)
+):
+    """List all extracted claims (categories) from all policies"""
+    categories = db.query(PolicyCategory, PolicyUpload).join(
+        PolicyUpload, PolicyCategory.policy_upload_id == PolicyUpload.id
+    ).filter(
+        PolicyCategory.tenant_id == UUID(settings.DEFAULT_TENANT_ID)
+    ).order_by(PolicyUpload.created_at.desc(), PolicyCategory.display_order).offset(skip).limit(limit).all()
+    
+    result = []
+    for cat, policy in categories:
+        result.append(ExtractedClaimListResponse(
+            # Category fields
+            id=cat.id,
+            tenant_id=cat.tenant_id,
+            policy_upload_id=cat.policy_upload_id,
+            category_name=cat.category_name,
+            category_code=cat.category_code,
+            category_type=cat.category_type,
+            description=cat.description,
+            max_amount=float(cat.max_amount) if cat.max_amount else None,
+            min_amount=float(cat.min_amount) if cat.min_amount else None,
+            currency=cat.currency,
+            frequency_limit=cat.frequency_limit,
+            frequency_count=cat.frequency_count,
+            eligibility_criteria=cat.eligibility_criteria or {},
+            requires_receipt=cat.requires_receipt,
+            requires_approval_above=float(cat.requires_approval_above) if cat.requires_approval_above else None,
+            allowed_document_types=cat.allowed_document_types or [],
+            submission_window_days=cat.submission_window_days,
+            is_active=cat.is_active,
+            display_order=cat.display_order,
+            source_text=cat.source_text,
+            ai_confidence=cat.ai_confidence,
+            created_at=cat.created_at,
+            updated_at=cat.updated_at,
+            # Policy fields
+            policy_name=policy.policy_name,
+            policy_status=policy.status,
+            policy_version=f"v{policy.version}" if policy.version else None,
+            policy_effective_from=policy.effective_from,
+            policy_region=policy.region
         ))
     
     return result
@@ -295,6 +351,7 @@ def get_policy(policy_id: UUID, db: Session = Depends(get_sync_db)):
         is_active=policy.is_active,
         effective_from=policy.effective_from,
         effective_to=policy.effective_to,
+        region=policy.region,
         uploaded_by=policy.uploaded_by,
         approved_by=policy.approved_by,
         approved_at=policy.approved_at,
@@ -366,6 +423,7 @@ async def upload_new_version(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     description: str = Form(None),
+    region: str = Form(None),
     uploaded_by: UUID = Form(...),
     db: Session = Depends(get_sync_db)
 ):
@@ -429,6 +487,7 @@ async def upload_new_version(
         content_type=file.content_type,
         status="PENDING",
         version=new_version,
+        region=region if region else existing_policy.region,  # Use new region or keep existing
         replaces_policy_id=existing_policy.id,  # Link to old policy
         uploaded_by=uploaded_by
     )
@@ -473,6 +532,7 @@ async def upload_new_version(
         replaces_policy_id=new_policy.replaces_policy_id,
         effective_from=new_policy.effective_from,
         effective_to=new_policy.effective_to,
+        region=new_policy.region,
         uploaded_by=new_policy.uploaded_by,
         approved_by=new_policy.approved_by,
         approved_at=new_policy.approved_at,
@@ -530,11 +590,6 @@ def update_category(
     
     if not category:
         raise HTTPException(status_code=404, detail="Category not found")
-    
-    # Check if parent policy is still editable
-    policy = db.query(PolicyUpload).filter(PolicyUpload.id == category.policy_upload_id).first()
-    if policy and policy.status == "ACTIVE":
-        raise HTTPException(status_code=400, detail="Cannot edit category of active policy")
     
     # Store old values for audit
     old_values = {

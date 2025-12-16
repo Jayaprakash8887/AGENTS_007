@@ -78,6 +78,7 @@ export function EmployeeForm({
       address: '',
       department: '',
       designation: '',
+      region: '',
       role: 'employee',
       dateOfJoining: '',
       managerId: '',
@@ -268,6 +269,37 @@ export function EmployeeForm({
             )}
           />
         </div>
+
+        <FormField
+          control={form.control}
+          name="region"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Region / Location (Optional)</FormLabel>
+              <Select onValueChange={field.onChange} defaultValue={field.value}>
+                <FormControl>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select region for policy applicability" />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  <SelectItem value=" ">No specific region</SelectItem>
+                  <SelectItem value="INDIA">India</SelectItem>
+                  <SelectItem value="USA">United States</SelectItem>
+                  <SelectItem value="UK">United Kingdom</SelectItem>
+                  <SelectItem value="SEZ_BANGALORE">SEZ - Bangalore</SelectItem>
+                  <SelectItem value="SEZ_CHENNAI">SEZ - Chennai</SelectItem>
+                  <SelectItem value="SEZ_HYDERABAD">SEZ - Hyderabad</SelectItem>
+                  <SelectItem value="STP_PUNE">STP - Pune</SelectItem>
+                  <SelectItem value="STP_NOIDA">STP - Noida</SelectItem>
+                  <SelectItem value="DOMESTIC">Domestic</SelectItem>
+                  <SelectItem value="INTERNATIONAL">International</SelectItem>
+                </SelectContent>
+              </Select>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
         {projects.length > 0 && (
           <FormField

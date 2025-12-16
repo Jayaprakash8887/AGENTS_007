@@ -3,7 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format } from "date-fns";
-import { ArrowLeft, ArrowRight, Check, X, Receipt, Wallet, Phone, Clock, TrendingUp, Utensils, Loader2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, X, Receipt, Wallet, Phone, Clock, TrendingUp, Utensils, Loader2, DollarSign } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -12,11 +12,10 @@ import { CategoryGrid, Category } from "./CategoryGrid";
 import { SmartClaimForm, ExtractedClaim, FieldSources } from "./SmartClaimForm";
 import { ClaimReview } from "./ClaimReview";
 import { toast } from "@/hooks/use-toast";
-import { allowancePolicies } from "@/data/mockAllowances";
-import { AllowanceType } from "@/types/allowance";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCreateBatchClaimsWithDocument, BatchClaimItem } from "@/hooks/useClaims";
 import { UploadedFile } from "./DocumentUpload";
+import { useAllowancesByRegion, ExtractedClaimCategory } from "@/hooks/usePolicies";
 
 const claimSchema = z.object({
   category: z.string().optional(),
@@ -50,11 +49,16 @@ const allowanceSteps = [
   { id: 4, label: "Review" },
 ];
 
-const typeIcons: Record<AllowanceType, React.ElementType> = {
-  on_call: Phone,
-  shift: Clock,
-  work_incentive: TrendingUp,
-  food: Utensils,
+// Helper to get an icon based on category code or name
+const getAllowanceIcon = (categoryCode: string, categoryName: string): React.ElementType => {
+  const code = categoryCode?.toLowerCase() || '';
+  const name = categoryName?.toLowerCase() || '';
+  
+  if (code.includes('call') || name.includes('call')) return Phone;
+  if (code.includes('shift') || name.includes('shift')) return Clock;
+  if (code.includes('incentive') || name.includes('incentive')) return TrendingUp;
+  if (code.includes('food') || name.includes('food') || name.includes('meal')) return Utensils;
+  return DollarSign; // Default icon for other allowances
 };
 
 interface ClaimSubmissionFormProps {
@@ -65,7 +69,7 @@ export function ClaimSubmissionForm({ onClose }: ClaimSubmissionFormProps) {
   const [currentStep, setCurrentStep] = useState(1);
   const [claimType, setClaimType] = useState<ClaimTypeOption | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
-  const [selectedAllowance, setSelectedAllowance] = useState<AllowanceType | null>(null);
+  const [selectedAllowanceId, setSelectedAllowanceId] = useState<string | null>(null);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [extractedMultipleClaims, setExtractedMultipleClaims] = useState<ExtractedClaim[]>([]);
   const [singleFormFieldSources, setSingleFormFieldSources] = useState<FieldSources>({
@@ -81,6 +85,10 @@ export function ClaimSubmissionForm({ onClose }: ClaimSubmissionFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { user } = useAuth();
   const createBatchClaimsWithDocument = useCreateBatchClaimsWithDocument();
+  
+  // Fetch allowances filtered by user's region
+  const { data: allowancePolicies = [], isLoading: isLoadingAllowances } = useAllowancesByRegion(user?.region);
+  
   const [allowanceData, setAllowanceData] = useState({
     amount: '',
     periodStart: format(new Date(new Date().getFullYear(), new Date().getMonth(), 1), 'yyyy-MM-dd'),
@@ -102,14 +110,14 @@ export function ClaimSubmissionForm({ onClose }: ClaimSubmissionFormProps) {
     },
   });
 
-  const selectedPolicy = selectedAllowance
-    ? allowancePolicies.find((p) => p.type === selectedAllowance)
+  const selectedPolicy = selectedAllowanceId
+    ? allowancePolicies.find((p) => p.id === selectedAllowanceId)
     : null;
 
   const handleClaimTypeSelect = (type: ClaimTypeOption) => {
     setClaimType(type);
     setSelectedCategory(null);
-    setSelectedAllowance(null);
+    setSelectedAllowanceId(null);
     // For reimbursements, skip category selection and go directly to details
     if (type === 'reimbursement') {
       setCurrentStep(2);
@@ -120,8 +128,8 @@ export function ClaimSubmissionForm({ onClose }: ClaimSubmissionFormProps) {
     setSelectedCategory(category);
   };
 
-  const handleAllowanceSelect = (type: AllowanceType) => {
-    setSelectedAllowance(type);
+  const handleAllowanceSelect = (id: string) => {
+    setSelectedAllowanceId(id);
   };
 
   const handleNext = async () => {
@@ -150,7 +158,7 @@ export function ClaimSubmissionForm({ onClose }: ClaimSubmissionFormProps) {
 
     // For allowances: Step 2 is Category Selection
     if (claimType === 'allowance' && currentStep === 2) {
-      if (!selectedAllowance) {
+      if (!selectedAllowanceId) {
         toast({
           title: "Please select an allowance type",
           description: "Choose an allowance type to continue",
@@ -457,62 +465,88 @@ export function ClaimSubmissionForm({ onClose }: ClaimSubmissionFormProps) {
           <div className="max-w-4xl mx-auto">
             <div className="mb-8 text-center">
               <h2 className="text-2xl font-bold text-foreground mb-2">Select Allowance Type</h2>
-              <p className="text-muted-foreground">Choose the allowance category that applies</p>
+              <p className="text-muted-foreground">
+                {user?.region 
+                  ? `Showing allowances available for ${user.region} region`
+                  : 'Choose the allowance category that applies'}
+              </p>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              {allowancePolicies.map((policy) => {
-                const Icon = typeIcons[policy.type];
-                return (
-                  <Card
-                    key={policy.id}
-                    className={cn(
-                      "cursor-pointer transition-all hover:shadow-lg",
-                      selectedAllowance === policy.type && "ring-2 ring-primary shadow-lg"
-                    )}
-                    onClick={() => handleAllowanceSelect(policy.type)}
-                  >
-                    <CardHeader>
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 rounded-lg bg-primary/10">
-                          <Icon className="h-5 w-5 text-primary" />
+            {isLoadingAllowances ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                <span className="ml-2 text-muted-foreground">Loading allowances...</span>
+              </div>
+            ) : allowancePolicies.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-muted-foreground">
+                  No allowances available for your region ({user?.region || 'Not specified'}).
+                </p>
+                <p className="text-sm text-muted-foreground mt-2">
+                  Please contact HR if you believe this is an error.
+                </p>
+              </div>
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-2">
+                {allowancePolicies.map((policy) => {
+                  const Icon = getAllowanceIcon(policy.category_code, policy.category_name);
+                  const eligibilityRules = policy.eligibility_criteria?.requirements || [];
+                  return (
+                    <Card
+                      key={policy.id}
+                      className={cn(
+                        "cursor-pointer transition-all hover:shadow-lg",
+                        selectedAllowanceId === policy.id && "ring-2 ring-primary shadow-lg"
+                      )}
+                      onClick={() => handleAllowanceSelect(policy.id)}
+                    >
+                      <CardHeader>
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 rounded-lg bg-primary/10">
+                            <Icon className="h-5 w-5 text-primary" />
+                          </div>
+                          <div>
+                            <CardTitle className="text-base">{policy.category_name}</CardTitle>
+                            <Badge variant="outline" className="text-xs mt-1">{policy.category_code}</Badge>
+                          </div>
                         </div>
-                        <div>
-                          <CardTitle className="text-base">{policy.name}</CardTitle>
-                          {policy.taxable && (
-                            <Badge variant="secondary" className="text-xs mt-1">Taxable</Badge>
-                          )}
-                        </div>
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-sm text-muted-foreground mb-3">
-                        {policy.description}
-                      </p>
-                      <div className="space-y-1">
-                        <p className="text-xs font-medium text-foreground">Eligibility:</p>
-                        <ul className="text-xs text-muted-foreground space-y-0.5">
-                          {policy.eligibilityRules.slice(0, 2).map((rule, idx) => (
-                            <li key={idx}>• {rule}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
+                      </CardHeader>
+                      <CardContent>
+                        <p className="text-sm text-muted-foreground mb-3">
+                          {policy.description || 'No description available'}
+                        </p>
+                        {policy.max_amount && (
+                          <p className="text-xs text-muted-foreground mb-2">
+                            Max Amount: ₹{policy.max_amount.toLocaleString()}
+                          </p>
+                        )}
+                        {eligibilityRules.length > 0 && (
+                          <div className="space-y-1">
+                            <p className="text-xs font-medium text-foreground">Eligibility:</p>
+                            <ul className="text-xs text-muted-foreground space-y-0.5">
+                              {eligibilityRules.slice(0, 2).map((rule, idx) => (
+                                <li key={idx}>• {rule}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
         {/* Step 3: Allowance Details Form */}
-        {currentStep === 3 && claimType === 'allowance' && selectedAllowance && selectedPolicy && (
+        {currentStep === 3 && claimType === 'allowance' && selectedAllowanceId && selectedPolicy && (
           <div className="max-w-3xl mx-auto">
             <Card>
               <CardHeader>
                 <CardTitle>Enter Allowance Details</CardTitle>
                 <CardDescription>
-                  Complete the form below to submit your {selectedPolicy.name.toLowerCase()}
+                  Complete the form below to submit your {selectedPolicy.category_name.toLowerCase()}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
@@ -527,12 +561,14 @@ export function ClaimSubmissionForm({ onClose }: ClaimSubmissionFormProps) {
                       placeholder="0.00"
                       value={allowanceData.amount}
                       onChange={(e) => setAllowanceData({ ...allowanceData, amount: e.target.value })}
-                      max={selectedPolicy.maxAmount}
+                      max={selectedPolicy.max_amount || undefined}
                     />
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    Maximum allowed: ₹{selectedPolicy.maxAmount.toLocaleString()}
-                  </p>
+                  {selectedPolicy.max_amount && (
+                    <p className="text-xs text-muted-foreground">
+                      Maximum allowed: ₹{selectedPolicy.max_amount.toLocaleString()}
+                    </p>
+                  )}
                 </div>
 
                 {/* Period */}
@@ -585,7 +621,7 @@ export function ClaimSubmissionForm({ onClose }: ClaimSubmissionFormProps) {
                 <div className="bg-muted/50 rounded-lg p-4">
                   <p className="text-sm font-medium mb-2">Policy Requirements:</p>
                   <ul className="text-sm text-muted-foreground space-y-1">
-                    {selectedPolicy.eligibilityRules.map((rule, idx) => (
+                    {(selectedPolicy.eligibility_criteria?.requirements || []).map((rule, idx) => (
                       <li key={idx} className="flex items-start gap-2">
                         <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
                         <span>{rule}</span>
@@ -607,7 +643,7 @@ export function ClaimSubmissionForm({ onClose }: ClaimSubmissionFormProps) {
           />
         )}
 
-        {currentStep === 4 && claimType === 'allowance' && selectedAllowance && selectedPolicy && (
+        {currentStep === 4 && claimType === 'allowance' && selectedAllowanceId && selectedPolicy && (
           <div className="max-w-3xl mx-auto">
             <Card>
               <CardHeader>
@@ -618,7 +654,7 @@ export function ClaimSubmissionForm({ onClose }: ClaimSubmissionFormProps) {
                 <div className="grid gap-4">
                   <div className="flex justify-between py-2 border-b">
                     <span className="text-sm font-medium">Allowance Type:</span>
-                    <span className="text-sm">{selectedPolicy.name}</span>
+                    <span className="text-sm">{selectedPolicy.category_name}</span>
                   </div>
                   <div className="flex justify-between py-2 border-b">
                     <span className="text-sm font-medium">Amount:</span>
@@ -642,11 +678,13 @@ export function ClaimSubmissionForm({ onClose }: ClaimSubmissionFormProps) {
                       <span className="text-sm">{allowanceData.projectCode}</span>
                     </div>
                   )}
+                  <div className="flex justify-between py-2 border-b">
+                    <span className="text-sm font-medium">Region:</span>
+                    <Badge variant="secondary">{selectedPolicy.policy_region}</Badge>
+                  </div>
                   <div className="flex justify-between py-2">
-                    <span className="text-sm font-medium">Tax Status:</span>
-                    <Badge variant={selectedPolicy.taxable ? "destructive" : "success"}>
-                      {selectedPolicy.taxable ? "Taxable" : "Non-Taxable"}
-                    </Badge>
+                    <span className="text-sm font-medium">Policy:</span>
+                    <span className="text-sm text-muted-foreground">{selectedPolicy.policy_name}</span>
                   </div>
                 </div>
               </CardContent>

@@ -133,6 +133,9 @@ class User(Base):
     date_of_joining = Column(Date)
     employment_status = Column(String(20), default="ACTIVE")  # ACTIVE, INACTIVE, ON_LEAVE
     
+    # Region/Location (e.g., 'INDIA', 'USA', 'SEZ_BANGALORE', 'STP_CHENNAI')
+    region = Column(String(100), nullable=True)
+    
     # Roles & Permissions
     roles = Column(ARRAY(String), default=[])  # EMPLOYEE, MANAGER, HR, FINANCE, ADMIN
     
@@ -529,6 +532,9 @@ class PolicyUpload(Base):
     effective_from = Column(Date)
     effective_to = Column(Date)
     
+    # Region/Location applicability (e.g., 'INDIA', 'USA', 'SEZ_BANGALORE', 'STP_CHENNAI')
+    region = Column(String(100), nullable=True)  # NULL means applicable to all regions
+    
     # Audit
     uploaded_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     approved_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
@@ -551,6 +557,7 @@ class PolicyUpload(Base):
         Index("idx_policy_uploads_status", "status"),
         Index("idx_policy_uploads_active", "is_active"),
         Index("idx_policy_uploads_number", "policy_number"),
+        Index("idx_policy_uploads_region", "region"),
     )
 
 

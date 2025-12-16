@@ -39,6 +39,13 @@ import {
 } from '@/components/ui/table';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
@@ -100,6 +107,7 @@ interface PolicyUpload {
   review_notes?: string;
   created_at: string;
   updated_at: string;
+  region?: string;
   categories: PolicyCategory[];
 }
 
@@ -112,6 +120,7 @@ interface PolicyUploadListItem {
   version: number;
   is_active: boolean;
   effective_from?: string;
+  region?: string;
   categories_count: number;
   uploaded_by: string;
   created_at: string;
@@ -222,6 +231,21 @@ function formatFileSize(bytes?: number): string {
   return parseFloat((bytes / Math.pow(1024, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
+// Region options for policies
+const REGION_OPTIONS = [
+  { value: '', label: 'All Regions (Global)' },
+  { value: 'INDIA', label: 'India' },
+  { value: 'USA', label: 'United States' },
+  { value: 'UK', label: 'United Kingdom' },
+  { value: 'SEZ_BANGALORE', label: 'SEZ - Bangalore' },
+  { value: 'SEZ_CHENNAI', label: 'SEZ - Chennai' },
+  { value: 'SEZ_HYDERABAD', label: 'SEZ - Hyderabad' },
+  { value: 'STP_PUNE', label: 'STP - Pune' },
+  { value: 'STP_NOIDA', label: 'STP - Noida' },
+  { value: 'DOMESTIC', label: 'Domestic' },
+  { value: 'INTERNATIONAL', label: 'International' },
+];
+
 export default function Policies() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -234,6 +258,7 @@ export default function Policies() {
   const [isNewVersionOpen, setIsNewVersionOpen] = useState(false);
   const [selectedPolicyId, setSelectedPolicyId] = useState<string | null>(null);
   const [selectedPolicyName, setSelectedPolicyName] = useState<string>('');
+  const [regionFilter, setRegionFilter] = useState<string>('');
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const newVersionFileInputRef = useRef<HTMLInputElement>(null);
   
@@ -241,10 +266,12 @@ export default function Policies() {
   const [uploadForm, setUploadForm] = useState({
     policy_name: '',
     description: '',
+    region: '',
     file: null as File | null,
   });
   const [newVersionForm, setNewVersionForm] = useState({
     description: '',
+    region: '',
     file: null as File | null,
   });
   const [approveNotes, setApproveNotes] = useState('');
@@ -269,7 +296,7 @@ export default function Policies() {
     onSuccess: () => {
       toast({ title: 'Success', description: 'Policy uploaded successfully. AI extraction in progress.' });
       setIsUploadOpen(false);
-      setUploadForm({ policy_name: '', description: '', file: null });
+      setUploadForm({ policy_name: '', description: '', region: '', file: null });
       queryClient.invalidateQueries({ queryKey: ['policies'] });
     },
     onError: (error: Error) => {
@@ -321,8 +348,9 @@ export default function Policies() {
     onSuccess: () => {
       toast({ title: 'Success', description: 'New version uploaded successfully. AI extraction in progress.' });
       setIsNewVersionOpen(false);
-      setNewVersionForm({ description: '', file: null });
+      setNewVersionForm({ description: '', region: '', file: null });
       queryClient.invalidateQueries({ queryKey: ['policies'] });
+      queryClient.invalidateQueries({ queryKey: ['extracted-claims'] });
     },
     onError: (error: Error) => {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
@@ -340,6 +368,9 @@ export default function Policies() {
     formData.append('policy_name', uploadForm.policy_name);
     if (uploadForm.description) {
       formData.append('description', uploadForm.description);
+    }
+    if (uploadForm.region) {
+      formData.append('region', uploadForm.region);
     }
     formData.append('uploaded_by', user?.id || '');
     
@@ -385,6 +416,9 @@ export default function Policies() {
     formData.append('file', newVersionForm.file);
     if (newVersionForm.description) {
       formData.append('description', newVersionForm.description);
+    }
+    if (newVersionForm.region) {
+      formData.append('region', newVersionForm.region);
     }
     formData.append('uploaded_by', user?.id || '');
     
@@ -451,6 +485,27 @@ export default function Policies() {
                   placeholder="Brief description of the policy..."
                   rows={3}
                 />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="region">Region / Location</Label>
+                <Select
+                  value={uploadForm.region}
+                  onValueChange={(value) => setUploadForm({ ...uploadForm, region: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select region (leave empty for global)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {REGION_OPTIONS.map((option) => (
+                      <SelectItem key={option.value || 'global'} value={option.value || ' '}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Select the region this policy applies to. Leave empty for global policies.
+                </p>
               </div>
               <div className="space-y-2">
                 <Label>Policy Document *</Label>
@@ -544,44 +599,83 @@ export default function Policies() {
       {/* Policies List */}
       <Card>
         <CardHeader>
-          <CardTitle>Policy Documents</CardTitle>
-          <CardDescription>
-            Uploaded policy documents and their extraction status
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Policy Documents</CardTitle>
+              <CardDescription>
+                Uploaded policy documents and their extraction status
+              </CardDescription>
+            </div>
+            <div className="w-48">
+              <Select value={regionFilter} onValueChange={setRegionFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Filter by Region" />
+                </SelectTrigger>
+                <SelectContent>
+                  {REGION_OPTIONS.map((option) => (
+                    <SelectItem key={option.value || 'all'} value={option.value || ' '}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
-          {!policies || policies.length === 0 ? (
-            <div className="text-center py-12">
-              <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <h3 className="text-lg font-semibold mb-2">No policies uploaded</h3>
-              <p className="text-muted-foreground mb-4">
-                Upload a policy document to get started with AI-powered category extraction.
-              </p>
-              <Button onClick={() => setIsUploadOpen(true)}>
-                <Upload className="h-4 w-4 mr-2" />
-                Upload First Policy
-              </Button>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Policy</TableHead>
-                  <TableHead>File</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Categories</TableHead>
-                  <TableHead>Uploaded</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {policies.map((policy) => (
+          {(() => {
+            const filteredPolicies = policies?.filter(p => 
+              !regionFilter || regionFilter === ' ' || p.region === regionFilter || (!p.region && regionFilter === ' ')
+            );
+            
+            if (!filteredPolicies || filteredPolicies.length === 0) {
+              return (
+                <div className="text-center py-12">
+                  <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                  <h3 className="text-lg font-semibold mb-2">
+                    {regionFilter && regionFilter !== ' ' ? 'No policies found for this region' : 'No policies uploaded'}
+                  </h3>
+                  <p className="text-muted-foreground mb-4">
+                    {regionFilter && regionFilter !== ' ' 
+                      ? 'Try selecting a different region or clear the filter.'
+                      : 'Upload a policy document to get started with AI-powered category extraction.'}
+                  </p>
+                  {(!regionFilter || regionFilter === ' ') && (
+                    <Button onClick={() => setIsUploadOpen(true)}>
+                      <Upload className="h-4 w-4 mr-2" />
+                      Upload First Policy
+                    </Button>
+                  )}
+                </div>
+              );
+            }
+            
+            return (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Policy</TableHead>
+                    <TableHead>Region</TableHead>
+                    <TableHead>File</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Categories</TableHead>
+                    <TableHead>Uploaded</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredPolicies.map((policy) => (
                   <TableRow key={policy.id}>
                     <TableCell>
                       <div>
                         <p className="font-medium">{policy.policy_name}</p>
                         <p className="text-sm text-muted-foreground">{policy.policy_number}</p>
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="text-xs">
+                        {policy.region || 'Global'}
+                      </Badge>
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
@@ -654,7 +748,8 @@ export default function Policies() {
                 ))}
               </TableBody>
             </Table>
-          )}
+            );
+          })()}
         </CardContent>
       </Card>
 
@@ -682,6 +777,12 @@ export default function Policies() {
                 <div>
                   <Label className="text-muted-foreground">Version</Label>
                   <p className="mt-1">v{selectedPolicy.version}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Region</Label>
+                  <div className="mt-1">
+                    <Badge variant="outline">{selectedPolicy.region || 'Global'}</Badge>
+                  </div>
                 </div>
                 <div>
                   <Label className="text-muted-foreground">File</Label>
@@ -891,6 +992,27 @@ export default function Policies() {
               />
             </div>
             <div className="space-y-2">
+              <Label htmlFor="new_version_region">Region / Location</Label>
+              <Select
+                value={newVersionForm.region}
+                onValueChange={(value) => setNewVersionForm({ ...newVersionForm, region: value === ' ' ? '' : value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select region (leave empty to keep existing)" />
+                </SelectTrigger>
+                <SelectContent>
+                  {REGION_OPTIONS.map((option) => (
+                    <SelectItem key={option.value || 'global'} value={option.value || ' '}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Leave empty to keep the existing region setting
+              </p>
+            </div>
+            <div className="space-y-2">
               <Label>New Policy Document *</Label>
               <div 
                 className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:border-primary/50 transition-colors"
@@ -929,7 +1051,7 @@ export default function Policies() {
           <DialogFooter>
             <Button variant="outline" onClick={() => {
               setIsNewVersionOpen(false);
-              setNewVersionForm({ description: '', file: null });
+              setNewVersionForm({ description: '', region: '', file: null });
             }}>Cancel</Button>
             <Button onClick={handleNewVersionUpload} disabled={newVersionMutation.isPending || !newVersionForm.file}>
               {newVersionMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}

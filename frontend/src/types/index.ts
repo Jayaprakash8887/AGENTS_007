@@ -34,6 +34,7 @@ export interface User {
   mobile?: string;
   address?: string;
   designation?: string;
+  region?: string;  // Region/location for policy applicability
   joinDate?: string;
   status?: 'active' | 'inactive' | 'on_leave';
   projectIds?: string[];
@@ -148,6 +149,7 @@ export interface Employee extends User {
   firstName?: string;
   lastName?: string;
   designation?: string;
+  region?: string;  // Region/location for policy applicability
   joinDate: Date | string;
   status: 'active' | 'inactive' | 'on_leave';
   managerId?: string;

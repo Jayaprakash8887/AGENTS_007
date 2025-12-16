@@ -39,6 +39,7 @@ def _user_to_employee_response(user: User) -> dict:
         "manager_id": user.manager_id,
         "date_of_joining": user.date_of_joining,
         "employment_status": user.employment_status or "ACTIVE",
+        "region": user.region,  # Region/location for policy applicability
         "employee_data": user.user_data or {},
         "created_at": user.created_at,
     }

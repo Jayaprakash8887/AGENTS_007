@@ -114,6 +114,7 @@ export default function Employees() {
         address: data.address || '',
         department: data.department,
         designation: data.designation || data.role,
+        region: data.region?.trim() || undefined,
         joinDate: data.dateOfJoining || format(new Date(), 'yyyy-MM-dd'),
         managerId: data.managerId || undefined,
         projectIds: data.projectIds || '',
@@ -146,6 +147,7 @@ export default function Employees() {
           address: data.address || '',
           department: data.department,
           designation: data.designation || data.role,
+          region: data.region?.trim() || undefined,
           joinDate: data.dateOfJoining || selectedEmployee.joinDate,
           managerId: data.managerId || undefined,
           projectIds: data.projectIds || '',
@@ -270,6 +272,7 @@ export default function Employees() {
                 department: selectedEmployee.department,
                 designation: selectedEmployee.designation || '',
                 role: selectedEmployee.role,
+                region: selectedEmployee.region || '',
                 dateOfJoining: selectedEmployee.joinDate || '',
                 managerId: selectedEmployee.managerId || '',
                 projectIds: selectedEmployee.projectIds?.[0] || '',
@@ -337,8 +340,8 @@ export default function Employees() {
                   <TableHead>Employee</TableHead>
                   <TableHead>ID</TableHead>
                   <TableHead>Department</TableHead>
+                  <TableHead>Region</TableHead>
                   <TableHead>Role</TableHead>
-                  <TableHead>Join Date</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
@@ -368,6 +371,11 @@ export default function Employees() {
                       {employee.employeeId}
                     </TableCell>
                     <TableCell>{employee.department}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline">
+                        {employee.region || 'Global'}
+                      </Badge>
+                    </TableCell>
                     <TableCell>
                       <Badge variant="secondary" className={roleStyles[employee.role]}>
                         {employee.role}

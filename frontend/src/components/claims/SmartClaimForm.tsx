@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { UseFormReturn } from "react-hook-form";
-import { Calendar, CheckCircle2, Circle, FileText, Sparkles, Trash2 } from "lucide-react";
+import { Calendar, CheckCircle2, Circle, FileText, Sparkles, Trash2, Loader2 } from "lucide-react";
 import { format, parse } from "date-fns";
 import { cn } from "@/lib/utils";
 import { SmartFormField } from "./SmartFormField";
@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/select";
 import { useAuth } from "@/contexts/AuthContext";
 import { useEmployeeProjectHistory } from "@/hooks/useEmployees";
+import { useReimbursementsByRegion, ExtractedClaimCategory } from "@/hooks/usePolicies";
 
 interface ClaimFormData {
   title?: string;
@@ -85,6 +86,71 @@ export function SmartClaimForm({ form, onFilesChange, uploadedFiles = [], onMult
   
   // Get current user and their employee data for project filtering
   const { user } = useAuth();
+  
+  // Fetch reimbursement categories filtered by user's region
+  const { data: reimbursementCategories = [], isLoading: isLoadingCategories } = useReimbursementsByRegion(user?.region);
+  
+  // Create category options with 'Other' at the end
+  const categoryOptions = useMemo(() => {
+    const apiCategories = reimbursementCategories.map(cat => ({
+      value: cat.category_code.toLowerCase(),
+      label: cat.category_name,
+      maxAmount: cat.max_amount,
+      categoryCode: cat.category_code,
+      description: cat.description,
+    }));
+    // Add 'Other' category at the end
+    return [...apiCategories, { value: 'other', label: 'Other', maxAmount: null, categoryCode: 'OTHER', description: 'For expenses that don\'t match other categories' }];
+  }, [reimbursementCategories]);
+  
+  // Helper function to validate if a category exists in available options
+  // If not found, returns 'other'
+  const validateAndNormalizeCategory = (category: string): string => {
+    if (!category) return 'other';
+    const normalizedCategory = category.toLowerCase().replace(/[\s_-]+/g, '_');
+    
+    // Check if category exists in API options
+    const found = categoryOptions.find(opt => 
+      opt.value === normalizedCategory || 
+      opt.categoryCode.toLowerCase() === normalizedCategory ||
+      opt.label.toLowerCase().replace(/[\s_-]+/g, '_') === normalizedCategory
+    );
+    
+    if (found) {
+      return found.value;
+    }
+    
+    // Try partial matching for common categories
+    const categoryKeywordMap: Record<string, string[]> = {
+      'cert_reimb': ['cert', 'certification', 'exam'],
+      'training_reimb': ['training', 'course', 'workshop'],
+      'conf_reimb': ['conference', 'seminar', 'summit'],
+      'membership_reimb': ['membership', 'member', 'association'],
+      'local_travel_reimb': ['travel', 'conveyance', 'local'],
+      'toll_parking_reimb': ['toll', 'parking'],
+      'fuel_reimb': ['fuel', 'petrol', 'diesel'],
+    };
+    
+    for (const [catValue, keywords] of Object.entries(categoryKeywordMap)) {
+      if (keywords.some(kw => normalizedCategory.includes(kw))) {
+        const matchedOpt = categoryOptions.find(opt => opt.value === catValue);
+        if (matchedOpt) return matchedOpt.value;
+      }
+    }
+    
+    // No match found - return 'other'
+    console.log(`Category "${category}" not found in available options, defaulting to "other"`);
+    return 'other';
+  };
+  
+  // Get the selected category's policy details
+  const selectedCategoryPolicy = useMemo(() => {
+    const selectedValue = watch('category');
+    if (!selectedValue || selectedValue === 'other') return null;
+    return reimbursementCategories.find(cat => 
+      cat.category_code.toLowerCase() === selectedValue
+    ) || null;
+  }, [watch('category'), reimbursementCategories]);
   
   // Fetch employee's project history (current and past projects) using user.id (which is the employee UUID)
   const { data: projectHistory, isLoading: isLoadingProjects } = useEmployeeProjectHistory(user?.id);
@@ -169,53 +235,84 @@ export function SmartClaimForm({ form, onFilesChange, uploadedFiles = [], onMult
   const [isExtractingOCR, setIsExtractingOCR] = useState(false);
   const [extractedText, setExtractedText] = useState<string>('');
 
-  // Helper function to detect category from extracted text
+  // Helper function to detect category from extracted text using API categories
+  // Returns 'other' if no match is found, which sets AI confidence to 0
   const detectCategoryFromText = (text: string): string => {
     const lowerText = text.toLowerCase();
     
-    // Travel keywords
-    if (lowerText.match(/\b(travel|transport|flight|airline|train|railway|cab|taxi|uber|ola|airport|boarding pass|ticket|journey|fare|mileage|petrol|diesel|fuel)\b/)) {
-      return 'travel';
-    }
-    // Certification/Training keywords
-    if (lowerText.match(/\b(certification|certificate|exam|examination|course|training|workshop|seminar|conference|learning|education|udemy|coursera|aws|azure|google cloud)\b/)) {
-      return 'certification';
-    }
-    // Food/Meals keywords - check for team lunch first (multiple people mentioned)
-    if (lowerText.match(/\b(food|meal|lunch|dinner|breakfast|restaurant|cafe|canteen|snacks|beverages|catering|swiggy|zomato)\b/)) {
-      // Check if it's a team lunch (multiple people mentioned)
-      if (lowerText.match(/\b(persons?|people|pax|guests?|covers?|heads?|members?|team|group)\b/) ||
-          lowerText.match(/\b\d+\s*(persons?|people|pax|guests?|covers?|heads?|members?)\b/) ||
-          lowerText.match(/\b(no\.?\s*of|number\s*of)\s*(persons?|people|guests?|pax)\b/)) {
-        return 'team_lunch';
+    // Define keyword patterns for each category type
+    // These map to the API category codes/names
+    const categoryKeywords: Record<string, RegExp> = {
+      // Travel related
+      'travel': /\b(travel|transport|flight|airline|train|railway|cab|taxi|uber|ola|airport|boarding pass|ticket|journey|fare|mileage|petrol|diesel|fuel|bus|metro)\b/i,
+      'trv': /\b(travel|transport|flight|airline|train|railway|cab|taxi|uber|ola|airport|boarding pass|ticket|journey|fare)\b/i,
+      
+      // Certification/Training
+      'certification': /\b(certification|certificate|exam|examination|course|training|workshop|seminar|conference|learning|education|udemy|coursera|aws|azure|google cloud)\b/i,
+      'cert': /\b(certification|certificate|exam|course|training|workshop)\b/i,
+      
+      // Food/Meals
+      'food': /\b(food|meal|lunch|dinner|breakfast|restaurant|cafe|canteen|snacks|beverages|catering|swiggy|zomato)\b/i,
+      'team_lunch': /\b(team\s*(lunch|dinner|meeting)|client\s*(lunch|dinner|meeting)|business\s*meal)\b/i,
+      'fd': /\b(food|meal|lunch|dinner|breakfast|restaurant|cafe)\b/i,
+      
+      // Accommodation
+      'accommodation': /\b(hotel|stay|accommodation|lodging|room|booking|oyo|airbnb|resort|guest\s*house|check-in|check-out)\b/i,
+      'accom': /\b(hotel|stay|accommodation|lodging|room)\b/i,
+      
+      // Equipment
+      'equipment': /\b(equipment|laptop|computer|hardware|device|monitor|keyboard|mouse|headphone|webcam|charger)\b/i,
+      'eqp': /\b(equipment|laptop|computer|hardware|device|monitor)\b/i,
+      
+      // Software
+      'software': /\b(software|subscription|license|saas|cloud|microsoft|adobe|slack|notion|jira|github)\b/i,
+      'subs': /\b(software|subscription|license|saas|cloud)\b/i,
+      
+      // Office supplies
+      'office_supplies': /\b(office|stationery|supplies|paper|pen|notebook|printer|ink|toner)\b/i,
+      'office': /\b(office|stationery|supplies|paper|pen|notebook)\b/i,
+      
+      // Medical
+      'medical': /\b(medical|health|hospital|doctor|pharmacy|medicine|clinic|consultation|diagnosis|treatment)\b/i,
+      'med': /\b(medical|health|hospital|doctor|pharmacy|medicine)\b/i,
+      
+      // Passport/Visa
+      'passport_visa': /\b(passport|visa|vfs|embassy|consulate|courier|immigration|travel\s*document)\b/i,
+      'visa': /\b(passport|visa|vfs|embassy|consulate)\b/i,
+      
+      // Conveyance
+      'conveyance': /\b(conveyance|local\s*travel|auto|rickshaw|metro|bus\s*fare|parking)\b/i,
+      'conv': /\b(conveyance|local\s*travel|auto|rickshaw)\b/i,
+      
+      // Phone/Internet
+      'phone_internet': /\b(phone|internet|mobile|broadband|wifi|data\s*plan|recharge|telecom)\b/i,
+      'telecom': /\b(phone|internet|mobile|broadband|wifi)\b/i,
+      
+      // Client meeting
+      'client_meeting': /\b(client|customer|business\s*meeting|corporate\s*meeting)\b/i,
+    };
+    
+    // Check if any API category matches using keywords
+    for (const option of categoryOptions) {
+      const catValue = option.value.toLowerCase();
+      const catLabel = option.label.toLowerCase();
+      
+      // Skip 'other' category - it's the fallback
+      if (catValue === 'other') continue;
+      
+      // Check if keywords match this category
+      const keywordPattern = categoryKeywords[catValue] || categoryKeywords[option.categoryCode.toLowerCase()];
+      if (keywordPattern && keywordPattern.test(lowerText)) {
+        return catValue;
       }
-      return 'food';
-    }
-    // Accommodation keywords
-    if (lowerText.match(/\b(hotel|stay|accommodation|lodging|room|booking|oyo|airbnb|resort|guest house|check-in|check-out)\b/)) {
-      return 'accommodation';
-    }
-    // Equipment keywords
-    if (lowerText.match(/\b(equipment|laptop|computer|hardware|device|monitor|keyboard|mouse|headphone|webcam|charger)\b/)) {
-      return 'equipment';
-    }
-    // Software keywords
-    if (lowerText.match(/\b(software|subscription|license|saas|cloud|microsoft|adobe|slack|notion|jira|github)\b/)) {
-      return 'software';
-    }
-    // Office supplies keywords
-    if (lowerText.match(/\b(office|stationery|supplies|paper|pen|notebook|printer|ink|toner)\b/)) {
-      return 'office_supplies';
-    }
-    // Medical keywords
-    if (lowerText.match(/\b(medical|health|hospital|doctor|pharmacy|medicine|clinic|consultation|diagnosis|treatment|insurance claim)\b/)) {
-      return 'medical';
-    }
-    // Passport/Visa keywords
-    if (lowerText.match(/\b(passport|visa|vfs|embassy|consulate|courier|immigration|travel document)\b/)) {
-      return 'passport_visa';
+      
+      // Also check if category name appears in text
+      if (lowerText.includes(catLabel) || lowerText.includes(catValue.replace(/_/g, ' '))) {
+        return catValue;
+      }
     }
     
+    // No match found - return 'other' (AI confidence will be 0)
     return 'other';
   };
 
@@ -478,11 +575,18 @@ export function SmartClaimForm({ form, onFilesChange, uploadedFiles = [], onMult
         }
       }
       
-      const categoryTitle = receipt.category.charAt(0).toUpperCase() + receipt.category.slice(1).replace(/_/g, ' ');
+      // Validate and normalize the category against available policy categories
+      const validatedCategory = validateAndNormalizeCategory(receipt.category);
+      const isOtherCategory = validatedCategory === 'other';
+      
+      // Get display title based on validated category
+      const categoryOption = categoryOptions.find(opt => opt.value === validatedCategory);
+      const categoryTitle = categoryOption?.label || (receipt.category.charAt(0).toUpperCase() + receipt.category.slice(1).replace(/_/g, ' '));
       
       // Initialize field sources - mark fields as 'auto' if they have values from extraction
+      // For 'other' category, mark as manual since it wasn't matched to policy
       const fieldSources: FieldSources = {
-        category: receipt.category ? 'auto' : 'manual',
+        category: isOtherCategory ? 'manual' : (receipt.category ? 'auto' : 'manual'),
         title: receipt.vendor ? 'auto' : 'manual',  // Title is derived from category/vendor
         amount: receipt.amount ? 'auto' : 'manual',
         date: receipt.date ? 'auto' : 'manual',
@@ -494,7 +598,7 @@ export function SmartClaimForm({ form, onFilesChange, uploadedFiles = [], onMult
       return {
         id: `claim-${Date.now()}-${index}`,
         selected: true,
-        category: receipt.category || 'other',
+        category: validatedCategory,
         title: receipt.vendor ? `${categoryTitle} - ${receipt.vendor}` : `${categoryTitle} Expense`,
         amount: receipt.amount?.replace(/,/g, '') || '',
         date: parsedDate,
@@ -908,7 +1012,9 @@ export function SmartClaimForm({ form, onFilesChange, uploadedFiles = [], onMult
           else if (fileName.match(/cert|exam|course|training/)) detectedCategory = 'certification';
           else if (fileName.match(/food|meal|lunch|dinner/)) detectedCategory = 'food';
           else if (fileName.match(/hotel|stay|accommodation/)) detectedCategory = 'accommodation';
-          setValue('category', detectedCategory);
+          // Validate and normalize the detected category
+          const validatedCategory = validateAndNormalizeCategory(detectedCategory);
+          setValue('category', validatedCategory);
           setFieldsAsAuto(['category']);
         }
       } catch (error) {
@@ -924,7 +1030,14 @@ export function SmartClaimForm({ form, onFilesChange, uploadedFiles = [], onMult
   }, [uploadedFiles, setValue]);
 
   // Simulate AI compliance score calculation
+  // For 'Other' category, AI confidence and policy compliance is 0
   useEffect(() => {
+    // If category is 'other', set compliance score to 0
+    if (watchedFields.category === 'other') {
+      setComplianceScore(0);
+      return;
+    }
+    
     let score = 0;
     if (watchedFields.category) score += 15;
     if (watchedFields.title) score += 15;
@@ -937,34 +1050,107 @@ export function SmartClaimForm({ form, onFilesChange, uploadedFiles = [], onMult
     setComplianceScore(Math.min(score, 100));
   }, [watchedFields, uploadedFiles]);
 
+  // Perform actual policy validations against the selected category's policy
+  const amountValidation = useMemo(() => {
+    if (watchedFields.category === 'other' || !selectedCategoryPolicy) {
+      return { 
+        status: 'warning' as const, 
+        message: "No policy limits for 'Other' category" 
+      };
+    }
+    
+    const claimAmount = parseFloat(watchedFields.amount || '0');
+    const maxAmount = selectedCategoryPolicy.max_amount;
+    
+    if (!claimAmount) {
+      return { 
+        status: 'checking' as const, 
+        message: "Enter amount to validate against policy" 
+      };
+    }
+    
+    if (maxAmount && claimAmount > maxAmount) {
+      return { 
+        status: 'fail' as const, 
+        message: `Amount ₹${claimAmount.toLocaleString()} exceeds policy limit of ₹${maxAmount.toLocaleString()}` 
+      };
+    }
+    
+    return { 
+      status: 'pass' as const, 
+      message: maxAmount 
+        ? `Amount ₹${claimAmount.toLocaleString()} within policy limit of ₹${maxAmount.toLocaleString()}`
+        : "Amount verified - no policy limit defined"
+    };
+  }, [watchedFields.amount, watchedFields.category, selectedCategoryPolicy]);
+
+  const dateValidation = useMemo(() => {
+    if (watchedFields.category === 'other' || !selectedCategoryPolicy) {
+      return { 
+        status: 'warning' as const, 
+        message: "No date restrictions for 'Other' category" 
+      };
+    }
+    
+    const claimDate = watchedFields.date;
+    const submissionWindowDays = selectedCategoryPolicy.submission_window_days;
+    
+    if (!claimDate) {
+      return { 
+        status: 'checking' as const, 
+        message: "Enter date to validate against policy" 
+      };
+    }
+    
+    if (submissionWindowDays) {
+      const today = new Date();
+      const daysDiff = Math.floor((today.getTime() - new Date(claimDate).getTime()) / (1000 * 60 * 60 * 24));
+      
+      if (daysDiff > submissionWindowDays) {
+        return { 
+          status: 'fail' as const, 
+          message: `Receipt date is ${daysDiff} days old, exceeds ${submissionWindowDays}-day submission window` 
+        };
+      }
+      
+      return { 
+        status: 'pass' as const, 
+        message: `Within ${submissionWindowDays}-day submission window (${daysDiff} days old)` 
+      };
+    }
+    
+    return { 
+      status: 'pass' as const, 
+      message: "Date verified - no submission window restriction" 
+    };
+  }, [watchedFields.date, watchedFields.category, selectedCategoryPolicy]);
+
   const policyChecks = [
     {
       id: "category",
       label: "Category selected",
-      status: isExtractingOCR ? "checking" as const : (watchedFields.category ? "pass" as const : "checking" as const),
+      status: isExtractingOCR 
+        ? "checking" as const 
+        : watchedFields.category === 'other'
+          ? "warning" as const
+          : (watchedFields.category ? "pass" as const : "checking" as const),
       message: isExtractingOCR 
         ? "Analyzing document content..." 
-        : (watchedFields.category ? "Category detected from document content" : "Upload document to auto-detect"),
+        : watchedFields.category === 'other'
+          ? "Category 'Other' selected - no policy matching (AI confidence: 0%)"
+          : (watchedFields.category ? "Category detected from document content" : "Upload document to auto-detect"),
     },
     {
       id: "amount",
       label: "Amount within limit",
-      status: watchedFields.amount && parseFloat(watchedFields.amount) > 0
-        ? "pass" as const
-        : "pass" as const, // No policy limit defined - auto pass
-      message: watchedFields.amount && parseFloat(watchedFields.amount) > 0
-        ? "Amount verified against policy"
-        : "No policy limit defined for this category",
+      status: amountValidation.status,
+      message: amountValidation.message,
     },
     {
       id: "date",
       label: "Within submission window",
-      status: watchedFields.date 
-        ? "pass" as const 
-        : "pass" as const, // No strict date policy - auto pass
-      message: watchedFields.date 
-        ? "Date within allowed submission window"
-        : "No date restriction in policy",
+      status: dateValidation.status,
+      message: dateValidation.message,
     },
     {
       id: "docs",
@@ -1150,20 +1336,11 @@ export function SmartClaimForm({ form, onFilesChange, uploadedFiles = [], onMult
                             <SelectValue placeholder="Select category" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="certification">Certification</SelectItem>
-                            <SelectItem value="travel">Travel</SelectItem>
-                            <SelectItem value="food">Food & Meals</SelectItem>
-                            <SelectItem value="accommodation">Accommodation</SelectItem>
-                            <SelectItem value="equipment">Equipment</SelectItem>
-                            <SelectItem value="software">Software & Subscriptions</SelectItem>
-                            <SelectItem value="office_supplies">Office Supplies</SelectItem>
-                            <SelectItem value="medical">Medical</SelectItem>
-                            <SelectItem value="passport_visa">Passport & Visa</SelectItem>
-                            <SelectItem value="conveyance">Conveyance</SelectItem>
-                            <SelectItem value="phone_internet">Phone & Internet</SelectItem>
-                            <SelectItem value="client_meeting">Client Meeting</SelectItem>
-                            <SelectItem value="team_lunch">Team Lunch</SelectItem>
-                            <SelectItem value="other">Other</SelectItem>
+                            {categoryOptions.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                       </div>
@@ -1378,19 +1555,18 @@ export function SmartClaimForm({ form, onFilesChange, uploadedFiles = [], onMult
                   <SelectValue placeholder={isExtractingOCR ? "Extracting from document..." : "Select category or upload document to auto-detect"} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="certification">Certification</SelectItem>
-                  <SelectItem value="travel">Travel</SelectItem>
-                  <SelectItem value="food">Food & Meals</SelectItem>
-                  <SelectItem value="accommodation">Accommodation</SelectItem>
-                  <SelectItem value="equipment">Equipment</SelectItem>
-                  <SelectItem value="software">Software & Subscriptions</SelectItem>
-                  <SelectItem value="office_supplies">Office Supplies</SelectItem>
-                  <SelectItem value="medical">Medical</SelectItem>
-                  <SelectItem value="passport_visa">Passport & Visa</SelectItem>
-                  <SelectItem value="conveyance">Conveyance</SelectItem>
-                  <SelectItem value="phone_internet">Phone & Internet</SelectItem>
-                  <SelectItem value="client_meeting">Client Meeting</SelectItem>
-                  <SelectItem value="other">Other</SelectItem>
+                  {isLoadingCategories ? (
+                    <div className="flex items-center justify-center py-2">
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      <span className="text-sm text-muted-foreground">Loading categories...</span>
+                    </div>
+                  ) : (
+                    categoryOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
@@ -1398,7 +1574,9 @@ export function SmartClaimForm({ form, onFilesChange, uploadedFiles = [], onMult
                   ? "🔍 AI is analyzing document content to detect category..." 
                   : uploadedFiles.length > 0 
                     ? "✅ Category auto-detected from document content" 
-                    : "Upload document for AI-powered auto-detection"}
+                    : user?.region 
+                      ? `Showing categories for ${user.region} region`
+                      : "Upload document for AI-powered auto-detection"}
               </p>
             </div>
             <SmartFormField

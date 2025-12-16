@@ -13,7 +13,9 @@ import {
   FileText,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   LucideIcon,
+  ListChecks,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
@@ -27,6 +29,11 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
 
 const iconMap: Record<string, LucideIcon> = {
   LayoutDashboard,
@@ -40,6 +47,7 @@ const iconMap: Record<string, LucideIcon> = {
   Settings,
   FileText,
   Coins: Wallet,
+  ListChecks,
 };
 
 interface SidebarProps {
@@ -51,14 +59,14 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const { user } = useAuth();
   const location = useLocation();
   const navItems = user ? getNavigationForRole(user.role) : [];
-  
+
   // Fetch pending approvals count dynamically
   const { data: pendingApprovals } = usePendingApprovals();
-  
+
   // Get dynamic badge count based on user role
   const getDynamicBadge = (href: string): number | undefined => {
     if (href !== '/approvals' || !pendingApprovals) return undefined;
-    
+
     switch (user?.role) {
       case 'manager':
         return pendingApprovals.manager_pending || 0;
@@ -73,6 +81,59 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
     }
   };
 
+  const renderNavItem = (item: any, isChild = false) => {
+    const Icon = iconMap[item.icon] || LayoutDashboard;
+    const isActive = location.pathname === item.href;
+    const badgeCount = getDynamicBadge(item.href) ?? item.badge;
+
+    const linkContent = (
+      <NavLink
+        to={item.href}
+        className={cn(
+          'group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all',
+          isActive
+            ? 'bg-primary text-primary-foreground'
+            : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+          isChild && 'pl-9'
+        )}
+      >
+        <Icon className={cn("shrink-0", isChild ? "h-4 w-4" : "h-5 w-5")} />
+        {!collapsed && (
+          <>
+            <span className="flex-1">{item.label}</span>
+            {badgeCount !== undefined && badgeCount > 0 && (
+              <Badge
+                variant={isActive ? 'secondary' : 'default'}
+                className="h-5 min-w-[20px] justify-center px-1.5"
+              >
+                {badgeCount}
+              </Badge>
+            )}
+          </>
+        )}
+      </NavLink>
+    );
+
+    if (collapsed) {
+      // In collapsed mode, we don't show children structure yet, just the main icon
+      return (
+        <Tooltip key={item.href}>
+          <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
+          <TooltipContent side="right" className="flex items-center gap-2">
+            {item.label}
+            {badgeCount !== undefined && badgeCount > 0 && (
+              <Badge variant="default" className="h-5 px-1.5">
+                {badgeCount}
+              </Badge>
+            )}
+          </TooltipContent>
+        </Tooltip>
+      );
+    }
+
+    return <div key={item.href}>{linkContent}</div>;
+  };
+
   return (
     <TooltipProvider delayDuration={0}>
       <aside
@@ -85,55 +146,35 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
           {/* Navigation */}
           <nav className="flex-1 space-y-1 p-2">
             {navItems.map((item) => {
-              const Icon = iconMap[item.icon] || LayoutDashboard;
-              const isActive = location.pathname === item.href;
-              // Use dynamic badge for approvals, fall back to static badge
-              const badgeCount = getDynamicBadge(item.href) ?? item.badge;
-
-              const linkContent = (
-                <NavLink
-                  to={item.href}
-                  className={cn(
-                    'group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all',
-                    isActive
-                      ? 'bg-primary text-primary-foreground'
-                      : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                  )}
-                >
-                  <Icon className="h-5 w-5 shrink-0" />
-                  {!collapsed && (
-                    <>
-                      <span className="flex-1">{item.label}</span>
-                      {badgeCount !== undefined && badgeCount > 0 && (
-                        <Badge
-                          variant={isActive ? 'secondary' : 'default'}
-                          className="h-5 min-w-[20px] justify-center px-1.5"
-                        >
-                          {badgeCount}
-                        </Badge>
-                      )}
-                    </>
-                  )}
-                </NavLink>
-              );
-
-              if (collapsed) {
+              if (item.children && !collapsed) {
+                const isChildActive = item.children.some((child: any) => location.pathname === child.href);
+                const Icon = iconMap[item.icon] || LayoutDashboard;
                 return (
-                  <Tooltip key={item.href}>
-                    <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
-                    <TooltipContent side="right" className="flex items-center gap-2">
-                      {item.label}
-                      {badgeCount !== undefined && badgeCount > 0 && (
-                        <Badge variant="default" className="h-5 px-1.5">
-                          {badgeCount}
-                        </Badge>
-                      )}
-                    </TooltipContent>
-                  </Tooltip>
+                  <Collapsible
+                    key={item.href}
+                    defaultOpen={isChildActive}
+                    className="group/collapsible"
+                  >
+                    <CollapsibleTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        className={cn(
+                          "w-full justify-start gap-3 px-3 py-2.5 text-sm font-medium hover:bg-accent hover:text-accent-foreground",
+                          isChildActive ? "text-foreground" : "text-muted-foreground"
+                        )}
+                      >
+                        <Icon className="h-5 w-5 shrink-0" />
+                        <span className="flex-1 text-left">{item.label}</span>
+                        <ChevronDown className="h-4 w-4 transition-transform group-data-[state=open]/collapsible:rotate-180" />
+                      </Button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="space-y-1 pt-1">
+                      {item.children.map((child: any) => renderNavItem(child, true))}
+                    </CollapsibleContent>
+                  </Collapsible>
                 );
               }
-
-              return <div key={item.href}>{linkContent}</div>;
+              return renderNavItem(item);
             })}
           </nav>
 

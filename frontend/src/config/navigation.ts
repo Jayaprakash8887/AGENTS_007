@@ -83,6 +83,18 @@ export const adminOnlyNavigation: NavItem[] = [
     label: 'Policies',
     href: '/policies',
     icon: 'FileText',
+    children: [
+      {
+        label: 'Policy Management',
+        href: '/policies',
+        icon: 'FileText',
+      },
+      {
+        label: 'Claim Management',
+        href: '/policies/claims',
+        icon: 'ListChecks',
+      },
+    ],
   },
   {
     label: 'Settings',
@@ -96,7 +108,7 @@ export function getNavigationForRole(role: UserRole): NavItem[] {
   if (role === 'admin') {
     return adminOnlyNavigation;
   }
-  
+
   const filterByRole = (items: NavItem[]) =>
     items.filter((item) => !item.roles || item.roles.includes(role));
 

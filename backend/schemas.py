@@ -201,6 +201,7 @@ class UserUpdate(BaseModel):
     address: Optional[str] = None
     department: Optional[str] = None
     designation: Optional[str] = None
+    region: Optional[str] = None  # Region/location for policy applicability
     roles: Optional[List[UserRole]] = None
     employment_status: Optional[str] = None
     manager_id: Optional[UUID] = None
@@ -215,6 +216,7 @@ class UserResponse(UserBase):
     employment_status: Optional[str] = "ACTIVE"
     date_of_joining: Optional[date] = None
     manager_id: Optional[UUID] = None
+    region: Optional[str] = None  # Region/location for policy applicability
     user_data: Dict[str, Any] = {}
     created_at: datetime
     
@@ -263,6 +265,7 @@ class EmployeeResponse(BaseModel):
     manager_id: Optional[UUID] = None
     date_of_joining: Optional[date] = None
     employment_status: str = "ACTIVE"
+    region: Optional[str] = None  # Region/location for policy applicability
     employee_data: Dict[str, Any] = {}
     created_at: datetime
     
@@ -661,6 +664,15 @@ class PolicyCategoryResponse(BaseModel):
         from_attributes = True
 
 
+class ExtractedClaimListResponse(PolicyCategoryResponse):
+    """Schema for listing extracted claims with policy details"""
+    policy_name: str
+    policy_status: str
+    policy_version: Optional[str]
+    policy_effective_from: Optional[date]
+    policy_region: Optional[str] = None  # Region this policy applies to
+
+
 # Policy Upload Schemas
 class PolicyUploadResponse(BaseModel):
     id: UUID
@@ -674,15 +686,18 @@ class PolicyUploadResponse(BaseModel):
     storage_path: Optional[str]
     gcs_uri: Optional[str]
     storage_type: str
+    content_type: Optional[str] = None
     status: str
     extracted_text: Optional[str]
     extraction_error: Optional[str]
     extracted_at: Optional[datetime]
-    extracted_data: Dict[str, Any]
+    extracted_data: Dict[str, Any] = {}
     version: int
     is_active: bool
+    replaces_policy_id: Optional[UUID] = None
     effective_from: Optional[date]
     effective_to: Optional[date]
+    region: Optional[str] = None  # Region/location this policy applies to
     uploaded_by: UUID
     approved_by: Optional[UUID]
     approved_at: Optional[datetime]
@@ -704,6 +719,7 @@ class PolicyUploadListResponse(BaseModel):
     version: int
     is_active: bool
     effective_from: Optional[date]
+    region: Optional[str] = None  # Region/location this policy applies to
     categories_count: int = 0
     uploaded_by: UUID
     created_at: datetime
