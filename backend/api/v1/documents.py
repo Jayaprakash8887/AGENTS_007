@@ -677,11 +677,38 @@ async def extract_receipts_with_llm(
         category_cache = get_category_cache()
         categories_prompt = category_cache.get_llm_prompt_categories(employee_region)
         
+        # Pre-detect document type to provide hint to LLM
+        text_lower = ocr_text.lower()
+        document_hint = ""
+        
+        # Detect ride-sharing patterns
+        # Indian vehicle registration: 2 letters + 2 digits + 2 letters + 4 digits (e.g., UP16CD2491)
+        vehicle_pattern = r'\b[A-Z]{2}\d{2}[A-Z]{1,2}\d{4}\b'
+        vehicle_matches = re.findall(vehicle_pattern, ocr_text, re.IGNORECASE)
+        
+        # Check for ride indicators
+        has_vehicle_numbers = len(vehicle_matches) >= 2
+        has_location_addresses = any(kw in text_lower for kw in ['sector', 'block', 'road', 'noida', 'delhi', 'bengaluru', 'mumbai', 'hyderabad', 'pune', 'chennai', 'kolkata'])
+        has_transaction_ids = bool(re.search(r'\d{15,20}', ocr_text))
+        has_ride_keywords = any(kw in text_lower for kw in ['rapido', 'ola', 'uber', 'ride', 'trip', 'fare', 'cab', 'taxi', 'bike'])
+        
+        # If strong ride indicators, add hint
+        if (has_vehicle_numbers and has_location_addresses) or has_ride_keywords:
+            document_hint = """
+DOCUMENT TYPE HINT: This appears to be a RIDE-SHARING/TAXI receipt batch export.
+- Multiple vehicle registration numbers detected (format: XX00XX0000)
+- Location addresses indicate pickup/drop points
+- Treat this as TRAVEL category with vendor "Rapido" or "Ride Service"
+- Each transaction ID + amount + date block is a SEPARATE receipt
+
+"""
+            logger.info(f"Pre-detected ride-sharing document: vehicles={len(vehicle_matches)}, locations={has_location_addresses}")
+        
         # Create the prompt for receipt extraction with region-specific categories
         prompt = f"""You are an expert at extracting receipt/invoice information from OCR text.
 Analyze the following OCR-extracted text and identify ALL receipts/invoices present.
 
-{categories_prompt}
+{document_hint}{categories_prompt}
 
 For EACH receipt found, extract:
 1. amount: The total/final amount paid (number only, no currency symbol)
@@ -692,13 +719,23 @@ For EACH receipt found, extract:
 6. currency: The currency code (INR, USD, etc.) - default to INR if Indian context
 7. transaction_ref: The unique transaction/invoice/order ID (e.g., CRN9814090954, INV-2025-001, PNR123456)
 
+RIDE-SHARING / TAXI RECEIPT DETECTION (CRITICAL):
+- If you see patterns like: transaction ID + amount + date + vehicle number + driver name + pickup location + drop location, this is a RIDE/TAXI receipt
+- Indian vehicle registration formats: XX00XX0000 (e.g., UP16CD2491, KA51AC1234, DL4CAB1234) indicate rides
+- Ride-sharing services include: Rapido, Ola, Uber, Meru, BluSmart - even if the company name is NOT visible in text
+- If text shows two addresses/locations (pickup and drop points), it's likely a ride receipt
+- Location names like "Mithaas", "Film City", "Sector X" are pickup/drop LOCATIONS, NOT vendors
+- For ride receipts: vendor should be "Rapido"/"Ola"/"Uber" or "Ride Service" if unknown, category should be "travel"
+- Description should be like "Ride from [pickup] to [drop]" or "Cab/Bike ride"
+
 IMPORTANT:
 - A single invoice may contain multiple line items, but it's still ONE receipt. Don't split line items into separate receipts.
 - Look for clear indicators of separate receipts like different invoice numbers, different dates, or different vendors.
 - For the amount, use the FINAL/TOTAL amount, not subtotals or line items.
 - If the date format is DD/MM/YYYY, convert it properly (11/09/2025 means September 11, 2025, not November 9).
-- For transaction_ref, look for: Invoice ID, CRN (Customer Ride Number), Order ID, Booking ID, PNR, Receipt Number, etc.
+- For transaction_ref, look for: Invoice ID, CRN (Customer Ride Number), Order ID, Booking ID, PNR, Receipt Number, long numeric IDs (15+ digits).
 - CRITICAL: If the expense category doesn't match any of the listed categories, you MUST use 'other'
+- CRITICAL: Do NOT confuse location/landmark names (like restaurants, shops at pickup/drop points) with the actual vendor
 
 OCR Text:
 ```
@@ -707,6 +744,15 @@ OCR Text:
 
 Respond ONLY with a valid JSON array. Example format:
 [
+  {{
+    "amount": "450",
+    "date": "2025-11-17",
+    "vendor": "Rapido",
+    "category": "travel",
+    "description": "Bike ride from Film City Noida to Sector 76",
+    "currency": "INR",
+    "transaction_ref": "17539588439959322"
+  }},
   {{
     "amount": "727",
     "date": "2025-09-11",
