@@ -69,6 +69,7 @@ async def list_tenants(
     skip: int = 0,
     limit: int = 100,
     include_inactive: bool = False,
+    search: Optional[str] = None,
     db: Session = Depends(get_sync_db)
 ):
     """
@@ -78,6 +79,15 @@ async def list_tenants(
     
     if not include_inactive:
         query = query.filter(Tenant.is_active == True)
+    
+    # Search filter
+    if search:
+        search_term = f"%{search}%"
+        query = query.filter(
+            (Tenant.name.ilike(search_term)) |
+            (Tenant.code.ilike(search_term)) |
+            (Tenant.domain.ilike(search_term))
+        )
     
     tenants = query.offset(skip).limit(limit).all()
     return tenants

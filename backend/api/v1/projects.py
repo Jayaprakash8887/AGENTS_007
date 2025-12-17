@@ -65,16 +65,26 @@ async def get_all_project_members(
 @router.get("/", response_model=List[ProjectResponse])
 async def list_projects(
     tenant_id: Optional[UUID] = None,
+    search: Optional[str] = None,
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_sync_db)
 ):
-    """Get list of projects, optionally filtered by tenant"""
+    """Get list of projects, optionally filtered by tenant and search query"""
     query = db.query(Project)
     
     # Filter by tenant if provided
     if tenant_id:
         query = query.filter(Project.tenant_id == tenant_id)
+    
+    # Search filter
+    if search:
+        search_term = f"%{search}%"
+        query = query.filter(
+            (Project.project_name.ilike(search_term)) |
+            (Project.project_code.ilike(search_term)) |
+            (Project.description.ilike(search_term))
+        )
     
     projects = query.offset(skip).limit(limit).all()
     return projects

@@ -260,6 +260,7 @@ class User(Base):
     # Relationships
     claims = relationship("Claim", back_populates="employee", foreign_keys="[Claim.employee_id]")
     manager = relationship("User", remote_side=[id], backref="direct_reports")
+    notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
     
     __table_args__ = (
         Index("idx_users_tenant", "tenant_id"),
@@ -880,5 +881,62 @@ class CustomClaim(Base):
         Index("idx_custom_claims_code", "claim_code"),
         Index("idx_custom_claims_active", "is_active"),
         Index("idx_custom_claims_region", "region"),
+    )
+
+
+class Notification(Base):
+    """
+    User notifications for the bell icon.
+    Stores notifications for each user with read/unread status.
+    """
+    __tablename__ = "notifications"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(UUID(as_uuid=True), nullable=True)  # NULL for system_admin platform notifications
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    
+    # Notification content
+    type = Column(String(50), nullable=False)  # claim_approved, claim_rejected, claim_returned, pending_approval, claim_submitted, system, tenant
+    title = Column(String(255), nullable=False)
+    message = Column(Text, nullable=False)
+    
+    # Priority
+    priority = Column(String(20), default="medium")  # high, medium, low
+    
+    # Related entity (optional)
+    related_entity_type = Column(String(50))  # claim, employee, tenant
+    related_entity_id = Column(UUID(as_uuid=True))
+    
+    # Action URL for navigation
+    action_url = Column(String(500))
+    
+    # Read status
+    is_read = Column(Boolean, default=False)
+    read_at = Column(DateTime(timezone=True))
+    
+    # Clear/archive status (for clearing notifications)
+    is_cleared = Column(Boolean, default=False)
+    cleared_at = Column(DateTime(timezone=True))
+    
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    expires_at = Column(DateTime(timezone=True))  # Optional expiry for time-sensitive notifications
+    
+    # Relationships
+    user = relationship("User", back_populates="notifications")
+    
+    __table_args__ = (
+        CheckConstraint(
+            "type IN ('claim_approved', 'claim_rejected', 'claim_returned', 'pending_approval', 'claim_submitted', 'system', 'tenant')",
+            name="valid_notification_type"
+        ),
+        CheckConstraint("priority IN ('high', 'medium', 'low')", name="valid_notification_priority"),
+        Index("idx_notifications_user", "user_id"),
+        Index("idx_notifications_tenant", "tenant_id"),
+        Index("idx_notifications_type", "type"),
+        Index("idx_notifications_read", "is_read"),
+        Index("idx_notifications_cleared", "is_cleared"),
+        Index("idx_notifications_created", "created_at"),
+        Index("idx_notifications_user_unread", "user_id", "is_read"),
     )
 

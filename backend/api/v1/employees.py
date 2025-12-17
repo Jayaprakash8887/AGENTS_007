@@ -75,14 +75,28 @@ async def list_employees(
     skip: int = 0,
     limit: int = 100,
     tenant_id: Optional[UUID] = None,
+    search: Optional[str] = None,
     db: Session = Depends(get_sync_db)
 ):
-    """Get list of employees (users), optionally filtered by tenant"""
+    """Get list of employees (users), optionally filtered by tenant and search query"""
     query = db.query(User)
     
     # Filter by tenant if provided
     if tenant_id:
         query = query.filter(User.tenant_id == tenant_id)
+    
+    # Search filter
+    if search:
+        search_term = f"%{search}%"
+        query = query.filter(
+            (User.first_name.ilike(search_term)) |
+            (User.last_name.ilike(search_term)) |
+            (User.full_name.ilike(search_term)) |
+            (User.email.ilike(search_term)) |
+            (User.employee_code.ilike(search_term)) |
+            (User.department.ilike(search_term)) |
+            (User.designation.ilike(search_term))
+        )
     
     users = query.offset(skip).limit(limit).all()
     return [_user_to_employee_response(u, db) for u in users]
