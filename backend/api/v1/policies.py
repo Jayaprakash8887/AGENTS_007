@@ -268,14 +268,18 @@ def list_extracted_claims(
     limit: int = 100,
     db: Session = Depends(get_sync_db)
 ):
-    """List all extracted claims (categories) from all policies"""
+    """List all extracted claims (categories) from all policies AND custom claims"""
+    from models import CustomClaim
+    
+    result = []
+    
+    # ============ 1. Get PolicyCategory items ============
     categories = db.query(PolicyCategory, PolicyUpload).join(
         PolicyUpload, PolicyCategory.policy_upload_id == PolicyUpload.id
     ).filter(
         PolicyCategory.tenant_id == UUID(settings.DEFAULT_TENANT_ID)
-    ).order_by(PolicyUpload.created_at.desc(), PolicyCategory.display_order).offset(skip).limit(limit).all()
+    ).order_by(PolicyUpload.created_at.desc(), PolicyCategory.display_order).all()
     
-    result = []
     for cat, policy in categories:
         result.append(ExtractedClaimListResponse(
             # Category fields
@@ -310,7 +314,47 @@ def list_extracted_claims(
             policy_region=policy.region
         ))
     
-    return result
+    # ============ 2. Get CustomClaim items (standalone) ============
+    custom_claims = db.query(CustomClaim).filter(
+        CustomClaim.tenant_id == UUID(settings.DEFAULT_TENANT_ID)
+    ).order_by(CustomClaim.created_at.desc(), CustomClaim.display_order).all()
+    
+    for cc in custom_claims:
+        result.append(ExtractedClaimListResponse(
+            # Map CustomClaim fields to ExtractedClaimListResponse
+            id=cc.id,
+            tenant_id=cc.tenant_id,
+            policy_upload_id=None,  # Custom claims are not linked to policies
+            category_name=cc.claim_name,
+            category_code=cc.claim_code,
+            category_type=cc.category_type,
+            description=cc.description,
+            max_amount=float(cc.max_amount) if cc.max_amount else None,
+            min_amount=float(cc.min_amount) if cc.min_amount else None,
+            currency=cc.currency,
+            frequency_limit=cc.frequency_limit,
+            frequency_count=cc.frequency_count,
+            eligibility_criteria=cc.eligibility_criteria or {},
+            requires_receipt=cc.requires_receipt,
+            requires_approval_above=float(cc.requires_approval_above) if cc.requires_approval_above else None,
+            allowed_document_types=cc.allowed_document_types or [],
+            submission_window_days=cc.submission_window_days,
+            is_active=cc.is_active,
+            display_order=cc.display_order,
+            source_text=None,  # Custom claims have no source text
+            ai_confidence=None,  # Custom claims are manually defined
+            created_at=cc.created_at,
+            updated_at=cc.updated_at,
+            # Custom claims use "Custom Claim" as policy name
+            policy_name="Custom Claim",
+            policy_status="ACTIVE" if cc.is_active else "INACTIVE",
+            policy_version=None,
+            policy_effective_from=None,
+            policy_region=cc.region
+        ))
+    
+    # Apply pagination after combining results
+    return result[skip:skip + limit]
 
 
 @router.get("/{policy_id}", response_model=PolicyUploadResponse)

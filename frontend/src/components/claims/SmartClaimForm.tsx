@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { UseFormReturn } from "react-hook-form";
-import { Calendar, CheckCircle2, Circle, FileText, Sparkles, Trash2, Loader2 } from "lucide-react";
+import { Calendar, CheckCircle2, Circle, FileText, Sparkles, Trash2, Loader2, Zap, Pencil } from "lucide-react";
 import { format, parse } from "date-fns";
 import { cn } from "@/lib/utils";
 import { SmartFormField } from "./SmartFormField";
@@ -79,9 +79,21 @@ interface SmartClaimFormProps {
   onMultipleClaimsExtracted?: (claims: ExtractedClaim[]) => void;
   onClaimsUpdated?: (claims: ExtractedClaim[]) => void; // Called when user edits any claim field
   onSingleFormFieldSourcesChange?: (sources: FieldSources) => void; // Called when single form field sources change
+  // For preserving OCR processing state across step navigation
+  lastProcessedFileId?: string | null;
+  onLastProcessedFileIdChange?: (id: string | null) => void;
 }
 
-export function SmartClaimForm({ form, onFilesChange, uploadedFiles = [], onMultipleClaimsExtracted, onClaimsUpdated, onSingleFormFieldSourcesChange }: SmartClaimFormProps) {
+export function SmartClaimForm({ 
+  form, 
+  onFilesChange, 
+  uploadedFiles = [], 
+  onMultipleClaimsExtracted, 
+  onClaimsUpdated, 
+  onSingleFormFieldSourcesChange,
+  lastProcessedFileId: parentLastProcessedFileId,
+  onLastProcessedFileIdChange,
+}: SmartClaimFormProps) {
   const [complianceScore, setComplianceScore] = useState(0);
   const { register, watch, setValue, formState: { errors } } = form;
   
@@ -971,7 +983,18 @@ export function SmartClaimForm({ form, onFilesChange, uploadedFiles = [], onMult
   };
 
   // Track the last processed file to avoid re-processing the same file
-  const [lastProcessedFileId, setLastProcessedFileId] = useState<string | null>(null);
+  // Use parent state if provided, otherwise use local state
+  const [localLastProcessedFileId, setLocalLastProcessedFileId] = useState<string | null>(parentLastProcessedFileId || null);
+  
+  // Sync with parent state
+  const lastProcessedFileId = parentLastProcessedFileId !== undefined ? parentLastProcessedFileId : localLastProcessedFileId;
+  
+  const setLastProcessedFileId = (id: string | null) => {
+    setLocalLastProcessedFileId(id);
+    if (onLastProcessedFileIdChange) {
+      onLastProcessedFileIdChange(id);
+    }
+  };
 
   // Reset form when all documents are removed
   useEffect(() => {
@@ -1487,6 +1510,7 @@ export function SmartClaimForm({ form, onFilesChange, uploadedFiles = [], onMult
           <DocumentUpload
             requiredDocs={['Receipt', 'Invoice', 'Supporting Documents']}
             onFilesChange={onFilesChange}
+            initialFiles={uploadedFiles}
           />
         </div>
 
@@ -1550,7 +1574,7 @@ export function SmartClaimForm({ form, onFilesChange, uploadedFiles = [], onMult
               <div className="flex items-center gap-2 mb-2">
                 <span className="text-sm font-medium text-blue-700 dark:text-blue-300">Project Code for all receipts</span>
                 {currentActiveProject && (
-                  <span className="inline-flex items-center gap-0.5 rounded-full bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent">
+                  <span className="inline-flex items-center gap-0.5 rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
                     <Sparkles className="h-2.5 w-2.5" /> Auto
                   </span>
                 )}
@@ -1644,12 +1668,12 @@ export function SmartClaimForm({ form, onFilesChange, uploadedFiles = [], onMult
                         <Label className="text-xs text-muted-foreground flex items-center gap-1.5">
                           Category
                           {claim.fieldSources?.category === 'auto' && (
-                            <span className="inline-flex items-center gap-0.5 rounded-full bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent">
+                            <span className="inline-flex items-center gap-0.5 rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
                               <Sparkles className="h-2.5 w-2.5" /> Auto
                             </span>
                           )}
                           {claim.fieldSources?.category === 'manual' && claim.category && (
-                            <span className="inline-flex items-center gap-0.5 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                            <span className="inline-flex items-center gap-0.5 rounded-full bg-orange-100 px-1.5 py-0.5 text-[10px] font-medium text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
                               Manual
                             </span>
                           )}
@@ -1675,12 +1699,12 @@ export function SmartClaimForm({ form, onFilesChange, uploadedFiles = [], onMult
                         <Label className="text-xs text-muted-foreground flex items-center gap-1.5">
                           Title
                           {claim.fieldSources?.title === 'auto' && (
-                            <span className="inline-flex items-center gap-0.5 rounded-full bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent">
+                            <span className="inline-flex items-center gap-0.5 rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
                               <Sparkles className="h-2.5 w-2.5" /> Auto
                             </span>
                           )}
                           {claim.fieldSources?.title === 'manual' && claim.title && (
-                            <span className="inline-flex items-center gap-0.5 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                            <span className="inline-flex items-center gap-0.5 rounded-full bg-orange-100 px-1.5 py-0.5 text-[10px] font-medium text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
                               Manual
                             </span>
                           )}
@@ -1696,12 +1720,12 @@ export function SmartClaimForm({ form, onFilesChange, uploadedFiles = [], onMult
                         <Label className="text-xs text-muted-foreground flex items-center gap-1.5">
                           Amount (₹)
                           {claim.fieldSources?.amount === 'auto' && (
-                            <span className="inline-flex items-center gap-0.5 rounded-full bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent">
+                            <span className="inline-flex items-center gap-0.5 rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
                               <Sparkles className="h-2.5 w-2.5" /> Auto
                             </span>
                           )}
                           {claim.fieldSources?.amount === 'manual' && claim.amount && (
-                            <span className="inline-flex items-center gap-0.5 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                            <span className="inline-flex items-center gap-0.5 rounded-full bg-orange-100 px-1.5 py-0.5 text-[10px] font-medium text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
                               Manual
                             </span>
                           )}
@@ -1719,12 +1743,12 @@ export function SmartClaimForm({ form, onFilesChange, uploadedFiles = [], onMult
                         <Label className="text-xs text-muted-foreground flex items-center gap-1.5">
                           Date
                           {claim.fieldSources?.date === 'auto' && (
-                            <span className="inline-flex items-center gap-0.5 rounded-full bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent">
+                            <span className="inline-flex items-center gap-0.5 rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
                               <Sparkles className="h-2.5 w-2.5" /> Auto
                             </span>
                           )}
                           {claim.fieldSources?.date === 'manual' && claim.date && (
-                            <span className="inline-flex items-center gap-0.5 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                            <span className="inline-flex items-center gap-0.5 rounded-full bg-orange-100 px-1.5 py-0.5 text-[10px] font-medium text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
                               Manual
                             </span>
                           )}
@@ -1758,12 +1782,12 @@ export function SmartClaimForm({ form, onFilesChange, uploadedFiles = [], onMult
                         <Label className="text-xs text-muted-foreground flex items-center gap-1.5">
                           Vendor
                           {claim.fieldSources?.vendor === 'auto' && (
-                            <span className="inline-flex items-center gap-0.5 rounded-full bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent">
+                            <span className="inline-flex items-center gap-0.5 rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
                               <Sparkles className="h-2.5 w-2.5" /> Auto
                             </span>
                           )}
                           {claim.fieldSources?.vendor === 'manual' && claim.vendor && (
-                            <span className="inline-flex items-center gap-0.5 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                            <span className="inline-flex items-center gap-0.5 rounded-full bg-orange-100 px-1.5 py-0.5 text-[10px] font-medium text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
                               Manual
                             </span>
                           )}
@@ -1780,12 +1804,12 @@ export function SmartClaimForm({ form, onFilesChange, uploadedFiles = [], onMult
                         <Label className="text-xs text-muted-foreground flex items-center gap-1.5">
                           Transaction Ref ID
                           {claim.fieldSources?.transactionRef === 'auto' && (
-                            <span className="inline-flex items-center gap-0.5 rounded-full bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent">
+                            <span className="inline-flex items-center gap-0.5 rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
                               <Sparkles className="h-2.5 w-2.5" /> Auto
                             </span>
                           )}
                           {claim.fieldSources?.transactionRef === 'manual' && claim.transactionRef && (
-                            <span className="inline-flex items-center gap-0.5 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                            <span className="inline-flex items-center gap-0.5 rounded-full bg-orange-100 px-1.5 py-0.5 text-[10px] font-medium text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
                               Manual
                             </span>
                           )}
@@ -1861,13 +1885,13 @@ export function SmartClaimForm({ form, onFilesChange, uploadedFiles = [], onMult
               <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
                 Category
                 {singleFormFieldSources.category === 'auto' && (
-                  <span className="inline-flex items-center gap-0.5 rounded-full bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent">
-                    ⚡ Auto
+                  <span className="inline-flex items-center gap-0.5 rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                    <Zap className="h-2.5 w-2.5" /> Auto
                   </span>
                 )}
                 {singleFormFieldSources.category === 'manual' && (
-                  <span className="inline-flex items-center gap-0.5 rounded-full bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-medium text-blue-600">
-                    ✏️ Manual
+                  <span className="inline-flex items-center gap-0.5 rounded-full bg-orange-100 px-1.5 py-0.5 text-[10px] font-medium text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
+                    <Pencil className="h-2.5 w-2.5" /> Manual
                   </span>
                 )}
                 {isExtractingOCR && (
@@ -1941,13 +1965,13 @@ export function SmartClaimForm({ form, onFilesChange, uploadedFiles = [], onMult
               <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
                 Expense Date
                 {singleFormFieldSources.date === 'auto' && (
-                  <span className="inline-flex items-center gap-0.5 rounded-full bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent">
-                    ⚡ Auto
+                  <span className="inline-flex items-center gap-0.5 rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                    <Zap className="h-2.5 w-2.5" /> Auto
                   </span>
                 )}
                 {singleFormFieldSources.date === 'manual' && (
-                  <span className="inline-flex items-center gap-0.5 rounded-full bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-medium text-blue-600">
-                    ✏️ Manual
+                  <span className="inline-flex items-center gap-0.5 rounded-full bg-orange-100 px-1.5 py-0.5 text-[10px] font-medium text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
+                    <Pencil className="h-2.5 w-2.5" /> Manual
                   </span>
                 )}
               </label>
@@ -2004,8 +2028,8 @@ export function SmartClaimForm({ form, onFilesChange, uploadedFiles = [], onMult
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
                 Project Code
-                <span className="inline-flex items-center gap-0.5 rounded-full bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent">
-                  ⚡ Auto
+                <span className="inline-flex items-center gap-0.5 rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                  <Zap className="h-2.5 w-2.5" /> Auto
                 </span>
               </label>
               <Select

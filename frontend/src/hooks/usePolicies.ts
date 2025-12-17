@@ -2,12 +2,12 @@ import { useQuery } from '@tanstack/react-query';
 
 const API_BASE_URL = 'http://localhost:8000/api/v1';
 
-// Extracted claim category from API
+// Extracted claim category from API (includes both PolicyCategory and CustomClaim)
 export interface ExtractedClaimCategory {
   id: string;
-  policy_id: string;
+  policy_id: string | null;  // null for custom claims
   policy_name: string;
-  policy_region: string;
+  policy_region: string | null;
   policy_status: string;
   category_code: string;
   category_name: string;
@@ -24,6 +24,7 @@ export interface ExtractedClaimCategory {
   document_requirements: string[] | null;
   created_at: string;
   updated_at: string;
+  is_custom_claim?: boolean;  // True if this is a custom claim (not from policy)
 }
 
 // Fetch extracted claims from policies

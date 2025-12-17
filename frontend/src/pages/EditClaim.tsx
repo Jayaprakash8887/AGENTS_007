@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import {
@@ -12,6 +12,7 @@ import {
   MessageSquare,
   Zap,
   User,
+  CheckCircle2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { DataSource } from '@/types';
@@ -30,6 +31,8 @@ import { useComments, useCreateComment } from '@/hooks/useComments';
 import { Separator } from '@/components/ui/separator';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/hooks/use-toast';
+import { useReimbursementsByRegion } from '@/hooks/usePolicies';
+import { PolicyChecks } from '@/components/claims/PolicyChecks';
 
 export default function EditClaim() {
   const { id } = useParams<{ id: string }>();
@@ -41,6 +44,9 @@ export default function EditClaim() {
   const updateClaim = useUpdateClaim();
   const createCommentMutation = useCreateComment();
   const { user } = useAuth();
+  
+  // Fetch reimbursement categories for policy validation
+  const { data: reimbursementCategories = [] } = useReimbursementsByRegion(user?.region);
   
   const [formData, setFormData] = useState({
     amount: '',
@@ -63,6 +69,136 @@ export default function EditClaim() {
       });
     }
   }, [claim]);
+  
+  // Get the selected category's policy details
+  const selectedCategoryPolicy = useMemo(() => {
+    if (!claim?.category) return null;
+    return reimbursementCategories.find(cat => 
+      cat.category_code.toLowerCase() === claim.category.toLowerCase()
+    ) || null;
+  }, [claim?.category, reimbursementCategories]);
+  
+  // Amount validation against policy
+  const amountValidation = useMemo(() => {
+    if (!selectedCategoryPolicy) {
+      return { 
+        status: 'warning' as const, 
+        message: "No policy limits for this category" 
+      };
+    }
+    
+    const claimAmount = parseFloat(formData.amount || '0');
+    const maxAmount = selectedCategoryPolicy.max_amount;
+    
+    if (!claimAmount) {
+      return { 
+        status: 'checking' as const, 
+        message: "Enter amount to validate against policy" 
+      };
+    }
+    
+    if (maxAmount && claimAmount > maxAmount) {
+      return { 
+        status: 'fail' as const, 
+        message: `Amount ₹${claimAmount.toLocaleString()} exceeds policy limit of ₹${maxAmount.toLocaleString()}` 
+      };
+    }
+    
+    return { 
+      status: 'pass' as const, 
+      message: maxAmount 
+        ? `Amount ₹${claimAmount.toLocaleString()} within policy limit of ₹${maxAmount.toLocaleString()}`
+        : "Amount verified - no policy limit defined"
+    };
+  }, [formData.amount, selectedCategoryPolicy]);
+  
+  // Date validation against policy
+  const dateValidation = useMemo(() => {
+    if (!selectedCategoryPolicy) {
+      return { 
+        status: 'warning' as const, 
+        message: "No date restrictions for this category" 
+      };
+    }
+    
+    const claimDate = formData.claim_date;
+    const submissionWindowDays = selectedCategoryPolicy.submission_window_days;
+    
+    if (!claimDate) {
+      return { 
+        status: 'checking' as const, 
+        message: "Enter date to validate against policy" 
+      };
+    }
+    
+    if (submissionWindowDays) {
+      const today = new Date();
+      const daysDiff = Math.floor((today.getTime() - new Date(claimDate).getTime()) / (1000 * 60 * 60 * 24));
+      
+      if (daysDiff > submissionWindowDays) {
+        return { 
+          status: 'fail' as const, 
+          message: `Receipt date is ${daysDiff} days old, exceeds ${submissionWindowDays}-day submission window` 
+        };
+      }
+      
+      return { 
+        status: 'pass' as const, 
+        message: `Within ${submissionWindowDays}-day submission window (${daysDiff} days old)` 
+      };
+    }
+    
+    return { 
+      status: 'pass' as const, 
+      message: "Date verified - no submission window restriction" 
+    };
+  }, [formData.claim_date, selectedCategoryPolicy]);
+  
+  // Policy checks array for display
+  const policyChecks = useMemo(() => {
+    const allDocuments = documents.length > 0 ? documents : (claim?.documents || []);
+    
+    return [
+      {
+        id: "category",
+        label: "Category",
+        status: claim?.category ? "pass" as const : "warning" as const,
+        message: claim?.category 
+          ? `Category: ${claim.category}` 
+          : "Category not set",
+      },
+      {
+        id: "amount",
+        label: "Amount within limit",
+        status: amountValidation.status,
+        message: amountValidation.message,
+      },
+      {
+        id: "date",
+        label: "Within submission window",
+        status: dateValidation.status,
+        message: dateValidation.message,
+      },
+      {
+        id: "docs",
+        label: "Required documents",
+        status: allDocuments.length > 0 ? "pass" as const : "warning" as const,
+        message: allDocuments.length > 0 
+          ? `${allDocuments.length} document(s) attached` 
+          : "No documents attached",
+      },
+      {
+        id: "description",
+        label: "Description provided",
+        status: formData.description && formData.description.length > 10 
+          ? "pass" as const 
+          : "warning" as const,
+        message: formData.description && formData.description.length > 10
+          ? "Description provided"
+          : "Add a detailed description",
+      },
+    ];
+  }, [claim, formData, amountValidation, dateValidation, documents]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -157,9 +293,9 @@ export default function EditClaim() {
   // Helper to get data source badge
   const getDataSourceBadge = (source: DataSource | string) => {
     const config = {
-      ocr: { label: 'Auto', icon: Zap, className: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300' },
-      auto: { label: 'Auto', icon: Zap, className: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300' },
-      manual: { label: 'Manual', icon: User, className: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300' },
+      ocr: { label: 'Auto', icon: Zap, className: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' },
+      auto: { label: 'Auto', icon: Zap, className: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' },
+      manual: { label: 'Manual', icon: User, className: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' },
       edited: { label: 'Edited', icon: User, className: 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300' },
     };
     const { label, icon: Icon, className } = config[source as keyof typeof config] || config.manual;
@@ -354,6 +490,9 @@ export default function EditClaim() {
                 )}
               </CardContent>
             </Card>
+
+            {/* Policy Checks - Real-time validation */}
+            <PolicyChecks checks={policyChecks} />
 
             {/* Comments */}
             <Card>

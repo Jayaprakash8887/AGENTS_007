@@ -165,7 +165,7 @@ class PolicyExtractionService:
             # Use AI to extract categories
             if self.gemini_client and extracted_text:
                 logger.info(f"Using AI to extract categories from {len(extracted_text)} chars of text")
-                categories_data = await self._extract_categories_with_ai(extracted_text)
+                categories_data = await self._extract_categories_with_ai(extracted_text, policy.description)
                 logger.info(f"AI extracted {len(categories_data)} categories")
             else:
                 # Use default categories
@@ -300,13 +300,24 @@ class PolicyExtractionService:
             logger.error("pytesseract or PIL not installed")
             return ""
     
-    async def _extract_categories_with_ai(self, text: str) -> List[Dict[str, Any]]:
+    async def _extract_categories_with_ai(self, text: str, policy_description: str = None) -> List[Dict[str, Any]]:
         """Use Gemini to extract categories from policy text"""
         if not self.gemini_client:
             return DEFAULT_CATEGORIES
         
+        # Build context from policy description if provided
+        description_context = ""
+        if policy_description:
+            description_context = f"""
+
+POLICY CONTEXT (provided by uploader):
+{policy_description}
+
+Use this context to better understand the policy scope and focus areas.
+"""
+        
         prompt = f"""
-You are an expert HR policy analyst. Analyze the following document and extract ALL expense reimbursement and allowance categories mentioned.
+You are an expert HR policy analyst. Analyze the following document and extract ALL expense reimbursement and allowance categories mentioned.{description_context}
 
 IMPORTANT: Look for ANY mentions of:
 - Expenses that can be claimed or reimbursed

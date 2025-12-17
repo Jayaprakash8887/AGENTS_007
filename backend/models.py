@@ -691,3 +691,87 @@ class PolicyAuditLog(Base):
         Index("idx_policy_audit_date", "performed_at"),
     )
 
+
+class CustomClaim(Base):
+    """
+    Custom claim definitions created by Admin.
+    These are standalone claim types not linked to any policy document.
+    """
+    __tablename__ = "custom_claims"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(UUID(as_uuid=True), nullable=False)
+    
+    # Custom claim identification
+    claim_name = Column(String(255), nullable=False)
+    claim_code = Column(String(50), unique=True, nullable=False)  # Auto-generated like CC-2024-0001
+    description = Column(Text)
+    
+    # Category type: REIMBURSEMENT or ALLOWANCE
+    category_type = Column(String(20), nullable=False)
+    
+    # Region/Location applicability
+    region = Column(String(100), nullable=True)  # NULL means applicable to all regions
+    
+    # Limits
+    max_amount = Column(Numeric(12, 2))
+    min_amount = Column(Numeric(12, 2))
+    default_amount = Column(Numeric(12, 2))  # Default amount for allowances
+    currency = Column(String(3), default="INR")
+    
+    # Frequency
+    frequency_limit = Column(String(50))  # ONCE, DAILY, WEEKLY, MONTHLY, QUARTERLY, YEARLY, UNLIMITED
+    frequency_count = Column(Integer)  # Number of times allowed per frequency period
+    
+    # Custom fields definition (JSON array of field definitions)
+    custom_fields = Column(JSONB, default=[])
+    # Structure: [
+    #   {
+    #     "name": "vendor_name",
+    #     "label": "Vendor Name",
+    #     "type": "text",  # text, number, date, select, file, boolean
+    #     "required": true,
+    #     "placeholder": "Enter vendor name",
+    #     "options": [],  # For select type
+    #     "validation": {
+    #       "min_length": 1,
+    #       "max_length": 100,
+    #       "min": null,
+    #       "max": null,
+    #       "pattern": null
+    #     },
+    #     "default_value": null
+    #   }
+    # ]
+    
+    # Eligibility (JSON for flexibility)
+    eligibility_criteria = Column(JSONB, default={})
+    # Structure: {"grades": ["L3", "L4"], "departments": ["Engineering"], "locations": ["Domestic"]}
+    
+    # Documentation requirements
+    requires_receipt = Column(Boolean, default=True)
+    requires_approval_above = Column(Numeric(12, 2))  # Amount above which needs approval
+    allowed_document_types = Column(ARRAY(String), default=["PDF", "JPG", "PNG"])
+    
+    # Time constraints
+    submission_window_days = Column(Integer)  # Days within which claim must be submitted
+    
+    # Status
+    is_active = Column(Boolean, default=True)
+    display_order = Column(Integer, default=0)
+    
+    # Audit
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    updated_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    
+    __table_args__ = (
+        CheckConstraint("category_type IN ('REIMBURSEMENT', 'ALLOWANCE')", name="valid_custom_claim_category_type"),
+        Index("idx_custom_claims_tenant", "tenant_id"),
+        Index("idx_custom_claims_type", "category_type"),
+        Index("idx_custom_claims_code", "claim_code"),
+        Index("idx_custom_claims_active", "is_active"),
+        Index("idx_custom_claims_region", "region"),
+    )
+

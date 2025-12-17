@@ -631,7 +631,7 @@ class PolicyCategoryUpdate(BaseModel):
 class PolicyCategoryResponse(BaseModel):
     id: UUID
     tenant_id: UUID
-    policy_upload_id: UUID
+    policy_upload_id: Optional[UUID] = None  # Optional for custom claims which aren't linked to policies
     category_name: str
     category_code: str
     category_type: str
@@ -794,6 +794,159 @@ class PolicyAuditLogResponse(BaseModel):
     performed_by: UUID
     performed_at: datetime
     
+    class Config:
+        from_attributes = True
+
+
+# ==================== CUSTOM CLAIM SCHEMAS ====================
+# Custom Claims are standalone claim types not linked to any policy document
+
+class CustomClaimCategoryType(str, Enum):
+    """Category type for custom claims"""
+    REIMBURSEMENT = "REIMBURSEMENT"
+    ALLOWANCE = "ALLOWANCE"
+
+
+class CustomFieldType(str, Enum):
+    """Data types for custom fields"""
+    TEXT = "TEXT"
+    NUMBER = "NUMBER"
+    DATE = "DATE"
+    CURRENCY = "CURRENCY"
+    DROPDOWN = "DROPDOWN"
+    CHECKBOX = "CHECKBOX"
+    FILE = "FILE"
+    EMAIL = "EMAIL"
+    PHONE = "PHONE"
+
+
+class CustomFieldValidation(BaseModel):
+    """Validation rules for custom fields"""
+    required: bool = False
+    min_length: Optional[int] = None
+    max_length: Optional[int] = None
+    min_value: Optional[float] = Field(None, alias="min")
+    max_value: Optional[float] = Field(None, alias="max")
+    pattern: Optional[str] = None  # Regex pattern for validation
+    allowed_values: Optional[List[str]] = None  # For dropdown fields
+    
+    class Config:
+        populate_by_name = True
+
+
+class CustomFieldDefinition(BaseModel):
+    """Definition of a custom field in a custom claim"""
+    field_name: str = Field(..., min_length=1, max_length=100, alias="name")
+    field_label: str = Field(..., min_length=1, max_length=200, alias="label")
+    field_type: str = Field(..., alias="type")
+    default_value: Optional[Any] = None
+    placeholder: Optional[str] = None
+    help_text: Optional[str] = None
+    options: Optional[List[str]] = []  # For dropdown/select fields
+    validation: Optional[CustomFieldValidation] = None
+    display_order: int = 0
+    required: bool = False
+    
+    class Config:
+        populate_by_name = True
+
+
+class CustomClaimBase(BaseModel):
+    """Base schema for custom claims"""
+    claim_name: str = Field(..., min_length=1, max_length=200)
+    description: Optional[str] = None
+    category_type: CustomClaimCategoryType
+    region: Optional[str] = None  # Region where this claim type is applicable
+    max_amount: Optional[float] = Field(None, ge=0)
+    min_amount: Optional[float] = Field(None, ge=0)
+    default_amount: Optional[float] = Field(None, ge=0)
+    currency: str = "INR"
+    frequency_limit: Optional[str] = None  # e.g., "MONTHLY", "YEARLY", "ONCE"
+    frequency_count: Optional[int] = Field(None, ge=1)  # Max claims per frequency
+    custom_fields: List[CustomFieldDefinition] = []
+    eligibility_criteria: Optional[Dict[str, Any]] = None
+    requires_receipt: bool = True
+    requires_approval_above: Optional[float] = Field(None, ge=0)
+    allowed_document_types: List[str] = ["pdf", "jpg", "jpeg", "png"]
+    submission_window_days: Optional[int] = Field(None, ge=1)  # Days within which claim must be submitted
+    is_active: bool = True
+    display_order: int = 0
+
+
+class CustomClaimCreate(CustomClaimBase):
+    """Schema for creating a custom claim"""
+    pass
+
+
+class CustomClaimUpdate(BaseModel):
+    """Schema for updating a custom claim"""
+    claim_name: Optional[str] = Field(None, min_length=1, max_length=200)
+    description: Optional[str] = None
+    category_type: Optional[CustomClaimCategoryType] = None
+    region: Optional[str] = None
+    max_amount: Optional[float] = Field(None, ge=0)
+    min_amount: Optional[float] = Field(None, ge=0)
+    default_amount: Optional[float] = Field(None, ge=0)
+    currency: Optional[str] = None
+    frequency_limit: Optional[str] = None
+    frequency_count: Optional[int] = Field(None, ge=1)
+    custom_fields: Optional[List[CustomFieldDefinition]] = None
+    eligibility_criteria: Optional[Dict[str, Any]] = None
+    requires_receipt: Optional[bool] = None
+    requires_approval_above: Optional[float] = Field(None, ge=0)
+    allowed_document_types: Optional[List[str]] = None
+    submission_window_days: Optional[int] = Field(None, ge=1)
+    is_active: Optional[bool] = None
+    display_order: Optional[int] = None
+
+
+class CustomClaimResponse(BaseModel):
+    """Full response schema for a custom claim"""
+    id: UUID
+    tenant_id: UUID
+    claim_name: str
+    claim_code: str
+    description: Optional[str]
+    category_type: str
+    region: Optional[str]
+    max_amount: Optional[float]
+    min_amount: Optional[float]
+    default_amount: Optional[float]
+    currency: str
+    frequency_limit: Optional[str]
+    frequency_count: Optional[int]
+    custom_fields: List[Dict[str, Any]]
+    eligibility_criteria: Optional[Dict[str, Any]]
+    requires_receipt: bool
+    requires_approval_above: Optional[float]
+    allowed_document_types: List[str]
+    submission_window_days: Optional[int]
+    is_active: bool
+    display_order: int
+    created_by: UUID
+    updated_by: Optional[UUID]
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class CustomClaimListResponse(BaseModel):
+    """Simplified list response for custom claims"""
+    id: UUID
+    claim_name: str
+    claim_code: str
+    description: Optional[str]
+    category_type: str
+    region: Optional[str]
+    max_amount: Optional[float]
+    currency: str
+    requires_receipt: bool
+    is_active: bool
+    fields_count: int
+    created_at: datetime
+
     class Config:
         from_attributes = True
 

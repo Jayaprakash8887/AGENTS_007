@@ -83,6 +83,8 @@ export function ClaimSubmissionForm({ onClose }: ClaimSubmissionFormProps) {
     projectCode: 'manual',
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Track last processed file ID at parent level to prevent re-processing when navigating back
+  const [lastProcessedFileId, setLastProcessedFileId] = useState<string | null>(null);
   const { user } = useAuth();
   const createBatchClaimsWithDocument = useCreateBatchClaimsWithDocument();
   
@@ -109,6 +111,9 @@ export function ClaimSubmissionForm({ onClose }: ClaimSubmissionFormProps) {
       costCenter: "",
     },
   });
+  
+  // Watch all form values for reactive updates
+  const watchedFormValues = form.watch();
 
   const selectedPolicy = selectedAllowanceId
     ? allowancePolicies.find((p) => p.id === selectedAllowanceId)
@@ -457,6 +462,8 @@ export function ClaimSubmissionForm({ onClose }: ClaimSubmissionFormProps) {
               console.log('Single form field sources changed:', sources);
               setSingleFormFieldSources(sources);
             }}
+            lastProcessedFileId={lastProcessedFileId}
+            onLastProcessedFileIdChange={setLastProcessedFileId}
           />
         )}
 
@@ -637,7 +644,7 @@ export function ClaimSubmissionForm({ onClose }: ClaimSubmissionFormProps) {
         {/* Step 3: Review for Reimbursement */}
         {currentStep === 3 && claimType === 'reimbursement' && (
           <ClaimReview
-            formData={form.getValues()}
+            formData={watchedFormValues}
             files={uploadedFiles}
             multipleClaims={extractedMultipleClaims.length > 1 ? extractedMultipleClaims : undefined}
           />

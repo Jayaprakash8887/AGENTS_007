@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Upload, X, FileText, Image, File, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -15,11 +15,19 @@ export interface UploadedFile {
 interface DocumentUploadProps {
   requiredDocs: string[];
   onFilesChange: (files: UploadedFile[]) => void;
+  initialFiles?: UploadedFile[];  // For restoring state when navigating back
 }
 
-export function DocumentUpload({ requiredDocs, onFilesChange }: DocumentUploadProps) {
-  const [files, setFiles] = useState<UploadedFile[]>([]);
+export function DocumentUpload({ requiredDocs, onFilesChange, initialFiles = [] }: DocumentUploadProps) {
+  const [files, setFiles] = useState<UploadedFile[]>(initialFiles);
   const [isDragging, setIsDragging] = useState(false);
+  
+  // Sync internal state when initialFiles change (e.g., when navigating back)
+  useEffect(() => {
+    if (initialFiles.length > 0 && files.length === 0) {
+      setFiles(initialFiles);
+    }
+  }, [initialFiles]);
 
   const getFileType = (fileName: string): "image" | "pdf" | "other" => {
     const ext = fileName.toLowerCase().split(".").pop();

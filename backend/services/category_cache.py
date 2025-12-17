@@ -219,16 +219,16 @@ class CategoryCacheService:
         return None
     
     def _load_categories_from_db(self, region: str) -> Optional[RegionCache]:
-        """Load categories from database and cache them"""
+        """Load categories from database and cache them (includes PolicyCategory + CustomClaim)"""
         try:
             from database import get_sync_db
-            from models import PolicyCategory, PolicyUpload
+            from models import PolicyCategory, PolicyUpload, CustomClaim
             from sqlalchemy.orm import Session
             from sqlalchemy import and_, or_
             
             db: Session = next(get_sync_db())
             
-            # Query categories for region or global
+            # Query categories for region or global (from PolicyCategory)
             query = db.query(PolicyCategory, PolicyUpload).join(
                 PolicyUpload, PolicyCategory.policy_upload_id == PolicyUpload.id
             ).filter(
@@ -245,10 +245,6 @@ class CategoryCacheService:
             ).order_by(PolicyCategory.display_order)
             
             results = query.all()
-            
-            if not results:
-                logger.warning(f"No categories found for region: {region}")
-                return None
             
             # Build cached categories
             all_categories = []
@@ -274,6 +270,56 @@ class CategoryCacheService:
                     reimbursement_categories.append(cached)
                 elif cat.category_type == "ALLOWANCE":
                     allowance_categories.append(cached)
+            
+            # ============ INCLUDE CUSTOM CLAIMS ============
+            # Custom claims are standalone categories not linked to policy documents
+            custom_claims_query = db.query(CustomClaim).filter(
+                and_(
+                    CustomClaim.tenant_id == UUID(settings.DEFAULT_TENANT_ID),
+                    CustomClaim.is_active == True,
+                    or_(
+                        CustomClaim.region == region,
+                        CustomClaim.region == "GLOBAL",
+                        CustomClaim.region.is_(None)
+                    )
+                )
+            ).order_by(CustomClaim.display_order)
+            
+            custom_claims = custom_claims_query.all()
+            
+            for cc in custom_claims:
+                # Extract keywords from description and custom fields
+                keywords = self._extract_keywords(cc.claim_name, cc.description)
+                # Add custom field names as keywords
+                if cc.custom_fields:
+                    for field_def in cc.custom_fields:
+                        if isinstance(field_def, dict):
+                            field_name = field_def.get("name") or field_def.get("field_name", "")
+                            field_label = field_def.get("label") or field_def.get("field_label", "")
+                            if field_name:
+                                keywords.append(field_name)
+                            if field_label:
+                                keywords.append(field_label)
+                
+                cached = CachedCategory(
+                    code=cc.claim_code,
+                    name=cc.claim_name,
+                    category_type=cc.category_type,
+                    max_amount=float(cc.max_amount) if cc.max_amount else None,
+                    description=cc.description,
+                    keywords=list(set(keywords))
+                )
+                
+                all_categories.append(cached)
+                
+                if cc.category_type == "REIMBURSEMENT":
+                    reimbursement_categories.append(cached)
+                elif cc.category_type == "ALLOWANCE":
+                    allowance_categories.append(cached)
+            
+            if not all_categories:
+                logger.warning(f"No categories found for region: {region}")
+                return None
             
             # Build LLM prompt text
             llm_prompt = self._build_llm_prompt(reimbursement_categories)

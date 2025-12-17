@@ -537,15 +537,17 @@ class EmbeddingService:
         region: str,
         category_type: str
     ) -> List[CategoryEmbedding]:
-        """Generate embeddings for all categories in a region from database"""
+        """Generate embeddings for all categories in a region from database (PolicyCategory + CustomClaim)"""
         try:
             from database import get_sync_db
-            from models import PolicyCategory, PolicyUpload
+            from models import PolicyCategory, PolicyUpload, CustomClaim
             from sqlalchemy import and_, or_
             
             db = next(get_sync_db())
             
-            # Query categories
+            embeddings = []
+            
+            # ============ Query PolicyCategory ============
             results = db.query(PolicyCategory, PolicyUpload).join(
                 PolicyUpload, PolicyCategory.policy_upload_id == PolicyUpload.id
             ).filter(
@@ -562,11 +564,6 @@ class EmbeddingService:
                 )
             ).all()
             
-            if not results:
-                logger.warning(f"No categories found for {region}/{category_type}")
-                return []
-            
-            embeddings = []
             for cat, policy in results:
                 # Build keywords from description
                 keywords = self._extract_keywords(cat.category_name, cat.description)
@@ -584,7 +581,52 @@ class EmbeddingService:
                 )
                 embeddings.append(cat_emb)
             
-            logger.info(f"Generated {len(embeddings)} embeddings for {region}/{category_type}")
+            # ============ Query CustomClaim (standalone categories) ============
+            custom_claims = db.query(CustomClaim).filter(
+                and_(
+                    CustomClaim.tenant_id == UUID(settings.DEFAULT_TENANT_ID),
+                    CustomClaim.category_type == category_type,
+                    CustomClaim.is_active == True,
+                    or_(
+                        CustomClaim.region == region,
+                        CustomClaim.region == "GLOBAL",
+                        CustomClaim.region.is_(None)
+                    )
+                )
+            ).all()
+            
+            for cc in custom_claims:
+                # Build keywords from description and custom fields
+                keywords = self._extract_keywords(cc.claim_name, cc.description)
+                # Add custom field names/labels as keywords
+                if cc.custom_fields:
+                    for field_def in cc.custom_fields:
+                        if isinstance(field_def, dict):
+                            field_name = field_def.get("name") or field_def.get("field_name", "")
+                            field_label = field_def.get("label") or field_def.get("field_label", "")
+                            if field_name:
+                                keywords.add(field_name.lower().replace("_", " "))
+                            if field_label:
+                                keywords.add(field_label.lower())
+                
+                # Generate embedding for custom claim
+                cat_emb = await self.create_category_embedding(
+                    category_code=cc.claim_code,
+                    category_name=cc.claim_name,
+                    category_type=cc.category_type,
+                    region=region,
+                    description=cc.description,
+                    keywords=list(keywords),
+                    max_amount=float(cc.max_amount) if cc.max_amount else None,
+                    is_active=cc.is_active,
+                )
+                embeddings.append(cat_emb)
+            
+            if not embeddings:
+                logger.warning(f"No categories found for {region}/{category_type}")
+                return []
+            
+            logger.info(f"Generated {len(embeddings)} embeddings for {region}/{category_type} (including custom claims)")
             return embeddings
             
         except Exception as e:

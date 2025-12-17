@@ -39,7 +39,7 @@ export const SmartFormField = forwardRef<HTMLInputElement | HTMLTextAreaElement,
     const SourceBadge = () => {
       if (effectiveSource === 'auto') {
         return (
-          <span className="inline-flex items-center gap-0.5 rounded-full bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent">
+          <span className="inline-flex items-center gap-0.5 rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
             <Zap className="h-2.5 w-2.5" />
             Auto
           </span>
@@ -47,7 +47,7 @@ export const SmartFormField = forwardRef<HTMLInputElement | HTMLTextAreaElement,
       }
       if (effectiveSource === 'manual') {
         return (
-          <span className="inline-flex items-center gap-0.5 rounded-full bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-medium text-blue-600">
+          <span className="inline-flex items-center gap-0.5 rounded-full bg-orange-100 px-1.5 py-0.5 text-[10px] font-medium text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
             <Pencil className="h-2.5 w-2.5" />
             Manual
           </span>

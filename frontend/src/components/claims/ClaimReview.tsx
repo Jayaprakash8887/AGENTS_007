@@ -50,19 +50,69 @@ interface ClaimReviewProps {
 
 const categoryLabels: Record<string, string> = {
   'certification': 'Certification',
+  'professional_certification_reimbursement': 'Professional Certification Reimbursement',
   'travel': 'Travel',
   'team-lunch': 'Team Lunch',
+  'team_lunch': 'Team Lunch',
   'conveyance': 'Conveyance',
+  'local_travel_conveyance_reimbursement_with_bills': 'Local Travel Conveyance',
   'accommodation': 'Accommodation',
   'equipment': 'Equipment',
   'phone-internet': 'Phone & Internet',
   'medical': 'Medical',
   'client-meeting': 'Client Meeting',
+  'training_program_reimbursement': 'Training Program Reimbursement',
+  'technical_conferences_and_seminars_reimbursement': 'Technical Conferences and Seminars',
+  'professional_body_membership_reimbursement': 'Professional Body Membership',
+  'toll_and_parking_reimbursement': 'Toll and Parking Reimbursement',
+  'fuel_and_diesel_reimbursement': 'Fuel and Diesel Reimbursement',
+  'other': 'Other',
+};
+
+// Helper to get category label - handles various formats
+const getCategoryLabel = (category: string | undefined): string => {
+  if (!category) return 'Not selected';
+  const normalized = category.toLowerCase().trim();
+  // Direct match
+  if (categoryLabels[normalized]) return categoryLabels[normalized];
+  // Try replacing underscores with dashes
+  const withDashes = normalized.replace(/_/g, '-');
+  if (categoryLabels[withDashes]) return categoryLabels[withDashes];
+  // Try replacing dashes with underscores
+  const withUnderscores = normalized.replace(/-/g, '_');
+  if (categoryLabels[withUnderscores]) return categoryLabels[withUnderscores];
+  // Title case the category as fallback
+  return category.split(/[-_]/).map(word => 
+    word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+  ).join(' ');
 };
 
 export function ClaimReview({ formData, files, multipleClaims }: ClaimReviewProps) {
-  const complianceScore = 92; // Would be calculated based on form completion
-  const categoryLabel = formData.category ? categoryLabels[formData.category] || formData.category : 'Not selected';
+  // Calculate compliance score dynamically based on form completion
+  const calculateComplianceScore = () => {
+    let score = 0;
+    // Category: 15 points (but 'other' counts less)
+    if (formData.category && formData.category !== 'other') score += 15;
+    else if (formData.category === 'other') score += 5;
+    // Title: 15 points
+    if (formData.title && formData.title.length >= 3) score += 15;
+    // Amount: 15 points
+    if (formData.amount && parseFloat(formData.amount) > 0) score += 15;
+    // Date: 15 points
+    if (formData.date) score += 15;
+    // Vendor: 15 points
+    if (formData.vendor && formData.vendor.length >= 2) score += 15;
+    // Description: 10 points
+    if (formData.description && formData.description.length > 10) score += 10;
+    // Documents: 10 points
+    if (files && files.length > 0) score += 10;
+    // Project Code: 5 points
+    if (formData.projectCode) score += 5;
+    return Math.min(score, 100);
+  };
+  
+  const complianceScore = calculateComplianceScore();
+  const categoryLabel = getCategoryLabel(formData.category);
   
   // Filter selected claims for multiple claims view
   const selectedClaims = multipleClaims?.filter(c => c.selected) || [];
@@ -145,7 +195,7 @@ export function ClaimReview({ formData, files, multipleClaims }: ClaimReviewProp
                   <div className="grid grid-cols-2 gap-2 text-sm">
                     <div>
                       <span className="text-muted-foreground">Category: </span>
-                      <span className="text-foreground">{categoryLabels[claim.category] || claim.category}</span>
+                      <span className="text-foreground">{getCategoryLabel(claim.category)}</span>
                     </div>
                     <div>
                       <span className="text-muted-foreground">Date: </span>

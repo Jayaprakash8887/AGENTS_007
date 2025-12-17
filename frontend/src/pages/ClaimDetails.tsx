@@ -247,9 +247,9 @@ export default function ClaimDetails() {
 
   const getDataSourceBadge = (source: DataSource) => {
     const config = {
-      ocr: { label: 'Auto', icon: Zap, className: 'bg-ai/10 text-ai' },
-      auto: { label: 'Auto', icon: Zap, className: 'bg-ai/10 text-ai' },  // Support both 'ocr' and 'auto'
-      manual: { label: 'Manual', icon: User, className: 'bg-secondary text-secondary-foreground' },
+      ocr: { label: 'Auto', icon: Zap, className: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' },
+      auto: { label: 'Auto', icon: Zap, className: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' },  // Support both 'ocr' and 'auto'
+      manual: { label: 'Manual', icon: User, className: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' },
       edited: { label: 'Edited', icon: Edit, className: 'bg-warning/10 text-warning' },
     };
     const { label, icon: Icon, className } = config[source] || config.manual;
