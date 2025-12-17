@@ -6,7 +6,7 @@ import { RecentActivity } from '@/components/dashboard/RecentActivity';
 import { AISuggestionsCard } from '@/components/dashboard/AISuggestionsCard';
 import { AllowanceOverviewCards, AllowancePolicyAlerts } from '@/components/dashboard/AllowanceWidgets';
 import { useAuth } from '@/contexts/AuthContext';
-import { useDashboardSummary, useClaimsByStatus, formatCurrency } from '@/hooks/useDashboard';
+import { useDashboardSummary, useClaimsByStatus, useHRMetrics, formatCurrency } from '@/hooks/useDashboard';
 import { CardSkeleton } from '@/components/ui/loading-skeleton';
 
 // Employee Dashboard - Personal claims and allowances
@@ -206,14 +206,15 @@ function ManagerDashboard({ userName, employeeId, tenantId }: { userName: string
 
 // HR Dashboard - Company-wide employee claims
 function HRDashboard({ userName, employeeId, tenantId }: { userName: string; employeeId: string; tenantId?: string }) {
-  const { data: summary, isLoading: summaryLoading } = useDashboardSummary(undefined, tenantId);
+  const { data: hrMetrics, isLoading: hrMetricsLoading } = useHRMetrics(tenantId);
   const { data: claimsByStatus, isLoading: statusLoading } = useClaimsByStatus(undefined, tenantId);
 
-  const hrPending = claimsByStatus?.find(c => c.status === 'PENDING_HR')?.count || 0;
-  const totalClaims = summary?.total_claims || 0;
-  const monthlyValue = summary?.total_amount_claimed || 0;
+  const hrPending = hrMetrics?.hr_pending || 0;
+  const totalEmployees = hrMetrics?.total_employees || 0;
+  const activeClaims = hrMetrics?.active_claims || 0;
+  const monthlyValue = hrMetrics?.monthly_claims_value || 0;
 
-  if (summaryLoading || statusLoading) {
+  if (hrMetricsLoading || statusLoading) {
     return (
       <div className="space-y-8">
         <div>
@@ -255,14 +256,14 @@ function HRDashboard({ userName, employeeId, tenantId }: { userName: string; emp
         />
         <SummaryCard
           title="Total Employees"
-          value="145"
+          value={totalEmployees}
           trend={{ value: 5, isPositive: true }}
           icon={Users}
           variant="default"
         />
         <SummaryCard
           title="Active Claims"
-          value={totalClaims}
+          value={activeClaims}
           trend={{ value: 12, isPositive: true }}
           icon={FileText}
           variant="default"

@@ -176,6 +176,32 @@ export function usePendingApprovals(tenantId?: string) {
   });
 }
 
+// HR Metrics interface and fetch function
+interface HRMetrics {
+  total_employees: number;
+  hr_pending: number;
+  hr_approved_this_month: number;
+  monthly_claims_value: number;
+  active_claims: number;
+}
+
+async function fetchHRMetrics(tenantId?: string): Promise<HRMetrics> {
+  const url = buildUrl(`${API_BASE_URL}/dashboard/hr-metrics`, { tenant_id: tenantId });
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error('Failed to fetch HR metrics');
+  }
+  return response.json();
+}
+
+export function useHRMetrics(tenantId?: string) {
+  return useQuery({
+    queryKey: ['hr-metrics', tenantId],
+    queryFn: () => fetchHRMetrics(tenantId),
+    refetchInterval: 30000,
+  });
+}
+
 // Fetch draft claims (AI suggestions)
 async function fetchDraftClaims(employeeId?: string, limit: number = 5, tenantId?: string): Promise<RecentActivity[]> {
   const url = buildUrl(`${API_BASE_URL}/dashboard/recent-activity`, { limit, employee_id: employeeId, tenant_id: tenantId, status: 'DRAFT' });

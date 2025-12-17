@@ -248,6 +248,60 @@ async def get_pending_approvals_count(
     }
 
 
+@router.get("/hr-metrics")
+async def get_hr_metrics(
+    tenant_id: Optional[UUID] = None,
+    db: Session = Depends(get_sync_db)
+):
+    """Get HR-specific metrics including employee count"""
+    
+    # Total active employees
+    employee_query = db.query(func.count(User.id)).filter(User.is_active == True)
+    if tenant_id:
+        employee_query = employee_query.filter(User.tenant_id == tenant_id)
+    total_employees = employee_query.scalar() or 0
+    
+    # HR pending claims
+    hr_pending_query = db.query(func.count(Claim.id)).filter(Claim.status == 'PENDING_HR')
+    if tenant_id:
+        hr_pending_query = hr_pending_query.filter(Claim.tenant_id == tenant_id)
+    hr_pending = hr_pending_query.scalar() or 0
+    
+    # Claims approved by HR this month
+    first_day_of_month = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    hr_approved_query = db.query(func.count(Claim.id)).filter(
+        Claim.status.in_(['HR_APPROVED', 'PENDING_FINANCE', 'FINANCE_APPROVED', 'SETTLED']),
+        Claim.updated_at >= first_day_of_month
+    )
+    if tenant_id:
+        hr_approved_query = hr_approved_query.filter(Claim.tenant_id == tenant_id)
+    hr_approved_this_month = hr_approved_query.scalar() or 0
+    
+    # Total claims value this month
+    amount_query = db.query(func.sum(Claim.amount)).filter(
+        Claim.submission_date >= first_day_of_month
+    )
+    if tenant_id:
+        amount_query = amount_query.filter(Claim.tenant_id == tenant_id)
+    monthly_claims_value = amount_query.scalar() or 0
+    
+    # Active claims (not settled or rejected)
+    active_claims_query = db.query(func.count(Claim.id)).filter(
+        ~Claim.status.in_(['SETTLED', 'REJECTED'])
+    )
+    if tenant_id:
+        active_claims_query = active_claims_query.filter(Claim.tenant_id == tenant_id)
+    active_claims = active_claims_query.scalar() or 0
+    
+    return {
+        "total_employees": total_employees,
+        "hr_pending": hr_pending,
+        "hr_approved_this_month": hr_approved_this_month,
+        "monthly_claims_value": float(monthly_claims_value),
+        "active_claims": active_claims
+    }
+
+
 @router.get("/allowance-summary")
 async def get_allowance_summary(
     employee_id: str = None,
