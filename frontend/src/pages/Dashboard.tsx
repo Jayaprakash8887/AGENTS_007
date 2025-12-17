@@ -10,9 +10,9 @@ import { useDashboardSummary, useClaimsByStatus, formatCurrency } from '@/hooks/
 import { CardSkeleton } from '@/components/ui/loading-skeleton';
 
 // Employee Dashboard - Personal claims and allowances
-function EmployeeDashboard({ userName, employeeId }: { userName: string; employeeId: string }) {
-  const { data: summary, isLoading: summaryLoading } = useDashboardSummary(employeeId);
-  const { data: claimsByStatus, isLoading: statusLoading } = useClaimsByStatus(employeeId);
+function EmployeeDashboard({ userName, employeeId, tenantId }: { userName: string; employeeId: string; tenantId?: string }) {
+  const { data: summary, isLoading: summaryLoading } = useDashboardSummary(employeeId, tenantId);
+  const { data: claimsByStatus, isLoading: statusLoading } = useClaimsByStatus(employeeId, tenantId);
 
   // Pending = any claim that is NOT Approved, Rejected, or Settled
   const excludedFromPending = ['FINANCE_APPROVED', 'REJECTED', 'SETTLED'];
@@ -109,9 +109,9 @@ function EmployeeDashboard({ userName, employeeId }: { userName: string; employe
 }
 
 // Manager Dashboard - Team oversight and approvals
-function ManagerDashboard({ userName, employeeId }: { userName: string; employeeId: string }) {
-  const { data: summary, isLoading: summaryLoading } = useDashboardSummary();
-  const { data: claimsByStatus, isLoading: statusLoading } = useClaimsByStatus();
+function ManagerDashboard({ userName, employeeId, tenantId }: { userName: string; employeeId: string; tenantId?: string }) {
+  const { data: summary, isLoading: summaryLoading } = useDashboardSummary(undefined, tenantId);
+  const { data: claimsByStatus, isLoading: statusLoading } = useClaimsByStatus(undefined, tenantId);
 
   const pendingApprovals = claimsByStatus?.find(c => c.status === 'PENDING_MANAGER')?.count || 0;
   const teamClaimsThisMonth = summary?.approved_this_month || 0;
@@ -205,9 +205,9 @@ function ManagerDashboard({ userName, employeeId }: { userName: string; employee
 }
 
 // HR Dashboard - Company-wide employee claims
-function HRDashboard({ userName, employeeId }: { userName: string; employeeId: string }) {
-  const { data: summary, isLoading: summaryLoading } = useDashboardSummary();
-  const { data: claimsByStatus, isLoading: statusLoading } = useClaimsByStatus();
+function HRDashboard({ userName, employeeId, tenantId }: { userName: string; employeeId: string; tenantId?: string }) {
+  const { data: summary, isLoading: summaryLoading } = useDashboardSummary(undefined, tenantId);
+  const { data: claimsByStatus, isLoading: statusLoading } = useClaimsByStatus(undefined, tenantId);
 
   const hrPending = claimsByStatus?.find(c => c.status === 'PENDING_HR')?.count || 0;
   const totalClaims = summary?.total_claims || 0;
@@ -303,9 +303,9 @@ function HRDashboard({ userName, employeeId }: { userName: string; employeeId: s
 }
 
 // Finance Dashboard - Payment processing and budgets
-function FinanceDashboard({ userName, employeeId }: { userName: string; employeeId: string }) {
-  const { data: summary, isLoading: summaryLoading } = useDashboardSummary();
-  const { data: claimsByStatus, isLoading: statusLoading } = useClaimsByStatus();
+function FinanceDashboard({ userName, employeeId, tenantId }: { userName: string; employeeId: string; tenantId?: string }) {
+  const { data: summary, isLoading: summaryLoading } = useDashboardSummary(undefined, tenantId);
+  const { data: claimsByStatus, isLoading: statusLoading } = useClaimsByStatus(undefined, tenantId);
 
   const financePending = claimsByStatus?.find(c => c.status === 'PENDING_FINANCE')?.count || 0;
   const approved = claimsByStatus?.find(c => c.status === 'FINANCE_APPROVED')?.count || 0;
@@ -399,9 +399,9 @@ function FinanceDashboard({ userName, employeeId }: { userName: string; employee
 }
 
 // Admin Dashboard - System overview and all metrics
-function AdminDashboard({ userName, employeeId }: { userName: string; employeeId: string }) {
-  const { data: summary, isLoading: summaryLoading } = useDashboardSummary();
-  const { data: claimsByStatus, isLoading: statusLoading } = useClaimsByStatus();
+function AdminDashboard({ userName, employeeId, tenantId }: { userName: string; employeeId: string; tenantId?: string }) {
+  const { data: summary, isLoading: summaryLoading } = useDashboardSummary(undefined, tenantId);
+  const { data: claimsByStatus, isLoading: statusLoading } = useClaimsByStatus(undefined, tenantId);
 
   const totalClaims = summary?.total_claims || 0;
   const pendingTotal = summary?.pending_claims || 0;
@@ -510,19 +510,20 @@ export default function Dashboard() {
   const { user } = useAuth();
   const userName = user?.name?.split(' ')[0] || 'User';
   const employeeId = user?.id || '';
+  const tenantId = user?.tenantId;
 
   // Route to appropriate dashboard based on role
   switch (user?.role) {
     case 'manager':
-      return <ManagerDashboard userName={userName} employeeId={employeeId} />;
+      return <ManagerDashboard userName={userName} employeeId={employeeId} tenantId={tenantId} />;
     case 'hr':
-      return <HRDashboard userName={userName} employeeId={employeeId} />;
+      return <HRDashboard userName={userName} employeeId={employeeId} tenantId={tenantId} />;
     case 'finance':
-      return <FinanceDashboard userName={userName} employeeId={employeeId} />;
+      return <FinanceDashboard userName={userName} employeeId={employeeId} tenantId={tenantId} />;
     case 'admin':
-      return <AdminDashboard userName={userName} employeeId={employeeId} />;
+      return <AdminDashboard userName={userName} employeeId={employeeId} tenantId={tenantId} />;
     case 'employee':
     default:
-      return <EmployeeDashboard userName={userName} employeeId={employeeId} />;
+      return <EmployeeDashboard userName={userName} employeeId={employeeId} tenantId={tenantId} />;
   }
 }

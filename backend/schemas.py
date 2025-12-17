@@ -219,9 +219,9 @@ class UserResponse(UserBase):
         from_attributes = True
 
 
-# Backward compatibility aliases (Employee schemas now map to User schemas)
+# Employee schemas (extend User schemas)
 class EmployeeBase(UserBase):
-    """Alias for UserBase for backward compatibility"""
+    """Employee base schema extending UserBase"""
     employee_id: Optional[str] = None  # Maps to employee_code
     
     class Config:

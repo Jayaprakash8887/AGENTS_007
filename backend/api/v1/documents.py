@@ -30,12 +30,17 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 @router.get("/", response_model=List[DocumentResponse])
 async def list_documents(
     claim_id: UUID | None = None,
+    tenant_id: Optional[UUID] = None,
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_sync_db)
 ):
-    """Get list of documents with optional claim filter"""
+    """Get list of documents with optional claim and tenant filter"""
     query = db.query(Document)
+    
+    # Filter by tenant if provided
+    if tenant_id:
+        query = query.filter(Document.tenant_id == tenant_id)
     
     if claim_id:
         query = query.filter(Document.claim_id == claim_id)

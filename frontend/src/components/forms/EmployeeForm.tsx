@@ -79,7 +79,6 @@ export function EmployeeForm({
       department: '',
       designation: '',
       region: '',
-      role: 'employee',
       dateOfJoining: '',
       managerId: '',
       projectIds: '',
@@ -90,21 +89,21 @@ export function EmployeeForm({
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-        <FormField
-          control={form.control}
-          name="employeeId"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Employee ID</FormLabel>
-              <FormControl>
-                <Input placeholder="EMP001" {...field} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        
-        <div className="grid grid-cols-2 gap-4">
+        {/* Row 1: Employee ID, First Name, Last Name */}
+        <div className="grid grid-cols-3 gap-4">
+          <FormField
+            control={form.control}
+            name="employeeId"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Employee ID</FormLabel>
+                <FormControl>
+                  <Input placeholder="EMP001" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
           <FormField
             control={form.control}
             name="firstName"
@@ -133,21 +132,21 @@ export function EmployeeForm({
           />
         </div>
 
-        <FormField
-          control={form.control}
-          name="email"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Email</FormLabel>
-              <FormControl>
-                <Input type="email" placeholder="john.doe@company.com" {...field} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        <div className="grid grid-cols-2 gap-4">
+        {/* Row 2: Email, Phone, Mobile */}
+        <div className="grid grid-cols-3 gap-4">
+          <FormField
+            control={form.control}
+            name="email"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Email</FormLabel>
+                <FormControl>
+                  <Input type="email" placeholder="john@company.com" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
           <FormField
             control={form.control}
             name="phone"
@@ -176,6 +175,7 @@ export function EmployeeForm({
           />
         </div>
 
+        {/* Row 3: Address (full width) */}
         <FormField
           control={form.control}
           name="address"
@@ -190,7 +190,8 @@ export function EmployeeForm({
           )}
         />
 
-        <div className="grid grid-cols-2 gap-4">
+        {/* Row 4: Designation, Date of Joining, Department */}
+        <div className="grid grid-cols-3 gap-4">
           <FormField
             control={form.control}
             name="designation"
@@ -217,9 +218,6 @@ export function EmployeeForm({
               </FormItem>
             )}
           />
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
           <FormField
             control={form.control}
             name="department"
@@ -244,64 +242,41 @@ export function EmployeeForm({
               </FormItem>
             )}
           />
+        </div>
+
+        {/* Row 5: Region, Project, Manager */}
+        <div className="grid grid-cols-3 gap-4">
           <FormField
             control={form.control}
-            name="role"
+            name="region"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Role</FormLabel>
+                <FormLabel>Region / Location (Optional)</FormLabel>
                 <Select onValueChange={field.onChange} defaultValue={field.value}>
                   <FormControl>
                     <SelectTrigger>
-                      <SelectValue placeholder="Select role" />
+                      <SelectValue placeholder="Select region" />
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    <SelectItem value="employee">Employee</SelectItem>
-                    <SelectItem value="manager">Manager</SelectItem>
-                    <SelectItem value="hr">HR</SelectItem>
-                    <SelectItem value="finance">Finance</SelectItem>
-                    <SelectItem value="admin">Admin</SelectItem>
+                    <SelectItem value=" ">No specific region</SelectItem>
+                    <SelectItem value="INDIA">India</SelectItem>
+                    <SelectItem value="USA">United States</SelectItem>
+                    <SelectItem value="UK">United Kingdom</SelectItem>
+                    <SelectItem value="SEZ_BANGALORE">SEZ - Bangalore</SelectItem>
+                    <SelectItem value="SEZ_CHENNAI">SEZ - Chennai</SelectItem>
+                    <SelectItem value="SEZ_HYDERABAD">SEZ - Hyderabad</SelectItem>
+                    <SelectItem value="STP_PUNE">STP - Pune</SelectItem>
+                    <SelectItem value="STP_NOIDA">STP - Noida</SelectItem>
+                    <SelectItem value="DOMESTIC">Domestic</SelectItem>
+                    <SelectItem value="INTERNATIONAL">International</SelectItem>
                   </SelectContent>
                 </Select>
                 <FormMessage />
               </FormItem>
             )}
           />
-        </div>
 
-        <FormField
-          control={form.control}
-          name="region"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Region / Location (Optional)</FormLabel>
-              <Select onValueChange={field.onChange} defaultValue={field.value}>
-                <FormControl>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select region for policy applicability" />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  <SelectItem value=" ">No specific region</SelectItem>
-                  <SelectItem value="INDIA">India</SelectItem>
-                  <SelectItem value="USA">United States</SelectItem>
-                  <SelectItem value="UK">United Kingdom</SelectItem>
-                  <SelectItem value="SEZ_BANGALORE">SEZ - Bangalore</SelectItem>
-                  <SelectItem value="SEZ_CHENNAI">SEZ - Chennai</SelectItem>
-                  <SelectItem value="SEZ_HYDERABAD">SEZ - Hyderabad</SelectItem>
-                  <SelectItem value="STP_PUNE">STP - Pune</SelectItem>
-                  <SelectItem value="STP_NOIDA">STP - Noida</SelectItem>
-                  <SelectItem value="DOMESTIC">Domestic</SelectItem>
-                  <SelectItem value="INTERNATIONAL">International</SelectItem>
-                </SelectContent>
-              </Select>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        {projects.length > 0 && (
           <FormField
             control={form.control}
             name="projectIds"
@@ -311,24 +286,22 @@ export function EmployeeForm({
                 <Select onValueChange={field.onChange} defaultValue={field.value}>
                   <FormControl>
                     <SelectTrigger>
-                      <SelectValue placeholder="Select a project" />
+                      <SelectValue placeholder="Select project" />
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    {projects.map((project) => (
+                    {projects.length > 0 ? projects.map((project) => (
                       <SelectItem key={project.id} value={project.id}>
                         {project.name} ({project.code})
                       </SelectItem>
-                    ))}
+                    )) : <SelectItem value=" " disabled>No projects available</SelectItem>}
                   </SelectContent>
                 </Select>
                 <FormMessage />
               </FormItem>
             )}
           />
-        )}
 
-        {availableManagers.length > 0 && (
           <FormField
             control={form.control}
             name="managerId"
@@ -342,18 +315,18 @@ export function EmployeeForm({
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    {availableManagers.map((manager) => (
+                    {availableManagers.length > 0 ? availableManagers.map((manager) => (
                       <SelectItem key={manager.id} value={manager.id}>
                         {manager.name}
                       </SelectItem>
-                    ))}
+                    )) : <SelectItem value=" " disabled>No managers available</SelectItem>}
                   </SelectContent>
                 </Select>
                 <FormMessage />
               </FormItem>
             )}
           />
-        )}
+        </div>
 
         <div className="flex justify-end gap-2 pt-4">
           <Button type="button" variant="outline" onClick={onCancel}>

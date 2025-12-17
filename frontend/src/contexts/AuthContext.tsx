@@ -37,6 +37,7 @@ function mapBackendEmployeeToUser(backendEmployee: any): User {
 
   return {
     id: backendEmployee.id,
+    tenantId: backendEmployee.tenant_id,
     email: backendEmployee.email,
     name: `${backendEmployee.first_name} ${backendEmployee.last_name}`,
     role: role,

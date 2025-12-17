@@ -4,8 +4,9 @@ import { Project } from '@/types';
 const API_BASE_URL = 'http://localhost:8000/api/v1';
 
 // API functions
-async function fetchProjects(): Promise<Project[]> {
-  const response = await fetch(`${API_BASE_URL}/projects/`);
+async function fetchProjects(tenantId?: string): Promise<Project[]> {
+  const params = tenantId ? `?tenant_id=${tenantId}` : '';
+  const response = await fetch(`${API_BASE_URL}/projects/${params}`);
   if (!response.ok) {
     throw new Error('Failed to fetch projects');
   }
@@ -89,10 +90,10 @@ async function createProject(project: Omit<Project, 'id'>): Promise<Project> {
 }
 
 // Custom hooks
-export function useProjects() {
+export function useProjects(tenantId?: string) {
   return useQuery({
-    queryKey: ['projects'],
-    queryFn: fetchProjects,
+    queryKey: ['projects', tenantId],
+    queryFn: () => fetchProjects(tenantId),
     staleTime: 5 * 60 * 1000,
   });
 }
@@ -106,8 +107,8 @@ export function useProject(id: string) {
   });
 }
 
-export function useActiveProjects() {
-  const { data: projects, ...rest } = useProjects();
+export function useActiveProjects(tenantId?: string) {
+  const { data: projects, ...rest } = useProjects(tenantId);
   
   const activeProjects = projects?.filter(project => project.status === 'active');
   
@@ -176,8 +177,8 @@ export function useUpdateProject() {
   });
 }
 
-export function useProjectStats() {
-  const { data: projects, ...rest } = useProjects();
+export function useProjectStats(tenantId?: string) {
+  const { data: projects, ...rest } = useProjects(tenantId);
   
   const stats = projects ? {
     totalBudget: projects.reduce((sum, p) => sum + p.budget, 0),

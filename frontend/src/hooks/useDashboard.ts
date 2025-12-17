@@ -55,11 +55,21 @@ export function formatCurrency(amount: number, currency: string = 'INR'): string
   return `₹${amount.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 }
 
+// Helper function to build URL with optional params
+function buildUrl(base: string, params: Record<string, string | number | undefined>): string {
+  const searchParams = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined) {
+      searchParams.append(key, String(value));
+    }
+  });
+  const queryString = searchParams.toString();
+  return queryString ? `${base}?${queryString}` : base;
+}
+
 // Fetch dashboard summary
-async function fetchDashboardSummary(employeeId?: string): Promise<DashboardSummary> {
-  const url = employeeId 
-    ? `${API_BASE_URL}/dashboard/summary?employee_id=${employeeId}`
-    : `${API_BASE_URL}/dashboard/summary`;
+async function fetchDashboardSummary(employeeId?: string, tenantId?: string): Promise<DashboardSummary> {
+  const url = buildUrl(`${API_BASE_URL}/dashboard/summary`, { employee_id: employeeId, tenant_id: tenantId });
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error('Failed to fetch dashboard summary');
@@ -68,10 +78,8 @@ async function fetchDashboardSummary(employeeId?: string): Promise<DashboardSumm
 }
 
 // Fetch claims by status
-async function fetchClaimsByStatus(employeeId?: string): Promise<ClaimByStatus[]> {
-  const url = employeeId 
-    ? `${API_BASE_URL}/dashboard/claims-by-status?employee_id=${employeeId}`
-    : `${API_BASE_URL}/dashboard/claims-by-status`;
+async function fetchClaimsByStatus(employeeId?: string, tenantId?: string): Promise<ClaimByStatus[]> {
+  const url = buildUrl(`${API_BASE_URL}/dashboard/claims-by-status`, { employee_id: employeeId, tenant_id: tenantId });
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error('Failed to fetch claims by status');
@@ -80,10 +88,8 @@ async function fetchClaimsByStatus(employeeId?: string): Promise<ClaimByStatus[]
 }
 
 // Fetch claims by category
-async function fetchClaimsByCategory(employeeId?: string): Promise<ClaimByCategory[]> {
-  const url = employeeId 
-    ? `${API_BASE_URL}/dashboard/claims-by-category?employee_id=${employeeId}`
-    : `${API_BASE_URL}/dashboard/claims-by-category`;
+async function fetchClaimsByCategory(employeeId?: string, tenantId?: string): Promise<ClaimByCategory[]> {
+  const url = buildUrl(`${API_BASE_URL}/dashboard/claims-by-category`, { employee_id: employeeId, tenant_id: tenantId });
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error('Failed to fetch claims by category');
@@ -92,10 +98,8 @@ async function fetchClaimsByCategory(employeeId?: string): Promise<ClaimByCatego
 }
 
 // Fetch recent activity
-async function fetchRecentActivity(limit: number = 10, employeeId?: string): Promise<RecentActivity[]> {
-  const url = employeeId 
-    ? `${API_BASE_URL}/dashboard/recent-activity?limit=${limit}&employee_id=${employeeId}`
-    : `${API_BASE_URL}/dashboard/recent-activity?limit=${limit}`;
+async function fetchRecentActivity(limit: number = 10, employeeId?: string, tenantId?: string): Promise<RecentActivity[]> {
+  const url = buildUrl(`${API_BASE_URL}/dashboard/recent-activity`, { limit, employee_id: employeeId, tenant_id: tenantId });
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error('Failed to fetch recent activity');
@@ -104,8 +108,9 @@ async function fetchRecentActivity(limit: number = 10, employeeId?: string): Pro
 }
 
 // Fetch AI metrics
-async function fetchAIMetrics(): Promise<AIMetrics> {
-  const response = await fetch(`${API_BASE_URL}/dashboard/ai-metrics`);
+async function fetchAIMetrics(tenantId?: string): Promise<AIMetrics> {
+  const url = buildUrl(`${API_BASE_URL}/dashboard/ai-metrics`, { tenant_id: tenantId });
+  const response = await fetch(url);
   if (!response.ok) {
     throw new Error('Failed to fetch AI metrics');
   }
@@ -113,8 +118,9 @@ async function fetchAIMetrics(): Promise<AIMetrics> {
 }
 
 // Fetch pending approvals
-async function fetchPendingApprovals(): Promise<PendingApprovals> {
-  const response = await fetch(`${API_BASE_URL}/dashboard/pending-approvals`);
+async function fetchPendingApprovals(tenantId?: string): Promise<PendingApprovals> {
+  const url = buildUrl(`${API_BASE_URL}/dashboard/pending-approvals`, { tenant_id: tenantId });
+  const response = await fetch(url);
   if (!response.ok) {
     throw new Error('Failed to fetch pending approvals');
   }
@@ -122,59 +128,57 @@ async function fetchPendingApprovals(): Promise<PendingApprovals> {
 }
 
 // Hooks
-export function useDashboardSummary(employeeId?: string) {
+export function useDashboardSummary(employeeId?: string, tenantId?: string) {
   return useQuery({
-    queryKey: ['dashboard-summary', employeeId],
-    queryFn: () => fetchDashboardSummary(employeeId),
+    queryKey: ['dashboard-summary', employeeId, tenantId],
+    queryFn: () => fetchDashboardSummary(employeeId, tenantId),
     refetchInterval: 30000, // Refetch every 30 seconds
   });
 }
 
-export function useClaimsByStatus(employeeId?: string) {
+export function useClaimsByStatus(employeeId?: string, tenantId?: string) {
   return useQuery({
-    queryKey: ['claims-by-status', employeeId],
-    queryFn: () => fetchClaimsByStatus(employeeId),
+    queryKey: ['claims-by-status', employeeId, tenantId],
+    queryFn: () => fetchClaimsByStatus(employeeId, tenantId),
     refetchInterval: 30000,
   });
 }
 
-export function useClaimsByCategory(employeeId?: string) {
+export function useClaimsByCategory(employeeId?: string, tenantId?: string) {
   return useQuery({
-    queryKey: ['claims-by-category', employeeId],
-    queryFn: () => fetchClaimsByCategory(employeeId),
+    queryKey: ['claims-by-category', employeeId, tenantId],
+    queryFn: () => fetchClaimsByCategory(employeeId, tenantId),
     refetchInterval: 30000,
   });
 }
 
-export function useRecentActivity(limit: number = 10, employeeId?: string) {
+export function useRecentActivity(limit: number = 10, employeeId?: string, tenantId?: string) {
   return useQuery({
-    queryKey: ['recent-activity', limit, employeeId],
-    queryFn: () => fetchRecentActivity(limit, employeeId),
+    queryKey: ['recent-activity', limit, employeeId, tenantId],
+    queryFn: () => fetchRecentActivity(limit, employeeId, tenantId),
     refetchInterval: 15000, // Refetch every 15 seconds for more real-time data
   });
 }
 
-export function useAIMetrics() {
+export function useAIMetrics(tenantId?: string) {
   return useQuery({
-    queryKey: ['ai-metrics'],
-    queryFn: fetchAIMetrics,
+    queryKey: ['ai-metrics', tenantId],
+    queryFn: () => fetchAIMetrics(tenantId),
     refetchInterval: 60000, // Refetch every minute
   });
 }
 
-export function usePendingApprovals() {
+export function usePendingApprovals(tenantId?: string) {
   return useQuery({
-    queryKey: ['pending-approvals'],
-    queryFn: fetchPendingApprovals,
+    queryKey: ['pending-approvals', tenantId],
+    queryFn: () => fetchPendingApprovals(tenantId),
     refetchInterval: 30000,
   });
 }
 
 // Fetch draft claims (AI suggestions)
-async function fetchDraftClaims(employeeId?: string, limit: number = 5): Promise<RecentActivity[]> {
-  const url = employeeId 
-    ? `${API_BASE_URL}/dashboard/recent-activity?limit=${limit}&employee_id=${employeeId}&status=DRAFT`
-    : `${API_BASE_URL}/dashboard/recent-activity?limit=${limit}&status=DRAFT`;
+async function fetchDraftClaims(employeeId?: string, limit: number = 5, tenantId?: string): Promise<RecentActivity[]> {
+  const url = buildUrl(`${API_BASE_URL}/dashboard/recent-activity`, { limit, employee_id: employeeId, tenant_id: tenantId, status: 'DRAFT' });
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error('Failed to fetch draft claims');
@@ -182,10 +186,10 @@ async function fetchDraftClaims(employeeId?: string, limit: number = 5): Promise
   return response.json();
 }
 
-export function useDraftClaims(employeeId?: string, limit: number = 5) {
+export function useDraftClaims(employeeId?: string, limit: number = 5, tenantId?: string) {
   return useQuery({
-    queryKey: ['draft-claims', employeeId, limit],
-    queryFn: () => fetchDraftClaims(employeeId, limit),
+    queryKey: ['draft-claims', employeeId, limit, tenantId],
+    queryFn: () => fetchDraftClaims(employeeId, limit, tenantId),
     refetchInterval: 15000,
   });
 }
@@ -199,10 +203,8 @@ interface AllowanceSummary {
   total_value: number;
 }
 
-async function fetchAllowanceSummary(employeeId?: string): Promise<AllowanceSummary[]> {
-  const url = employeeId 
-    ? `${API_BASE_URL}/dashboard/allowance-summary?employee_id=${employeeId}`
-    : `${API_BASE_URL}/dashboard/allowance-summary`;
+async function fetchAllowanceSummary(employeeId?: string, tenantId?: string): Promise<AllowanceSummary[]> {
+  const url = buildUrl(`${API_BASE_URL}/dashboard/allowance-summary`, { employee_id: employeeId, tenant_id: tenantId });
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error('Failed to fetch allowance summary');
@@ -210,10 +212,10 @@ async function fetchAllowanceSummary(employeeId?: string): Promise<AllowanceSumm
   return response.json();
 }
 
-export function useAllowanceSummary(employeeId?: string) {
+export function useAllowanceSummary(employeeId?: string, tenantId?: string) {
   return useQuery({
-    queryKey: ['allowance-summary', employeeId],
-    queryFn: () => fetchAllowanceSummary(employeeId),
+    queryKey: ['allowance-summary', employeeId, tenantId],
+    queryFn: () => fetchAllowanceSummary(employeeId, tenantId),
     refetchInterval: 30000,
   });
 }

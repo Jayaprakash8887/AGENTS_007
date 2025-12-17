@@ -4,7 +4,7 @@ Approval workflow endpoints
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
-from typing import List
+from typing import List, Optional
 from uuid import UUID, uuid4
 from datetime import datetime
 
@@ -20,12 +20,17 @@ async def list_approvals(
     claim_id: UUID | None = None,
     approver_id: UUID | None = None,
     status: str | None = None,
+    tenant_id: Optional[UUID] = None,
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_sync_db)
 ):
     """Get list of approvals with optional filters"""
     query = db.query(Approval)
+    
+    # Filter by tenant if provided
+    if tenant_id:
+        query = query.filter(Approval.tenant_id == tenant_id)
     
     if claim_id:
         query = query.filter(Approval.claim_id == claim_id)
@@ -41,10 +46,15 @@ async def list_approvals(
 @router.get("/pending", response_model=List[ApprovalResponse])
 async def get_pending_approvals(
     approver_id: UUID | None = None,
+    tenant_id: Optional[UUID] = None,
     db: Session = Depends(get_sync_db)
 ):
     """Get pending approvals for a specific approver"""
     query = db.query(Approval).filter(Approval.status == "PENDING")
+    
+    # Filter by tenant if provided
+    if tenant_id:
+        query = query.filter(Approval.tenant_id == tenant_id)
     
     if approver_id:
         query = query.filter(Approval.approver_id == approver_id)

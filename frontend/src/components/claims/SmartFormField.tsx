@@ -9,8 +9,8 @@ type FieldSource = 'auto' | 'manual' | 'none';
 
 interface SmartFormFieldProps extends React.InputHTMLAttributes<HTMLInputElement | HTMLTextAreaElement> {
   label: string;
-  isAutoPopulated?: boolean;  // Legacy prop - for backward compatibility
-  fieldSource?: FieldSource;  // New prop for explicit source tracking
+  isAutoPopulated?: boolean;  // Whether field was auto-populated by AI
+  fieldSource?: FieldSource;  // Explicit source tracking
   validationStatus?: "valid" | "invalid" | "none";
   error?: string;
   hint?: string;

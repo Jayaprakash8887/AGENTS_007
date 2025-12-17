@@ -7,6 +7,7 @@ const API_BASE_URL = 'http://localhost:8000/api/v1';
 function mapBackendEmployee(backendEmployee: any): Employee {
   return {
     id: backendEmployee.id,
+    tenantId: backendEmployee.tenant_id,
     employeeId: backendEmployee.employee_id,
     name: `${backendEmployee.first_name} ${backendEmployee.last_name}`,
     firstName: backendEmployee.first_name,
@@ -62,8 +63,13 @@ function mapEmploymentStatus(status: string): Employee['status'] {
 }
 
 // API functions
-async function fetchEmployees(): Promise<Employee[]> {
-  const response = await fetch(`${API_BASE_URL}/employees/`);
+async function fetchEmployees(tenantId?: string): Promise<Employee[]> {
+  const params = new URLSearchParams();
+  if (tenantId) {
+    params.append('tenant_id', tenantId);
+  }
+  const url = `${API_BASE_URL}/employees/${params.toString() ? '?' + params.toString() : ''}`;
+  const response = await fetch(url);
   if (!response.ok) {
     throw new Error('Failed to fetch employees');
   }
@@ -149,10 +155,10 @@ async function updateEmployee(id: string, employee: Partial<Employee>): Promise<
 }
 
 // Custom hooks
-export function useEmployees() {
+export function useEmployees(tenantId?: string) {
   return useQuery({
-    queryKey: ['employees'],
-    queryFn: fetchEmployees,
+    queryKey: ['employees', tenantId],
+    queryFn: () => fetchEmployees(tenantId),
     staleTime: 5 * 60 * 1000,
   });
 }
@@ -166,8 +172,8 @@ export function useEmployee(id: string) {
   });
 }
 
-export function useEmployeesByDepartment(department: string | 'all') {
-  const { data: employees, ...rest } = useEmployees();
+export function useEmployeesByDepartment(department: string | 'all', tenantId?: string) {
+  const { data: employees, ...rest } = useEmployees(tenantId);
 
   const filteredEmployees = department === 'all'
     ? employees

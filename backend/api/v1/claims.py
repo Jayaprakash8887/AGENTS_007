@@ -43,13 +43,13 @@ def _map_category(category_str: str) -> str:
     
     Categories are now dynamic from policy_categories table.
     This function normalizes the category code to uppercase.
-    Legacy category names are mapped for backward compatibility.
+    Common category names are mapped to standard codes.
     """
     if not category_str:
         return 'OTHER'
     
-    # Legacy category mapping for backward compatibility
-    legacy_map = {
+    # Standard category mapping
+    category_map = {
         'travel': 'TRAVEL',
         'food': 'FOOD',
         'team_lunch': 'TEAM_LUNCH',
@@ -66,10 +66,10 @@ def _map_category(category_str: str) -> str:
         'client_meeting': 'CLIENT_MEETING',
     }
     
-    # Check legacy map first
+    # Check category map first
     lower_cat = category_str.lower()
-    if lower_cat in legacy_map:
-        return legacy_map[lower_cat]
+    if lower_cat in category_map:
+        return category_map[lower_cat]
     
     # For dynamic categories (from policy_categories table), 
     # return as uppercase to match category_code convention
@@ -599,6 +599,7 @@ async def list_claims(
     limit: int = 20,
     status: Optional[str] = None,
     claim_type: Optional[str] = None,
+    tenant_id: Optional[UUID] = None,
     db: AsyncSession = Depends(get_async_db),
 ):
     """List claims with pagination and filters"""
@@ -606,6 +607,10 @@ async def list_claims(
     from services.cached_data import cached_data
     
     query = select(Claim)
+    
+    # Filter by tenant if provided
+    if tenant_id:
+        query = query.where(Claim.tenant_id == tenant_id)
     
     if status:
         query = query.where(Claim.status == status)

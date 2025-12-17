@@ -20,6 +20,7 @@ export type DataSource = 'ocr' | 'auto' | 'manual' | 'edited';
 // User interface (extended with employee details for mock auth)
 export interface User {
   id: string;
+  tenantId?: string;  // Tenant ID for multi-tenancy filtering
   email: string;
   name: string;
   role: UserRole;
@@ -34,7 +35,7 @@ export interface User {
   mobile?: string;
   address?: string;
   designation?: string;
-  region?: string;  // Region/location for policy applicability
+  region?: string;
   joinDate?: string | Date;
   status?: 'active' | 'inactive' | 'on_leave';
   projectIds?: string[];

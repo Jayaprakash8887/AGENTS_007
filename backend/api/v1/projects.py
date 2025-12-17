@@ -3,7 +3,7 @@ Project management endpoints
 """
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 from uuid import UUID, uuid4
 
 from database import get_sync_db
@@ -34,15 +34,22 @@ async def _invalidate_project_cache(project_code: str = None, project_id: UUID =
 
 @router.get("/all/members")
 async def get_all_project_members(
+    tenant_id: Optional[UUID] = None,
     db: Session = Depends(get_sync_db)
 ):
     """Get all active project-employee allocations for all projects"""
-    results = db.query(
+    query = db.query(
         EmployeeProjectAllocation.project_id,
         EmployeeProjectAllocation.employee_id
     ).filter(
         EmployeeProjectAllocation.status == "ACTIVE"
-    ).all()
+    )
+    
+    # Filter by tenant if provided
+    if tenant_id:
+        query = query.filter(EmployeeProjectAllocation.tenant_id == tenant_id)
+    
+    results = query.all()
     
     # Group by project_id
     project_members = {}
@@ -57,12 +64,19 @@ async def get_all_project_members(
 
 @router.get("/", response_model=List[ProjectResponse])
 async def list_projects(
+    tenant_id: Optional[UUID] = None,
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_sync_db)
 ):
-    """Get list of all projects"""
-    projects = db.query(Project).offset(skip).limit(limit).all()
+    """Get list of projects, optionally filtered by tenant"""
+    query = db.query(Project)
+    
+    # Filter by tenant if provided
+    if tenant_id:
+        query = query.filter(Project.tenant_id == tenant_id)
+    
+    projects = query.offset(skip).limit(limit).all()
     return projects
 
 

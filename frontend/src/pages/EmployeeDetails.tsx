@@ -16,6 +16,7 @@ import {
 import { useEmployee, useUpdateEmployee, useEmployees } from '@/hooks/useEmployees';
 import { useClaims } from '@/hooks/useClaims';
 import { useProjects } from '@/hooks/useProjects';
+import { useAuth } from '@/contexts/AuthContext';
 import { EmployeeForm } from '@/components/forms/EmployeeForm';
 import { EmployeeFormData } from '@/lib/validations';
 import { format } from 'date-fns';
@@ -47,11 +48,14 @@ export default function EmployeeDetails() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  
+  const { user } = useAuth();
+  const tenantId = user?.tenantId;
 
   const { data: employee, isLoading: employeeLoading } = useEmployee(id || '');
-  const { data: allEmployees } = useEmployees();
-  const { data: allClaims } = useClaims();
-  const { data: allProjects } = useProjects();
+  const { data: allEmployees } = useEmployees(tenantId);
+  const { data: allClaims } = useClaims(tenantId);
+  const { data: allProjects } = useProjects(tenantId);
   const updateEmployee = useUpdateEmployee();
 
   const employeeClaims = allClaims?.filter((claim) => claim.employeeId === id) || [];
@@ -156,37 +160,34 @@ export default function EmployeeDetails() {
 
       {/* Edit Employee Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogContent className="sm:max-w-[700px]">
           <DialogHeader>
             <DialogTitle>Edit Employee</DialogTitle>
           </DialogHeader>
-          <div className="overflow-y-auto flex-1 pr-2">
-            <EmployeeForm
-              departments={departments}
-              managers={managers}
-              projects={allProjects || []}
-              onSubmit={handleUpdateEmployee}
-              onCancel={() => setIsEditDialogOpen(false)}
-              isLoading={updateEmployee.isPending}
-              currentEmployeeId={employee.id}
-              defaultValues={{
-                employeeId: employee.employeeId,
-                firstName: employee.firstName || employee.name?.split(' ')[0] || '',
-                lastName: employee.lastName || employee.name?.split(' ')[1] || '',
-                email: employee.email,
-                phone: employee.phone || '',
-                mobile: employee.mobile || '',
-                address: employee.address || '',
-                department: employee.department,
-                designation: employee.designation || '',
-                region: employee.region || '',  // Region/location for policy applicability
-                role: employee.role,
-                dateOfJoining: employee.joinDate || '',
-                managerId: employee.managerId || '',
-                projectIds: employee.projectIds?.[0] || '',
-              }}
-            />
-          </div>
+          <EmployeeForm
+            departments={departments}
+            managers={managers}
+            projects={allProjects || []}
+            onSubmit={handleUpdateEmployee}
+            onCancel={() => setIsEditDialogOpen(false)}
+            isLoading={updateEmployee.isPending}
+            currentEmployeeId={employee.id}
+            defaultValues={{
+              employeeId: employee.employeeId,
+              firstName: employee.firstName || employee.name?.split(' ')[0] || '',
+              lastName: employee.lastName || employee.name?.split(' ')[1] || '',
+              email: employee.email,
+              phone: employee.phone || '',
+              mobile: employee.mobile || '',
+              address: employee.address || '',
+              department: employee.department,
+              designation: employee.designation || '',
+              region: employee.region || '',
+              dateOfJoining: employee.joinDate || '',
+              managerId: employee.managerId || '',
+              projectIds: employee.projectIds?.[0] || '',
+            }}
+          />
         </DialogContent>
       </Dialog>
 

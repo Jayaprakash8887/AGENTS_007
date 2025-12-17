@@ -278,7 +278,7 @@ class User(Base):
         return self.full_name or self.username
 
 
-# Keep Employee as an alias for backward compatibility during transition
+# Employee alias for User model
 Employee = User
 
 

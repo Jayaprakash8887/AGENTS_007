@@ -5,7 +5,8 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_
 from datetime import datetime, timedelta
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
+from uuid import UUID
 
 from database import get_sync_db
 from models import Claim, User, Approval, AgentExecution
@@ -19,12 +20,15 @@ router = APIRouter()
 @router.get("/summary")
 async def get_dashboard_summary(
     employee_id: str = None,
+    tenant_id: Optional[UUID] = None,
     db: Session = Depends(get_sync_db)
 ):
     """Get dashboard summary statistics"""
     
     # Base query conditions
     base_conditions = []
+    if tenant_id:
+        base_conditions.append(Claim.tenant_id == tenant_id)
     if employee_id:
         base_conditions.append(Claim.employee_id == employee_id)
     
@@ -72,6 +76,7 @@ async def get_dashboard_summary(
 @router.get("/claims-by-status")
 async def get_claims_by_status(
     employee_id: str = None,
+    tenant_id: Optional[UUID] = None,
     db: Session = Depends(get_sync_db)
 ):
     """Get claim counts grouped by status"""
@@ -80,6 +85,9 @@ async def get_claims_by_status(
         Claim.status,
         func.count(Claim.id).label('count')
     )
+    
+    if tenant_id:
+        query = query.filter(Claim.tenant_id == tenant_id)
     
     if employee_id:
         query = query.filter(Claim.employee_id == employee_id)
@@ -92,6 +100,7 @@ async def get_claims_by_status(
 @router.get("/claims-by-category")
 async def get_claims_by_category(
     employee_id: str = None,
+    tenant_id: Optional[UUID] = None,
     db: Session = Depends(get_sync_db)
 ):
     """Get claim counts and amounts grouped by category"""
@@ -101,6 +110,9 @@ async def get_claims_by_category(
         func.count(Claim.id).label('count'),
         func.sum(Claim.amount).label('total_amount')
     )
+    
+    if tenant_id:
+        query = query.filter(Claim.tenant_id == tenant_id)
     
     if employee_id:
         query = query.filter(Claim.employee_id == employee_id)
@@ -122,11 +134,15 @@ async def get_recent_activity(
     limit: int = 10,
     employee_id: str = None,
     status: str = None,
+    tenant_id: Optional[UUID] = None,
     db: Session = Depends(get_sync_db)
 ):
     """Get recent claim activities"""
     
     query = db.query(Claim)
+    
+    if tenant_id:
+        query = query.filter(Claim.tenant_id == tenant_id)
     
     if employee_id:
         query = query.filter(Claim.employee_id == employee_id)
@@ -156,20 +172,32 @@ async def get_recent_activity(
 
 @router.get("/ai-metrics")
 async def get_ai_metrics(
+    tenant_id: Optional[UUID] = None,
     db: Session = Depends(get_sync_db)
 ):
     """Get AI processing metrics"""
     
+    # Base query with tenant filter
+    base_query = db.query(AgentExecution)
+    if tenant_id:
+        base_query = base_query.filter(AgentExecution.tenant_id == tenant_id)
+    
     # Total AI processed claims
-    total_ai_processed = db.query(func.count(AgentExecution.id)).scalar() or 0
+    total_ai_processed = base_query.count() or 0
     
     # Average confidence score
-    avg_confidence = db.query(func.avg(AgentExecution.confidence_score)).scalar() or 0
+    avg_confidence = db.query(func.avg(AgentExecution.confidence_score))
+    if tenant_id:
+        avg_confidence = avg_confidence.filter(AgentExecution.tenant_id == tenant_id)
+    avg_confidence = avg_confidence.scalar() or 0
     
     # Success rate
-    successful_executions = db.query(func.count(AgentExecution.id)).filter(
+    success_query = db.query(func.count(AgentExecution.id)).filter(
         AgentExecution.status == 'COMPLETED'
-    ).scalar() or 0
+    )
+    if tenant_id:
+        success_query = success_query.filter(AgentExecution.tenant_id == tenant_id)
+    successful_executions = success_query.scalar() or 0
     
     success_rate = (successful_executions / total_ai_processed * 100) if total_ai_processed > 0 else 0
     
@@ -183,22 +211,32 @@ async def get_ai_metrics(
 
 @router.get("/pending-approvals")
 async def get_pending_approvals_count(
+    tenant_id: Optional[UUID] = None,
     db: Session = Depends(get_sync_db)
 ):
     """Get pending approvals count by level based on claim status"""
     
     # Count claims by pending status
-    manager_pending = db.query(func.count(Claim.id)).filter(
+    manager_query = db.query(func.count(Claim.id)).filter(
         Claim.status == 'PENDING_MANAGER'
-    ).scalar() or 0
+    )
+    if tenant_id:
+        manager_query = manager_query.filter(Claim.tenant_id == tenant_id)
+    manager_pending = manager_query.scalar() or 0
     
-    hr_pending = db.query(func.count(Claim.id)).filter(
+    hr_query = db.query(func.count(Claim.id)).filter(
         Claim.status == 'PENDING_HR'
-    ).scalar() or 0
+    )
+    if tenant_id:
+        hr_query = hr_query.filter(Claim.tenant_id == tenant_id)
+    hr_pending = hr_query.scalar() or 0
     
-    finance_pending = db.query(func.count(Claim.id)).filter(
+    finance_query = db.query(func.count(Claim.id)).filter(
         Claim.status == 'PENDING_FINANCE'
-    ).scalar() or 0
+    )
+    if tenant_id:
+        finance_query = finance_query.filter(Claim.tenant_id == tenant_id)
+    finance_pending = finance_query.scalar() or 0
     
     total_pending = manager_pending + hr_pending + finance_pending
     
@@ -213,6 +251,7 @@ async def get_pending_approvals_count(
 @router.get("/allowance-summary")
 async def get_allowance_summary(
     employee_id: str = None,
+    tenant_id: Optional[UUID] = None,
     db: Session = Depends(get_sync_db)
 ):
     """Get allowance summary by category"""
@@ -237,6 +276,9 @@ async def get_allowance_summary(
     ).filter(
         Claim.claim_type == 'ALLOWANCE'
     )
+    
+    if tenant_id:
+        query = query.filter(Claim.tenant_id == tenant_id)
     
     if employee_id:
         query = query.filter(Claim.employee_id == employee_id)

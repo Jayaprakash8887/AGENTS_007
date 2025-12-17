@@ -42,7 +42,8 @@ interface HeaderProps {
 
 export function Header({ onMenuClick }: HeaderProps) {
   const { user, logout, switchRole, switchEmployee, isLoading } = useAuth();
-  const { data: employees } = useEmployees();
+  const tenantId = user?.tenantId;
+  const { data: employees } = useEmployees(tenantId);
   const [notifications] = useState(3);
   const [isEmployeeSwitcherOpen, setIsEmployeeSwitcherOpen] = useState(false);
   const [employeeSearchQuery, setEmployeeSearchQuery] = useState('');

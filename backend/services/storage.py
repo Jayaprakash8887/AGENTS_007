@@ -27,15 +27,15 @@ try:
     USE_PROVIDER_ABSTRACTION = True
 except ImportError:
     USE_PROVIDER_ABSTRACTION = False
-    logger.warning("Provider abstraction not available, using legacy GCS client")
+    logger.warning("Provider abstraction not available, using direct GCS client")
 
-# Legacy GCS client (for backward compatibility)
+# Direct GCS client (fallback when provider abstraction unavailable)
 _gcs_client = None
 _gcs_bucket = None
 
 
 def get_gcs_client():
-    """Get or create GCS client singleton (legacy method)"""
+    """Get or create GCS client singleton (fallback method)"""
     global _gcs_client, _gcs_bucket
     
     if _gcs_client is None:
@@ -115,9 +115,9 @@ def upload_to_gcs(
             provider = get_storage_provider()
             return provider.upload_file(file_path, claim_id, original_filename, content_type)
         except Exception as e:
-            logger.error(f"Provider upload failed, trying legacy GCS: {e}")
+            logger.error(f"Provider upload failed, trying direct GCS: {e}")
     
-    # Legacy GCS implementation
+    # Direct GCS implementation (fallback)
     client, bucket = get_gcs_client()
     
     if not client or not bucket:
@@ -176,9 +176,9 @@ def upload_bytes_to_gcs(
             provider = get_storage_provider()
             return provider.upload_bytes(file_content, claim_id, original_filename, content_type)
         except Exception as e:
-            logger.error(f"Provider upload_bytes failed, trying legacy GCS: {e}")
+            logger.error(f"Provider upload_bytes failed, trying direct GCS: {e}")
     
-    # Legacy GCS implementation
+    # Direct GCS implementation (fallback)
     client, bucket = get_gcs_client()
     
     if not client or not bucket:
@@ -230,9 +230,9 @@ def get_signed_url(blob_name: str, expiration_minutes: int = 60) -> Optional[str
             provider = get_storage_provider()
             return provider.get_signed_url(blob_name, expiration_minutes)
         except Exception as e:
-            logger.error(f"Provider get_signed_url failed, trying legacy GCS: {e}")
+            logger.error(f"Provider get_signed_url failed, trying direct GCS: {e}")
     
-    # Legacy GCS implementation
+    # Direct GCS implementation (fallback)
     client, bucket = get_gcs_client()
     
     if not client or not bucket:
@@ -279,9 +279,9 @@ def download_from_gcs(blob_name: str, destination_path: Path) -> bool:
             provider = get_storage_provider()
             return provider.download(blob_name, destination_path)
         except Exception as e:
-            logger.error(f"Provider download failed, trying legacy GCS: {e}")
+            logger.error(f"Provider download failed, trying direct GCS: {e}")
     
-    # Legacy GCS implementation
+    # Direct GCS implementation (fallback)
     client, bucket = get_gcs_client()
     
     if not client or not bucket:
@@ -318,9 +318,9 @@ def delete_from_gcs(blob_name: str) -> bool:
             provider = get_storage_provider()
             return provider.delete(blob_name)
         except Exception as e:
-            logger.error(f"Provider delete failed, trying legacy GCS: {e}")
+            logger.error(f"Provider delete failed, trying direct GCS: {e}")
     
-    # Legacy GCS implementation
+    # Direct GCS implementation (fallback)
     client, bucket = get_gcs_client()
     
     if not client or not bucket:
@@ -359,9 +359,9 @@ def get_blob_metadata(blob_name: str) -> Optional[dict]:
             provider = get_storage_provider()
             return provider.get_metadata(blob_name)
         except Exception as e:
-            logger.error(f"Provider get_metadata failed, trying legacy GCS: {e}")
+            logger.error(f"Provider get_metadata failed, trying direct GCS: {e}")
     
-    # Legacy GCS implementation
+    # Direct GCS implementation (fallback)
     client, bucket = get_gcs_client()
     
     if not client or not bucket:

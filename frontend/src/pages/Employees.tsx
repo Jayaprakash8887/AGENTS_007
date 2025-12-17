@@ -43,6 +43,7 @@ import { exportToCSV, formatDate } from '@/lib/export-utils';
 import { EmployeeFormData } from '@/lib/validations';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { useAuth } from '@/contexts/AuthContext';
 
 const statusStyles = {
   active: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
@@ -60,15 +61,19 @@ const roleStyles = {
 
 export default function Employees() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [departmentFilter, setDepartmentFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState<any>(null);
+  
+  const tenantId = user?.tenantId;
 
-  const { data: employees, isLoading, error } = useEmployees();
-  const { data: projects } = useProjects();
+  // Filter employees by current user's tenant
+  const { data: employees, isLoading, error } = useEmployees(tenantId);
+  const { data: projects } = useProjects(tenantId);
   const createEmployee = useCreateEmployee();
   const updateEmployee = useUpdateEmployee();
 
@@ -226,7 +231,7 @@ export default function Employees() {
                 Add Employee
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[500px]">
+            <DialogContent className="sm:max-w-[700px]">
               <DialogHeader>
                 <DialogTitle>Add New Employee</DialogTitle>
               </DialogHeader>
@@ -245,7 +250,7 @@ export default function Employees() {
 
       {/* Edit Employee Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="sm:max-w-[700px]">
           <DialogHeader>
             <DialogTitle>Edit Employee</DialogTitle>
           </DialogHeader>
@@ -271,7 +276,6 @@ export default function Employees() {
                 address: selectedEmployee.address || '',
                 department: selectedEmployee.department,
                 designation: selectedEmployee.designation || '',
-                role: selectedEmployee.role,
                 region: selectedEmployee.region || '',
                 dateOfJoining: selectedEmployee.joinDate || '',
                 managerId: selectedEmployee.managerId || '',

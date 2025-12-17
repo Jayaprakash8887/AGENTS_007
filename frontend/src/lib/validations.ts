@@ -32,10 +32,7 @@ export const employeeSchema = z.object({
   department: z.string()
     .min(1, 'Department is required'),
   designation: z.string().optional(),
-  region: z.string().optional(),  // Region/location for policy applicability
-  role: z.enum(['employee', 'manager', 'hr', 'finance', 'admin'], {
-    errorMap: () => ({ message: 'Please select a valid role' }),
-  }),
+  region: z.string().optional(),
   dateOfJoining: z.string().optional(),
   managerId: z.string().optional(),
   projectIds: z.string().optional(),

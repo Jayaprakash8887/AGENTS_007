@@ -5,7 +5,7 @@ Note: Employee is now an alias for User model (unified model)
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
 from sqlalchemy import select, case
-from typing import List
+from typing import List, Optional
 from uuid import UUID, uuid4
 from datetime import date
 import hashlib
@@ -42,7 +42,7 @@ async def _invalidate_employee_cache(employee_id: UUID = None, employee_code: st
 
 def _user_to_employee_response(user: User, db: Session) -> dict:
     """
-    Convert User model to EmployeeResponse format for backward compatibility.
+    Convert User model to EmployeeResponse format.
     Roles are dynamically resolved from designation-to-role mappings.
     """
     # Get roles dynamically from designation mappings
@@ -50,6 +50,7 @@ def _user_to_employee_response(user: User, db: Session) -> dict:
     
     return {
         "id": user.id,
+        "tenant_id": user.tenant_id,
         "employee_id": user.employee_code,
         "first_name": user.first_name,
         "last_name": user.last_name,
@@ -62,8 +63,8 @@ def _user_to_employee_response(user: User, db: Session) -> dict:
         "manager_id": user.manager_id,
         "date_of_joining": user.date_of_joining,
         "employment_status": user.employment_status or "ACTIVE",
-        "region": user.region,  # Region/location for policy applicability
-        "roles": roles,  # Dynamically resolved from designation mappings
+        "region": user.region,
+        "roles": roles,
         "employee_data": user.user_data or {},
         "created_at": user.created_at,
     }
@@ -73,10 +74,17 @@ def _user_to_employee_response(user: User, db: Session) -> dict:
 async def list_employees(
     skip: int = 0,
     limit: int = 100,
+    tenant_id: Optional[UUID] = None,
     db: Session = Depends(get_sync_db)
 ):
-    """Get list of all employees (users)"""
-    users = db.query(User).offset(skip).limit(limit).all()
+    """Get list of employees (users), optionally filtered by tenant"""
+    query = db.query(User)
+    
+    # Filter by tenant if provided
+    if tenant_id:
+        query = query.filter(User.tenant_id == tenant_id)
+    
+    users = query.offset(skip).limit(limit).all()
     return [_user_to_employee_response(u, db) for u in users]
 
 
@@ -379,7 +387,7 @@ async def allocate_employee_to_project(
     
     db.add(allocation)
     
-    # Also update user_data.project_ids for backward compatibility
+    # Also update user_data.project_ids for quick access
     user_data = user.user_data or {}
     project_ids = user_data.get('project_ids', [])
     if str(allocation_data.project_id) not in project_ids:
@@ -423,7 +431,7 @@ async def deallocate_employee_from_project(
     if update_data.notes:
         allocation.notes = update_data.notes
     
-    # Update user_data.project_ids for backward compatibility
+    # Update user_data.project_ids for quick access
     user = db.query(User).filter(User.id == employee_id).first()
     if user:
         user_data = user.user_data or {}

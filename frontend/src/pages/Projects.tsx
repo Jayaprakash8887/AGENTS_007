@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/select';
 import { useProjects, useProjectStats, useCreateProject, useUpdateProject, useAllProjectMembers } from '@/hooks/useProjects';
 import { useEmployees, useAllocateEmployeeToProject } from '@/hooks/useEmployees';
+import { useAuth } from '@/contexts/AuthContext';
 import { ProjectForm } from '@/components/forms/ProjectForm';
 import { CardSkeleton } from '@/components/ui/loading-skeleton';
 import { exportToCSV, formatCurrency, formatDate } from '@/lib/export-utils';
@@ -131,9 +132,12 @@ export default function Projects() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
 
-  const { data: projects, isLoading, error } = useProjects();
-  const { data: stats } = useProjectStats();
-  const { data: employees } = useEmployees();
+  const { user } = useAuth();
+  const tenantId = user?.tenantId;
+  
+  const { data: projects, isLoading, error } = useProjects(tenantId);
+  const { data: stats } = useProjectStats(tenantId);
+  const { data: employees } = useEmployees(tenantId);
   const { data: projectMembersMap } = useAllProjectMembers();
   const createProject = useCreateProject();
   const updateProject = useUpdateProject();

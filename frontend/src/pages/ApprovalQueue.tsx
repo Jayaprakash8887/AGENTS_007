@@ -65,7 +65,8 @@ export default function ApprovalQueue() {
   }>({ open: false, action: null });
   const [actionComment, setActionComment] = useState('');
   
-  const { data: allClaims = [], isLoading, error, refetch } = useClaims();
+  const tenantId = user?.tenantId;
+  const { data: allClaims = [], isLoading, error, refetch } = useClaims(tenantId);
 
   const pendingClaims = useMemo(() => {
     const pendingStatus = getPendingStatusForRole(user?.role || 'employee');

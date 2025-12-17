@@ -4,8 +4,13 @@ import { Claim, ClaimStatus } from '@/types';
 const API_BASE_URL = 'http://localhost:8000/api/v1';
 
 // API functions
-async function fetchClaims(): Promise<Claim[]> {
-  const response = await fetch(`${API_BASE_URL}/claims/`);
+async function fetchClaims(tenantId?: string): Promise<Claim[]> {
+  const params = new URLSearchParams();
+  if (tenantId) {
+    params.append('tenant_id', tenantId);
+  }
+  const url = `${API_BASE_URL}/claims/${params.toString() ? '?' + params.toString() : ''}`;
+  const response = await fetch(url);
   if (!response.ok) {
     throw new Error('Failed to fetch claims');
   }
@@ -155,10 +160,10 @@ async function updateClaimStatus(id: string, status: ClaimStatus): Promise<Claim
 }
 
 // Custom hooks
-export function useClaims() {
+export function useClaims(tenantId?: string) {
   return useQuery({
-    queryKey: ['claims'],
-    queryFn: fetchClaims,
+    queryKey: ['claims', tenantId],
+    queryFn: () => fetchClaims(tenantId),
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 }
@@ -172,8 +177,8 @@ export function useClaim(id: string) {
   });
 }
 
-export function useClaimsByStatus(status: ClaimStatus | 'all') {
-  const { data: claims, ...rest } = useClaims();
+export function useClaimsByStatus(status: ClaimStatus | 'all', tenantId?: string) {
+  const { data: claims, ...rest } = useClaims(tenantId);
 
   const filteredClaims = status === 'all'
     ? claims
@@ -182,8 +187,8 @@ export function useClaimsByStatus(status: ClaimStatus | 'all') {
   return { data: filteredClaims, ...rest };
 }
 
-export function usePendingApprovals() {
-  return useClaimsByStatus('pending_manager');
+export function usePendingApprovals(tenantId?: string) {
+  return useClaimsByStatus('pending_manager', tenantId);
 }
 
 export function useUpdateClaimStatus() {

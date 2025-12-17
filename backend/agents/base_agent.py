@@ -26,9 +26,9 @@ try:
     USE_PROVIDER_ABSTRACTION = True
 except ImportError:
     USE_PROVIDER_ABSTRACTION = False
-    logger.warning("LLM Provider abstraction not available, using legacy Gemini client")
+    logger.warning("LLM Provider abstraction not available, using direct Gemini client")
 
-# Legacy Gemini import (for backward compatibility)
+# Direct Gemini import (fallback when provider abstraction unavailable)
 try:
     import google.generativeai as genai
     GEMINI_AVAILABLE = True
@@ -46,7 +46,7 @@ class BaseAgent(ABC):
         
         # Initialize LLM provider
         self._llm_provider: Optional[LLMProvider] = None
-        self.model = None  # Legacy attribute for backward compatibility
+        self.model = None  # Direct Gemini model instance (fallback)
         
         if settings.ENABLE_AI_VALIDATION:
             if USE_PROVIDER_ABSTRACTION:
@@ -54,7 +54,7 @@ class BaseAgent(ABC):
                     self._llm_provider = get_llm_provider()
                     self.logger.info(f"Using LLM provider: {self._llm_provider.get_model_name()}")
                 except Exception as e:
-                    self.logger.warning(f"Failed to initialize LLM provider: {e}, falling back to legacy Gemini")
+                    self.logger.warning(f"Failed to initialize LLM provider: {e}, falling back to direct Gemini")
                     self._init_legacy_gemini()
             else:
                 self._init_legacy_gemini()
@@ -149,11 +149,11 @@ class BaseAgent(ABC):
             except Exception as e:
                 self.logger.error(f"LLM provider call failed: {e}")
                 if self.model:
-                    self.logger.info("Falling back to legacy Gemini")
+                    self.logger.info("Falling back to direct Gemini")
                 else:
                     raise
         
-        # Legacy Gemini implementation
+        # Direct Gemini implementation (fallback)
         if not self.model:
             raise ValueError("LLM is not enabled")
         
@@ -217,11 +217,11 @@ class BaseAgent(ABC):
             except Exception as e:
                 self.logger.error(f"LLM provider vision call failed: {e}")
                 if self.model:
-                    self.logger.info("Falling back to legacy Gemini")
+                    self.logger.info("Falling back to direct Gemini")
                 else:
                     raise
         
-        # Legacy Gemini implementation
+        # Direct Gemini implementation (fallback)
         if not self.model:
             raise ValueError("LLM is not enabled")
         

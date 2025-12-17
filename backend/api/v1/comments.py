@@ -45,10 +45,15 @@ class CommentResponse(BaseModel):
 @router.get("/", response_model=List[CommentResponse])
 async def list_comments(
     claim_id: Optional[UUID] = None,
+    tenant_id: Optional[UUID] = None,
     db: AsyncSession = Depends(get_async_db),
 ):
-    """List comments, optionally filtered by claim_id"""
+    """List comments, optionally filtered by claim_id and tenant_id"""
     query = select(Comment)
+    
+    # Filter by tenant if provided
+    if tenant_id:
+        query = query.where(Comment.tenant_id == tenant_id)
     
     if claim_id:
         query = query.where(Comment.claim_id == claim_id)

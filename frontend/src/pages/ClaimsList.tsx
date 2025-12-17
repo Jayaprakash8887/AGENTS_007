@@ -76,7 +76,8 @@ export default function ClaimsList() {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   
   const { user } = useAuth();
-  const { data: claims = [], isLoading, error, refetch } = useClaims();
+  const tenantId = user?.tenantId;
+  const { data: claims = [], isLoading, error, refetch } = useClaims(tenantId);
   const deleteClaim = useDeleteClaim();
 
   const handleDeleteClaim = async (claimId: string, claimNumber: string) => {

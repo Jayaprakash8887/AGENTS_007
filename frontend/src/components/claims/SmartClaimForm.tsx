@@ -51,7 +51,7 @@ export interface FieldSources {
   vendor: FieldSource;
   description: FieldSource;
   transactionRef: FieldSource;
-  projectCode?: FieldSource; // Optional for backwards compatibility
+  projectCode?: FieldSource; // Optional field
 }
 
 // Interface for extracted claim data - exported for use in parent components
@@ -187,7 +187,7 @@ export function SmartClaimForm({
   // Get employee's current active project for defaulting
   const currentActiveProject = employeeProjects.find(p => p.status === 'ACTIVE');
   
-  // Track which fields were auto-populated (legacy - for backward compatibility)
+  // Track which fields were auto-populated
   const [autoPopulatedFields, setAutoPopulatedFields] = useState<Set<string>>(new Set());
   
   // Track field sources for single form: 'auto' | 'manual' | 'none'
