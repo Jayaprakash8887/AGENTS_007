@@ -17,6 +17,9 @@ sync_engine = create_engine(
     pool_size=settings.DB_POOL_SIZE,
     max_overflow=settings.DB_MAX_OVERFLOW,
     pool_pre_ping=True,
+    pool_recycle=1800,  # Recycle connections every 30 minutes
+    pool_timeout=30,    # Wait up to 30 seconds for a connection
+    connect_args={"connect_timeout": 10},  # Connection timeout
     echo=settings.DEBUG,
 )
 
@@ -26,6 +29,8 @@ async_engine = create_async_engine(
     pool_size=settings.DB_POOL_SIZE,
     max_overflow=settings.DB_MAX_OVERFLOW,
     pool_pre_ping=True,
+    pool_recycle=1800,  # Recycle connections every 30 minutes
+    pool_timeout=30,    # Wait up to 30 seconds for a connection
     echo=settings.DEBUG,
 )
 

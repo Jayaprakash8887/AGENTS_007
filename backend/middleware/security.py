@@ -1,19 +1,58 @@
 """
 Security Middleware Module
-Provides security headers, request logging, and rate limiting middleware for FastAPI.
+Provides security headers, request logging, rate limiting, and request ID correlation
+middleware for FastAPI.
 """
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 import time
 import logging
+import uuid
 from typing import Callable, Optional
 from collections import defaultdict
 from datetime import datetime, timedelta
+from contextvars import ContextVar
 
 from services.security import audit_logger, get_client_ip
 
 logger = logging.getLogger(__name__)
+
+# Context variable for request ID (for use in logging across the application)
+request_id_var: ContextVar[str] = ContextVar("request_id", default="unknown")
+
+
+def get_request_id() -> str:
+    """Get the current request ID from context."""
+    return request_id_var.get()
+
+
+class RequestIdMiddleware(BaseHTTPMiddleware):
+    """
+    Middleware to add request ID tracking for request correlation.
+    The request ID is stored in a context variable for use in logging.
+    """
+    
+    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        # Get request ID from header or generate a new one
+        request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+        
+        # Store in context variable for logging
+        token = request_id_var.set(request_id)
+        
+        # Store in request state for access in route handlers
+        request.state.request_id = request_id
+        
+        try:
+            response = await call_next(request)
+            
+            # Add request ID to response header
+            response.headers["X-Request-ID"] = request_id
+            
+            return response
+        finally:
+            # Reset context variable
+            request_id_var.reset(token)
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -84,6 +123,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
     """
     Middleware to log all requests for security monitoring.
     Tracks access patterns and helps detect suspicious activity.
+    Includes request ID for correlation across services.
     """
     
     def __init__(self, app, exclude_paths: Optional[list] = None):
@@ -98,9 +138,10 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         # Start timing
         start_time = time.time()
         
-        # Get client info
+        # Get client info and request ID
         client_ip = get_client_ip(request)
         user_agent = request.headers.get("user-agent", "unknown")
+        request_id = getattr(request.state, 'request_id', None) or get_request_id()
         
         # Process request
         response = await call_next(request)
@@ -108,9 +149,10 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         # Calculate duration
         duration_ms = (time.time() - start_time) * 1000
         
-        # Log the request
+        # Log the request with request ID for correlation
         log_data = {
             "timestamp": datetime.utcnow().isoformat(),
+            "request_id": request_id,
             "method": request.method,
             "path": request.url.path,
             "query": str(request.query_params) if request.query_params else None,
@@ -136,9 +178,30 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
     """
-    Simple in-memory rate limiting middleware.
-    For production, use Redis-based rate limiting.
+    Rate limiting middleware with endpoint-specific limits.
+    For production, use Redis-based rate limiting for distributed systems.
+    
+    Endpoint-specific limits:
+    - /api/v1/auth/login: 10/min (prevent brute force)
+    - /api/v1/documents/upload: 20/min (file uploads)
+    - /api/v1/reports/*: 10/min (expensive operations)
+    - /api/v1/dashboard/summary: 30/min (moderate)
+    - Default: 60/min
     """
+    
+    # Endpoint-specific rate limits (path prefix -> requests per minute)
+    ENDPOINT_LIMITS = {
+        "/api/v1/auth/login": 10,         # Prevent brute force attacks
+        "/api/v1/auth/register": 5,       # Prevent mass registration
+        "/api/v1/auth/forgot-password": 5, # Prevent abuse
+        "/api/v1/documents/upload": 20,   # File uploads are expensive
+        "/api/v1/documents/bulk": 5,      # Bulk operations
+        "/api/v1/reports": 10,            # Expensive aggregations
+        "/api/v1/dashboard/summary": 30,  # Dashboard stats
+        "/api/v1/claims/batch": 10,       # Batch claim creation
+        "/api/v1/ocr": 15,                # OCR processing
+        "/api/v1/export": 10,             # Data exports
+    }
     
     def __init__(
         self,
@@ -151,9 +214,23 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self.requests_per_minute = requests_per_minute
         self.burst_limit = burst_limit
         self.exclude_paths = exclude_paths or ["/health", "/metrics"]
-        self.request_counts = defaultdict(list)
+        self.request_counts = defaultdict(lambda: defaultdict(list))  # ip -> endpoint -> timestamps
         self._cleanup_interval = 60  # seconds
         self._last_cleanup = time.time()
+    
+    def _get_rate_limit(self, path: str) -> int:
+        """Get the rate limit for a specific endpoint."""
+        for prefix, limit in self.ENDPOINT_LIMITS.items():
+            if path.startswith(prefix):
+                return limit
+        return self.requests_per_minute
+    
+    def _get_endpoint_key(self, path: str) -> str:
+        """Get the endpoint key for rate limiting (group similar endpoints)."""
+        for prefix in self.ENDPOINT_LIMITS.keys():
+            if path.startswith(prefix):
+                return prefix
+        return "default"
     
     def _cleanup_old_requests(self):
         """Remove old request timestamps."""
@@ -161,10 +238,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if current_time - self._last_cleanup > self._cleanup_interval:
             cutoff_time = current_time - 60  # 1 minute ago
             for ip in list(self.request_counts.keys()):
-                self.request_counts[ip] = [
-                    ts for ts in self.request_counts[ip]
-                    if ts > cutoff_time
-                ]
+                for endpoint in list(self.request_counts[ip].keys()):
+                    self.request_counts[ip][endpoint] = [
+                        ts for ts in self.request_counts[ip][endpoint]
+                        if ts > cutoff_time
+                    ]
+                    if not self.request_counts[ip][endpoint]:
+                        del self.request_counts[ip][endpoint]
                 if not self.request_counts[ip]:
                     del self.request_counts[ip]
             self._last_cleanup = current_time
@@ -177,19 +257,21 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # Cleanup old entries periodically
         self._cleanup_old_requests()
         
-        # Get client IP
+        # Get client IP and endpoint
         client_ip = get_client_ip(request)
+        endpoint_key = self._get_endpoint_key(request.url.path)
+        rate_limit = self._get_rate_limit(request.url.path)
         current_time = time.time()
         
-        # Get request history for this IP
-        request_times = self.request_counts[client_ip]
+        # Get request history for this IP + endpoint
+        request_times = self.request_counts[client_ip][endpoint_key]
         
         # Remove requests older than 1 minute
         cutoff_time = current_time - 60
         request_times = [ts for ts in request_times if ts > cutoff_time]
         
         # Check rate limit
-        if len(request_times) >= self.requests_per_minute:
+        if len(request_times) >= rate_limit:
             # Log rate limit violation
             audit_logger.log(
                 event_type="SECURITY_ALERT",
@@ -197,7 +279,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 ip_address=client_ip,
                 details={
                     "requests_in_minute": len(request_times),
-                    "limit": self.requests_per_minute,
+                    "limit": rate_limit,
+                    "endpoint": endpoint_key,
                     "path": request.url.path
                 },
                 success=False
@@ -211,7 +294,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 },
                 headers={
                     "Retry-After": "60",
-                    "X-RateLimit-Limit": str(self.requests_per_minute),
+                    "X-RateLimit-Limit": str(rate_limit),
                     "X-RateLimit-Remaining": "0",
                     "X-RateLimit-Reset": str(int(current_time + 60))
                 }
@@ -231,14 +314,14 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         
         # Record this request
         request_times.append(current_time)
-        self.request_counts[client_ip] = request_times
+        self.request_counts[client_ip][endpoint_key] = request_times
         
         # Process request
         response = await call_next(request)
         
         # Add rate limit headers
-        remaining = max(0, self.requests_per_minute - len(request_times))
-        response.headers["X-RateLimit-Limit"] = str(self.requests_per_minute)
+        remaining = max(0, rate_limit - len(request_times))
+        response.headers["X-RateLimit-Limit"] = str(rate_limit)
         response.headers["X-RateLimit-Remaining"] = str(remaining)
         response.headers["X-RateLimit-Reset"] = str(int(current_time + 60))
         

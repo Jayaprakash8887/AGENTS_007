@@ -15,9 +15,10 @@ from middleware.security import (
     RequestLoggingMiddleware,
     RateLimitMiddleware,
     SQLInjectionProtectionMiddleware,
+    RequestIdMiddleware,
 )
 
-# Configure logging
+# Configure logging with request ID support
 logging.basicConfig(
     level=getattr(logging, settings.LOG_LEVEL),
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -113,8 +114,28 @@ async def lifespan(app: FastAPI):
     
     yield
     
-    # Shutdown
-    logger.info("Shutting down API")
+    # Shutdown - Graceful resource cleanup
+    logger.info("Shutting down API - cleaning up resources")
+    
+    # Close database connections
+    try:
+        from database import async_engine, sync_engine
+        await async_engine.dispose()
+        sync_engine.dispose()
+        logger.info("Database connections closed")
+    except Exception as e:
+        logger.error(f"Error closing database connections: {e}")
+    
+    # Close Redis connections
+    try:
+        from services.redis_cache import redis_cache
+        if redis_cache._async_client:
+            await redis_cache._async_client.close()
+            logger.info("Redis connections closed")
+    except Exception as e:
+        logger.error(f"Error closing Redis connections: {e}")
+    
+    logger.info("Shutdown complete")
 
 
 # Create FastAPI app
@@ -141,7 +162,7 @@ app.add_middleware(
 # 1. SQL Injection Protection (defense-in-depth, log-only mode)
 app.add_middleware(SQLInjectionProtectionMiddleware, log_only=True)
 
-# 2. Rate Limiting (60 requests per minute per IP)
+# 2. Rate Limiting (endpoint-specific limits, default 60 per minute per IP)
 app.add_middleware(
     RateLimitMiddleware,
     requests_per_minute=60,
@@ -149,7 +170,7 @@ app.add_middleware(
     exclude_paths=["/health", "/metrics", "/api/docs", "/api/redoc", "/api/openapi.json"]
 )
 
-# 3. Request Logging (for security monitoring)
+# 3. Request Logging (for security monitoring with request ID)
 app.add_middleware(
     RequestLoggingMiddleware,
     exclude_paths=["/health", "/metrics", "/favicon.ico"]
@@ -158,22 +179,39 @@ app.add_middleware(
 # 4. Security Headers (HSTS, CSP, XSS Protection, etc.)
 app.add_middleware(SecurityHeadersMiddleware)
 
+# 5. Request ID Middleware (adds X-Request-ID for correlation across services)
+app.add_middleware(RequestIdMiddleware)
+
 
 # Exception handlers
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request, exc):
+    # Include request ID in error responses for debugging
+    request_id = getattr(request.state, 'request_id', 'unknown')
     return JSONResponse(
         status_code=exc.status_code,
-        content={"detail": exc.detail, "status_code": exc.status_code}
+        content={
+            "detail": exc.detail,
+            "status_code": exc.status_code,
+            "request_id": request_id
+        },
+        headers={"X-Request-ID": request_id}
     )
 
 
 @app.exception_handler(Exception)
 async def general_exception_handler(request, exc):
-    logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    # Include request ID in error logs for debugging
+    request_id = getattr(request.state, 'request_id', 'unknown')
+    logger.error(f"Unhandled exception [request_id={request_id}]: {exc}", exc_info=True)
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={"detail": "Internal server error", "status_code": 500}
+        content={
+            "detail": "Internal server error",
+            "status_code": 500,
+            "request_id": request_id
+        },
+        headers={"X-Request-ID": request_id}
     )
 
 

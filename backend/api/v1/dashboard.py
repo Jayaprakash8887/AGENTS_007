@@ -1,5 +1,5 @@
 """
-Dashboard and analytics endpoints
+Dashboard and analytics endpoints with caching for performance
 """
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
@@ -10,11 +10,15 @@ from uuid import UUID
 
 from database import get_sync_db
 from models import Claim, User, Approval, AgentExecution
+from services.redis_cache import redis_cache
 
 # Employee is now an alias for User (tables merged)
 Employee = User
 
 router = APIRouter()
+
+# Dashboard cache TTL (5 minutes - balances freshness vs performance)
+DASHBOARD_CACHE_TTL = 300
 
 
 @router.get("/summary")
@@ -23,7 +27,20 @@ async def get_dashboard_summary(
     tenant_id: Optional[UUID] = None,
     db: Session = Depends(get_sync_db)
 ):
-    """Get dashboard summary statistics"""
+    """Get dashboard summary statistics with caching"""
+    
+    # Build cache key based on parameters
+    cache_key_parts = ["dashboard", "summary"]
+    if tenant_id:
+        cache_key_parts.append(str(tenant_id))
+    if employee_id:
+        cache_key_parts.append(str(employee_id))
+    cache_key = ":".join(cache_key_parts)
+    
+    # Try cache first
+    cached = await redis_cache.get_async(cache_key)
+    if cached:
+        return cached
     
     # Base query conditions
     base_conditions = []
@@ -64,13 +81,18 @@ async def get_dashboard_summary(
     # Average processing time (in days)
     avg_processing_time = 3.5  # TODO: Calculate actual average
     
-    return {
+    result = {
         "total_claims": total_claims,
         "pending_claims": pending_claims,
         "approved_this_month": approved_this_month,
         "total_amount_claimed": float(total_amount),
         "average_processing_time_days": avg_processing_time
     }
+    
+    # Cache the result
+    await redis_cache.set_async(cache_key, result, DASHBOARD_CACHE_TTL)
+    
+    return result
 
 
 @router.get("/claims-by-status")
@@ -79,7 +101,20 @@ async def get_claims_by_status(
     tenant_id: Optional[UUID] = None,
     db: Session = Depends(get_sync_db)
 ):
-    """Get claim counts grouped by status"""
+    """Get claim counts grouped by status with caching"""
+    
+    # Build cache key
+    cache_key_parts = ["dashboard", "claims_by_status"]
+    if tenant_id:
+        cache_key_parts.append(str(tenant_id))
+    if employee_id:
+        cache_key_parts.append(str(employee_id))
+    cache_key = ":".join(cache_key_parts)
+    
+    # Try cache first
+    cached = await redis_cache.get_async(cache_key)
+    if cached:
+        return cached
     
     query = db.query(
         Claim.status,
@@ -94,7 +129,12 @@ async def get_claims_by_status(
     
     results = query.group_by(Claim.status).all()
     
-    return [{"status": status, "count": count} for status, count in results]
+    result = [{"status": status, "count": count} for status, count in results]
+    
+    # Cache result
+    await redis_cache.set_async(cache_key, result, DASHBOARD_CACHE_TTL)
+    
+    return result
 
 
 @router.get("/claims-by-category")
@@ -103,7 +143,20 @@ async def get_claims_by_category(
     tenant_id: Optional[UUID] = None,
     db: Session = Depends(get_sync_db)
 ):
-    """Get claim counts and amounts grouped by category"""
+    """Get claim counts and amounts grouped by category with caching"""
+    
+    # Build cache key
+    cache_key_parts = ["dashboard", "claims_by_category"]
+    if tenant_id:
+        cache_key_parts.append(str(tenant_id))
+    if employee_id:
+        cache_key_parts.append(str(employee_id))
+    cache_key = ":".join(cache_key_parts)
+    
+    # Try cache first
+    cached = await redis_cache.get_async(cache_key)
+    if cached:
+        return cached
     
     query = db.query(
         Claim.category,
@@ -119,7 +172,7 @@ async def get_claims_by_category(
     
     results = query.group_by(Claim.category).all()
     
-    return [
+    result = [
         {
             "category": category,
             "count": count,
@@ -127,6 +180,11 @@ async def get_claims_by_category(
         }
         for category, count, total_amount in results
     ]
+    
+    # Cache result
+    await redis_cache.set_async(cache_key, result, DASHBOARD_CACHE_TTL)
+    
+    return result
 
 
 @router.get("/recent-activity")

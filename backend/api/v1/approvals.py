@@ -116,7 +116,7 @@ async def update_approval(
     approval_data: ApprovalUpdate,
     db: Session = Depends(get_sync_db)
 ):
-    """Update an approval (approve/reject)"""
+    """Update an approval (approve/reject) - uses single transaction for consistency"""
     approval = db.query(Approval).filter(Approval.id == approval_id).first()
     if not approval:
         raise HTTPException(
@@ -124,7 +124,10 @@ async def update_approval(
             detail="Approval not found"
         )
     
-    # Update fields
+    # Get the related claim upfront (within same transaction)
+    claim = db.query(Claim).filter(Claim.id == approval.claim_id).first()
+    
+    # Update approval fields
     if approval_data.status:
         approval.status = approval_data.status
         if approval_data.status in ["APPROVED", "REJECTED"]:
@@ -133,11 +136,7 @@ async def update_approval(
     if approval_data.remarks:
         approval.remarks = approval_data.remarks
     
-    db.commit()
-    db.refresh(approval)
-    
-    # Update claim status based on approval
-    claim = db.query(Claim).filter(Claim.id == approval.claim_id).first()
+    # Update claim status based on approval (in same transaction)
     if claim and approval_data.status == "APPROVED":
         # Logic to move claim to next approval level or approve
         if approval.approval_level == "MANAGER":
@@ -146,9 +145,11 @@ async def update_approval(
             claim.status = "PENDING_FINANCE"
         elif approval.approval_level == "FINANCE":
             claim.status = "FINANCE_APPROVED"
-        db.commit()
     elif claim and approval_data.status == "REJECTED":
         claim.status = "REJECTED"
-        db.commit()
+    
+    # Single commit for both approval and claim updates (atomic transaction)
+    db.commit()
+    db.refresh(approval)
     
     return approval
