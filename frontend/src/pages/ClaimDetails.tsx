@@ -66,12 +66,12 @@ export default function ClaimDetails() {
     action: 'approve' | 'reject' | 'return' | null;
   }>({ open: false, action: null });
   const [actionComment, setActionComment] = useState('');
-  
+
   const { data: claim, isLoading, error } = useClaim(id || '');
   const { data: documents = [], isLoading: documentsLoading } = useDocuments(id || '');
   const { data: comments = [], isLoading: commentsLoading } = useComments(id || '');
   const createCommentMutation = useCreateComment();
-  
+
   // Get signed URL for the currently viewed document
   const { data: signedUrl, isLoading: signedUrlLoading } = useDocumentSignedUrl(viewingDocument?.id || null);
 
@@ -135,61 +135,61 @@ export default function ClaimDetails() {
 
   const confirmAction = async () => {
     if (!id || !actionDialog.action) return;
-    
+
     const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
     const action = actionDialog.action;
-    
+
     try {
       let endpoint = '';
       let body: Record<string, string> = {};
-      
+
       if (action === 'approve') {
-        endpoint = `${API_BASE_URL}/claims/${id}/approve`;
+        endpoint = `${API_BASE_URL}/claims/${id}/approve?tenant_id=${user?.tenantId || ''}`;
         if (actionComment) body = { comment: actionComment };
       } else if (action === 'reject') {
-        endpoint = `${API_BASE_URL}/claims/${id}/reject`;
+        endpoint = `${API_BASE_URL}/claims/${id}/reject?tenant_id=${user?.tenantId || ''}`;
         if (actionComment) body = { comment: actionComment };
       } else if (action === 'return') {
-        endpoint = `${API_BASE_URL}/claims/${id}/return`;
+        endpoint = `${API_BASE_URL}/claims/${id}/return?tenant_id=${user?.tenantId || ''}`;
         body = { return_reason: actionComment || 'Please review and correct the claim details' };
       }
-      
+
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      
+
       if (!response.ok) {
         const error = await response.json();
         throw new Error(error.detail || 'Action failed');
       }
-      
+
       const messages = {
         approve: 'Claim approved successfully',
         reject: 'Claim rejected',
         return: 'Claim returned to employee',
       };
       toast({ title: messages[action] });
-      
+
       setActionDialog({ open: false, action: null });
       setActionComment('');
-      
+
       // Refresh the page to show updated status
       window.location.reload();
-      
+
     } catch (error) {
-      toast({ 
-        title: 'Action failed', 
+      toast({
+        title: 'Action failed',
         description: error instanceof Error ? error.message : 'Unknown error',
-        variant: 'destructive' 
+        variant: 'destructive'
       });
     }
   };
 
   const handleAddComment = async () => {
     if (!comment.trim() || !id) return;
-    
+
     try {
       await createCommentMutation.mutateAsync({
         claim_id: id,
@@ -416,9 +416,9 @@ export default function ClaimDetails() {
                               </div>
                             </div>
                             <div className="flex gap-2">
-                              <Button 
+                              <Button
                                 variant={viewingDocument?.id === doc.id ? "default" : "outline"}
-                                size="sm" 
+                                size="sm"
                                 className="gap-2"
                                 onClick={() => viewingDocument?.id === doc.id ? handleClosePreview() : handleViewDocument(doc)}
                               >
@@ -434,9 +434,9 @@ export default function ClaimDetails() {
                                   </>
                                 )}
                               </Button>
-                              <Button 
-                                variant="outline" 
-                                size="sm" 
+                              <Button
+                                variant="outline"
+                                size="sm"
                                 className="gap-2"
                                 onClick={() => handleDownloadDocument(doc)}
                               >
@@ -445,7 +445,7 @@ export default function ClaimDetails() {
                               </Button>
                             </div>
                           </div>
-                          
+
                           {/* Inline Document Preview */}
                           {viewingDocument?.id === doc.id && (
                             <div className="mt-4 border-t pt-4">
@@ -497,9 +497,9 @@ export default function ClaimDetails() {
                                   Open in New Tab
                                 </Button>
                               </div>
-                              
+
                               {/* Preview Container with scroll */}
-                              <div 
+                              <div
                                 className="relative bg-muted/30 rounded-lg overflow-auto"
                                 style={{ maxHeight: '500px' }}
                               >
@@ -511,9 +511,9 @@ export default function ClaimDetails() {
                                     </div>
                                   </div>
                                 ) : (
-                                  <div 
+                                  <div
                                     className="flex items-center justify-center min-h-[300px] p-4"
-                                    style={{ 
+                                    style={{
                                       transform: `scale(${zoomLevel / 100})`,
                                       transformOrigin: 'top center',
                                       transition: 'transform 0.2s ease-out'
@@ -569,8 +569,8 @@ export default function ClaimDetails() {
                               item.action === 'approved'
                                 ? 'bg-success/10 text-success'
                                 : item.action === 'rejected'
-                                ? 'bg-destructive/10 text-destructive'
-                                : 'bg-primary/10 text-primary'
+                                  ? 'bg-destructive/10 text-destructive'
+                                  : 'bg-primary/10 text-primary'
                             )}
                           >
                             {item.action === 'approved' ? (
@@ -625,25 +625,25 @@ export default function ClaimDetails() {
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-sm text-muted-foreground">Confidence Score</span>
-                      <Badge 
-                        variant="outline" 
+                      <Badge
+                        variant="outline"
                         className={cn(
                           "font-semibold",
                           (claim.aiConfidence || 0) >= 90 ? "bg-success/10 text-success border-success/20" :
-                          (claim.aiConfidence || 0) >= 70 ? "bg-warning/10 text-warning border-warning/20" :
-                          "bg-destructive/10 text-destructive border-destructive/20"
+                            (claim.aiConfidence || 0) >= 70 ? "bg-warning/10 text-warning border-warning/20" :
+                              "bg-destructive/10 text-destructive border-destructive/20"
                         )}
                       >
                         {claim.aiConfidence?.toFixed(1) || '0'}%
                       </Badge>
                     </div>
                     <div className="w-full bg-muted rounded-full h-2">
-                      <div 
+                      <div
                         className={cn(
                           "h-2 rounded-full transition-all",
                           (claim.aiConfidence || 0) >= 90 ? "bg-success" :
-                          (claim.aiConfidence || 0) >= 70 ? "bg-warning" :
-                          "bg-destructive"
+                            (claim.aiConfidence || 0) >= 70 ? "bg-warning" :
+                              "bg-destructive"
                         )}
                         style={{ width: `${Math.min(claim.aiConfidence || 0, 100)}%` }}
                       />
@@ -666,8 +666,8 @@ export default function ClaimDetails() {
                       <span className={cn(
                         "font-medium",
                         claim.aiRecommendation === 'approve' ? "text-success" :
-                        claim.aiRecommendation === 'reject' ? "text-destructive" :
-                        "text-warning"
+                          claim.aiRecommendation === 'reject' ? "text-destructive" :
+                            "text-warning"
                       )}>
                         {claim.aiRecommendationText || 'Manual review required'}
                       </span>
@@ -680,25 +680,25 @@ export default function ClaimDetails() {
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-sm text-muted-foreground">Compliance Score</span>
-                      <Badge 
-                        variant="outline" 
+                      <Badge
+                        variant="outline"
                         className={cn(
                           "font-semibold",
                           (claim.complianceScore || 0) >= 90 ? "bg-success/10 text-success border-success/20" :
-                          (claim.complianceScore || 0) >= 70 ? "bg-warning/10 text-warning border-warning/20" :
-                          "bg-destructive/10 text-destructive border-destructive/20"
+                            (claim.complianceScore || 0) >= 70 ? "bg-warning/10 text-warning border-warning/20" :
+                              "bg-destructive/10 text-destructive border-destructive/20"
                         )}
                       >
                         {claim.complianceScore?.toFixed(0) || '0'}%
                       </Badge>
                     </div>
                     <div className="w-full bg-muted rounded-full h-2">
-                      <div 
+                      <div
                         className={cn(
                           "h-2 rounded-full transition-all",
                           (claim.complianceScore || 0) >= 90 ? "bg-success" :
-                          (claim.complianceScore || 0) >= 70 ? "bg-warning" :
-                          "bg-destructive"
+                            (claim.complianceScore || 0) >= 70 ? "bg-warning" :
+                              "bg-destructive"
                         )}
                         style={{ width: `${Math.min(claim.complianceScore || 0, 100)}%` }}
                       />
@@ -727,13 +727,13 @@ export default function ClaimDetails() {
                         <FileText className="h-5 w-5 text-primary" />
                         Policy Checks
                       </span>
-                      <Badge 
-                        variant="outline" 
+                      <Badge
+                        variant="outline"
                         className={cn(
                           "font-semibold",
                           (claim.complianceScore || 0) >= 80 ? "bg-success/10 text-success border-success/20" :
-                          (claim.complianceScore || 0) >= 60 ? "bg-warning/10 text-warning border-warning/20" :
-                          "bg-destructive/10 text-destructive border-destructive/20"
+                            (claim.complianceScore || 0) >= 60 ? "bg-warning/10 text-warning border-warning/20" :
+                              "bg-destructive/10 text-destructive border-destructive/20"
                         )}
                       >
                         {claim.policyChecks.filter(c => c.status === 'pass').length}/{claim.policyChecks.length}
@@ -747,17 +747,17 @@ export default function ClaimDetails() {
                         className={cn(
                           "flex items-start gap-3 rounded-lg p-3 transition-all",
                           check.status === 'pass' ? "bg-success/10" :
-                          check.status === 'warning' ? "bg-warning/10" :
-                          check.status === 'fail' ? "bg-destructive/10" :
-                          "bg-secondary"
+                            check.status === 'warning' ? "bg-warning/10" :
+                              check.status === 'fail' ? "bg-destructive/10" :
+                                "bg-secondary"
                         )}
                       >
                         <div className={cn(
                           "shrink-0 mt-0.5",
                           check.status === 'pass' ? "text-success" :
-                          check.status === 'warning' ? "text-warning" :
-                          check.status === 'fail' ? "text-destructive" :
-                          "text-muted-foreground"
+                            check.status === 'warning' ? "text-warning" :
+                              check.status === 'fail' ? "text-destructive" :
+                                "text-muted-foreground"
                         )}>
                           {check.status === 'pass' ? (
                             <CheckCircle className="h-4 w-4" />
@@ -771,9 +771,9 @@ export default function ClaimDetails() {
                           <p className={cn(
                             "text-sm font-medium",
                             check.status === 'pass' ? "text-foreground" :
-                            check.status === 'warning' ? "text-warning" :
-                            check.status === 'fail' ? "text-destructive" :
-                            "text-muted-foreground"
+                              check.status === 'warning' ? "text-warning" :
+                                check.status === 'fail' ? "text-destructive" :
+                                  "text-muted-foreground"
                           )}>
                             {check.label}
                           </p>

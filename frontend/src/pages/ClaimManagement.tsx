@@ -47,6 +47,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { toast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
 
@@ -72,16 +73,18 @@ interface ExtractedClaim {
 }
 
 // API Functions
-async function fetchExtractedClaims(): Promise<ExtractedClaim[]> {
-    const response = await fetch(`${API_BASE_URL}/policies/extracted-claims`);
+async function fetchExtractedClaims(tenantId?: string): Promise<ExtractedClaim[]> {
+    const params = tenantId ? `?tenant_id=${tenantId}` : '';
+    const response = await fetch(`${API_BASE_URL}/policies/extracted-claims${params}`);
     if (!response.ok) {
         throw new Error('Failed to fetch extracted claims');
     }
     return response.json();
 }
 
-async function updateCategory(id: string, updates: Partial<ExtractedClaim>): Promise<ExtractedClaim> {
-    const response = await fetch(`${API_BASE_URL}/policies/categories/${id}`, {
+async function updateCategory(id: string, updates: Partial<ExtractedClaim>, tenantId?: string): Promise<ExtractedClaim> {
+    const params = tenantId ? `?tenant_id=${tenantId}` : '';
+    const response = await fetch(`${API_BASE_URL}/policies/categories/${id}${params}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates),
@@ -114,20 +117,21 @@ function getPolicyStatusBadge(status: string) {
 
 // Region options for filtering
 const REGION_OPTIONS = [
-  { value: '', label: 'All Regions' },
-  { value: 'INDIA', label: 'India' },
-  { value: 'USA', label: 'United States' },
-  { value: 'UK', label: 'United Kingdom' },
-  { value: 'SEZ_BANGALORE', label: 'SEZ - Bangalore' },
-  { value: 'SEZ_CHENNAI', label: 'SEZ - Chennai' },
-  { value: 'SEZ_HYDERABAD', label: 'SEZ - Hyderabad' },
-  { value: 'STP_PUNE', label: 'STP - Pune' },
-  { value: 'STP_NOIDA', label: 'STP - Noida' },
-  { value: 'DOMESTIC', label: 'Domestic' },
-  { value: 'INTERNATIONAL', label: 'International' },
+    { value: '', label: 'All Regions' },
+    { value: 'INDIA', label: 'India' },
+    { value: 'USA', label: 'United States' },
+    { value: 'UK', label: 'United Kingdom' },
+    { value: 'SEZ_BANGALORE', label: 'SEZ - Bangalore' },
+    { value: 'SEZ_CHENNAI', label: 'SEZ - Chennai' },
+    { value: 'SEZ_HYDERABAD', label: 'SEZ - Hyderabad' },
+    { value: 'STP_PUNE', label: 'STP - Pune' },
+    { value: 'STP_NOIDA', label: 'STP - Noida' },
+    { value: 'DOMESTIC', label: 'Domestic' },
+    { value: 'INTERNATIONAL', label: 'International' },
 ];
 
 export default function ClaimManagement() {
+    const { user } = useAuth();
     const queryClient = useQueryClient();
     const [searchTerm, setSearchTerm] = useState('');
     const [regionFilter, setRegionFilter] = useState('');
@@ -136,13 +140,14 @@ export default function ClaimManagement() {
     const [editForm, setEditForm] = useState<Partial<ExtractedClaim>>({});
 
     const { data: claims, isLoading, error } = useQuery({
-        queryKey: ['extracted-claims'],
-        queryFn: fetchExtractedClaims,
+        queryKey: ['extracted-claims', user?.tenantId],
+        queryFn: () => fetchExtractedClaims(user?.tenantId),
+        enabled: !!user?.tenantId,
     });
 
     const updateMutation = useMutation({
         mutationFn: ({ id, updates }: { id: string; updates: Partial<ExtractedClaim> }) =>
-            updateCategory(id, updates),
+            updateCategory(id, updates, user?.tenantId),
         onSuccess: () => {
             toast({ title: 'Success', description: 'Category updated successfully.' });
             setIsEditOpen(false);

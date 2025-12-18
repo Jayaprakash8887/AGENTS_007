@@ -118,7 +118,7 @@ export function NotificationsBell() {
         );
         if (pendingResponse.ok) {
           const pendingData = await pendingResponse.json();
-          
+
           if (role === 'manager' && pendingData.manager_pending > 0) {
             fetchedNotifications.push({
               id: 'pending-manager',
@@ -131,7 +131,7 @@ export function NotificationsBell() {
               priority: 'high',
             });
           }
-          
+
           if (role === 'hr' && pendingData.hr_pending > 0) {
             fetchedNotifications.push({
               id: 'pending-hr',
@@ -144,7 +144,7 @@ export function NotificationsBell() {
               priority: 'high',
             });
           }
-          
+
           if (role === 'finance' && pendingData.finance_pending > 0) {
             fetchedNotifications.push({
               id: 'pending-finance',
@@ -181,12 +181,12 @@ export function NotificationsBell() {
         if (claimsResponse.ok) {
           const claimsData = await claimsResponse.json();
           const claims = claimsData.claims || [];
-          
+
           // Filter for user's claims and recent status changes
           const myClaims = claims.filter((c: any) => c.employee_id === user.id);
-          
+
           // Check for approved claims
-          const approvedClaims = myClaims.filter((c: any) => 
+          const approvedClaims = myClaims.filter((c: any) =>
             c.status === 'FINANCE_APPROVED' || c.status === 'HR_APPROVED' || c.status === 'MANAGER_APPROVED'
           );
           if (approvedClaims.length > 0) {
@@ -203,7 +203,7 @@ export function NotificationsBell() {
           }
 
           // Check for returned claims
-          const returnedClaims = myClaims.filter((c: any) => 
+          const returnedClaims = myClaims.filter((c: any) =>
             c.status === 'RETURNED_TO_EMPLOYEE'
           );
           if (returnedClaims.length > 0) {
@@ -235,7 +235,7 @@ export function NotificationsBell() {
           }
 
           // Pending claims info
-          const pendingClaims = myClaims.filter((c: any) => 
+          const pendingClaims = myClaims.filter((c: any) =>
             c.status?.includes('PENDING')
           );
           if (pendingClaims.length > 0) {
@@ -255,11 +255,11 @@ export function NotificationsBell() {
 
       // For System Admin - tenant and system notifications
       if (role === 'system_admin') {
-        const tenantsResponse = await fetch(`${API_BASE_URL}/tenants/`);
+        const tenantsResponse = await fetch(`${API_BASE_URL}/tenants/?tenant_id=${user.tenantId || ''}`);
         if (tenantsResponse.ok) {
           const tenants = await tenantsResponse.json();
           const activeTenants = tenants.filter((t: any) => t.is_active).length;
-          
+
           fetchedNotifications.push({
             id: 'tenants-overview',
             type: 'tenant',
@@ -273,7 +273,7 @@ export function NotificationsBell() {
         }
 
         // Check for any pending items across all tenants
-        const pendingResponse = await fetch(`${API_BASE_URL}/dashboard/pending-approvals`);
+        const pendingResponse = await fetch(`${API_BASE_URL}/dashboard/pending-approvals?tenant_id=${user.tenantId || ''}`);
         if (pendingResponse.ok) {
           const pendingData = await pendingResponse.json();
           if (pendingData.total_pending > 0) {
@@ -311,7 +311,7 @@ export function NotificationsBell() {
   // Fetch notifications on mount and when user changes
   useEffect(() => {
     fetchLocalNotifications();
-    
+
     // Refresh notifications every 60 seconds
     const interval = setInterval(fetchLocalNotifications, 60000);
     return () => clearInterval(interval);
@@ -365,11 +365,11 @@ export function NotificationsBell() {
       }
     } else if (notification.isLocal) {
       // Mark local notification as read
-      setLocalNotifications(prev => 
+      setLocalNotifications(prev =>
         prev.map(n => n.id === notification.id ? { ...n, read: true } : n)
       );
     }
-    
+
     // Navigate if there's an action URL
     if (notification.actionUrl) {
       navigate(notification.actionUrl);
@@ -380,9 +380,9 @@ export function NotificationsBell() {
   const markAllAsRead = async () => {
     if (!user?.id) return;
     try {
-      await markAllReadMutation.mutateAsync({ 
-        userId: user.id, 
-        tenantId: user.tenantId 
+      await markAllReadMutation.mutateAsync({
+        userId: user.id,
+        tenantId: user.tenantId
       });
       // Also mark local notifications as read
       setLocalNotifications(prev => prev.map(n => ({ ...n, read: true })));
@@ -407,9 +407,9 @@ export function NotificationsBell() {
   const handleClearAll = async () => {
     if (!user?.id) return;
     try {
-      await clearAllMutation.mutateAsync({ 
-        userId: user.id, 
-        tenantId: user.tenantId 
+      await clearAllMutation.mutateAsync({
+        userId: user.id,
+        tenantId: user.tenantId
       });
       setLocalNotifications([]);
     } catch (error) {
@@ -518,7 +518,7 @@ export function NotificationsBell() {
           </div>
         </div>
         <DropdownMenuSeparator />
-        
+
         {allNotifications.length === 0 ? (
           <div className="py-8 text-center">
             <Bell className="h-8 w-8 mx-auto text-muted-foreground/50 mb-2" />
@@ -569,9 +569,9 @@ export function NotificationsBell() {
             ))}
           </div>
         )}
-        
+
         <DropdownMenuSeparator />
-        <DropdownMenuItem 
+        <DropdownMenuItem
           className="justify-center text-primary cursor-pointer"
           onClick={() => {
             navigate('/notifications');

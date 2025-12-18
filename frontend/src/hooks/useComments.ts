@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '@/contexts/AuthContext';
 
 const API_BASE_URL = 'http://localhost:8000/api/v1';
 
@@ -16,6 +17,7 @@ export interface Comment {
 
 export interface CommentCreate {
   claim_id: string;
+  tenant_id: string;
   comment_text: string;
   comment_type?: string;
   user_name: string;
@@ -24,8 +26,8 @@ export interface CommentCreate {
 }
 
 // Fetch comments for a claim
-async function fetchComments(claimId: string): Promise<Comment[]> {
-  const response = await fetch(`${API_BASE_URL}/comments/?claim_id=${claimId}`);
+async function fetchComments(claimId: string, tenantId: string): Promise<Comment[]> {
+  const response = await fetch(`${API_BASE_URL}/comments/?claim_id=${claimId}&tenant_id=${tenantId}`);
   if (!response.ok) {
     throw new Error('Failed to fetch comments');
   }
@@ -41,11 +43,11 @@ async function createComment(comment: CommentCreate): Promise<Comment> {
     },
     body: JSON.stringify(comment),
   });
-  
+
   if (!response.ok) {
     throw new Error('Failed to create comment');
   }
-  
+
   return response.json();
 }
 
@@ -54,7 +56,7 @@ async function deleteComment(commentId: string): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/comments/${commentId}`, {
     method: 'DELETE',
   });
-  
+
   if (!response.ok) {
     throw new Error('Failed to delete comment');
   }
@@ -62,10 +64,11 @@ async function deleteComment(commentId: string): Promise<void> {
 
 // Hook to fetch comments for a claim
 export function useComments(claimId: string) {
+  const { user } = useAuth();
   return useQuery({
-    queryKey: ['comments', claimId],
-    queryFn: () => fetchComments(claimId),
-    enabled: !!claimId,
+    queryKey: ['comments', claimId, user?.tenantId],
+    queryFn: () => user?.tenantId ? fetchComments(claimId, user.tenantId) : [],
+    enabled: !!claimId && !!user?.tenantId,
     staleTime: 1 * 60 * 1000, // 1 minute
   });
 }
@@ -73,9 +76,11 @@ export function useComments(claimId: string) {
 // Hook to create a comment
 export function useCreateComment() {
   const queryClient = useQueryClient();
-  
+  const { user } = useAuth();
+
   return useMutation({
-    mutationFn: createComment,
+    mutationFn: (comment: Omit<CommentCreate, 'tenant_id'>) =>
+      createComment({ ...comment, tenant_id: user?.tenantId || '' }),
     onSuccess: (_, variables) => {
       // Invalidate comments query to refetch
       queryClient.invalidateQueries({ queryKey: ['comments', variables.claim_id] });
@@ -86,7 +91,7 @@ export function useCreateComment() {
 // Hook to delete a comment
 export function useDeleteComment() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: deleteComment,
     onSuccess: () => {

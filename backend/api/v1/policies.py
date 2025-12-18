@@ -973,7 +973,7 @@ def get_active_categories(
 # ==================== VALIDATION ENDPOINT ====================
 
 @router.post("/validate-claim", response_model=ClaimValidationResponse)
-def validate_claim(
+async def validate_claim(
     request: ClaimValidationRequest,
     db: Session = Depends(get_sync_db)
 ):
@@ -984,7 +984,7 @@ def validate_claim(
     from services.claim_validation_service import ClaimValidationService
     
     service = ClaimValidationService(db)
-    return service.validate_claim(request)
+    return await service.validate_claim(request)
 
 
 # ==================== AUDIT LOG ENDPOINT ====================

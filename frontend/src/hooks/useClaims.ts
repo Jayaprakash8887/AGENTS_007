@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Claim, ClaimStatus } from '@/types';
+import { useAuth } from '@/contexts/AuthContext';
 
 const API_BASE_URL = 'http://localhost:8000/api/v1';
 
@@ -68,8 +69,8 @@ function mapBackendStatus(backendStatus: string): ClaimStatus {
   return statusMap[backendStatus] || 'pending_manager';
 }
 
-async function fetchClaimById(id: string): Promise<Claim | undefined> {
-  const response = await fetch(`${API_BASE_URL}/claims/${id}`);
+async function fetchClaimById(id: string, tenantId: string): Promise<Claim | undefined> {
+  const response = await fetch(`${API_BASE_URL}/claims/${id}?tenant_id=${tenantId}`);
   if (!response.ok) {
     if (response.status === 404) return undefined;
     throw new Error('Failed to fetch claim');
@@ -122,8 +123,8 @@ async function fetchClaimById(id: string): Promise<Claim | undefined> {
   };
 }
 
-async function updateClaimStatus(id: string, status: ClaimStatus): Promise<Claim> {
-  const response = await fetch(`${API_BASE_URL}/claims/${id}`, {
+async function updateClaimStatus(id: string, status: ClaimStatus, tenantId: string): Promise<Claim> {
+  const response = await fetch(`${API_BASE_URL}/claims/${id}?tenant_id=${tenantId}`, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
@@ -136,6 +137,7 @@ async function updateClaimStatus(id: string, status: ClaimStatus): Promise<Claim
   }
 
   const claim = await response.json();
+  const payload = claim.claim_payload || {};
   return {
     id: claim.id,
     claimNumber: claim.claim_number,
@@ -144,6 +146,7 @@ async function updateClaimStatus(id: string, status: ClaimStatus): Promise<Claim
     department: claim.department,
     type: claim.claim_type?.toLowerCase() || 'reimbursement',
     category: claim.category?.toLowerCase() || 'other',
+    title: payload.title || claim.description || '',
     amount: parseFloat(claim.amount),
     currency: claim.currency || 'INR',
     status: mapBackendStatus(claim.status),
@@ -160,25 +163,28 @@ async function updateClaimStatus(id: string, status: ClaimStatus): Promise<Claim
 }
 
 // Custom hooks
-export function useClaims(tenantId?: string) {
+export function useClaims() {
+  const { user } = useAuth();
   return useQuery({
-    queryKey: ['claims', tenantId],
-    queryFn: () => fetchClaims(tenantId),
+    queryKey: ['claims', user?.tenantId],
+    queryFn: () => fetchClaims(user?.tenantId),
+    enabled: !!user?.tenantId,
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 }
 
 export function useClaim(id: string) {
+  const { user } = useAuth();
   return useQuery({
-    queryKey: ['claims', id],
-    queryFn: () => fetchClaimById(id),
-    enabled: !!id,
+    queryKey: ['claims', id, user?.tenantId],
+    queryFn: () => user?.tenantId ? fetchClaimById(id, user.tenantId) : undefined,
+    enabled: !!id && !!user?.tenantId,
     staleTime: 5 * 60 * 1000,
   });
 }
 
-export function useClaimsByStatus(status: ClaimStatus | 'all', tenantId?: string) {
-  const { data: claims, ...rest } = useClaims(tenantId);
+export function useClaimsByStatus(status: ClaimStatus | 'all') {
+  const { data: claims, ...rest } = useClaims();
 
   const filteredClaims = status === 'all'
     ? claims
@@ -187,16 +193,17 @@ export function useClaimsByStatus(status: ClaimStatus | 'all', tenantId?: string
   return { data: filteredClaims, ...rest };
 }
 
-export function usePendingApprovals(tenantId?: string) {
-  return useClaimsByStatus('pending_manager', tenantId);
+export function usePendingApprovals() {
+  return useClaimsByStatus('pending_manager');
 }
 
 export function useUpdateClaimStatus() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: ({ id, status }: { id: string; status: ClaimStatus }) =>
-      updateClaimStatus(id, status),
+      updateClaimStatus(id, status, user?.tenantId || ''),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['claims'] });
     },
@@ -312,8 +319,8 @@ export function useCreateBatchClaimsWithDocument() {
 }
 
 // Delete a claim
-async function deleteClaim(claimId: string): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/claims/${claimId}`, {
+async function deleteClaim(claimId: string, tenantId: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/claims/${claimId}?tenant_id=${tenantId}`, {
     method: 'DELETE',
   });
 
@@ -325,9 +332,10 @@ async function deleteClaim(claimId: string): Promise<void> {
 
 export function useDeleteClaim() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
 
   return useMutation({
-    mutationFn: deleteClaim,
+    mutationFn: (claimId: string) => deleteClaim(claimId, user?.tenantId || ''),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['claims'] });
     },
@@ -343,8 +351,8 @@ export interface ClaimUpdateData {
   edited_sources?: string[];  // Fields that were edited (e.g., ['amount', 'date', 'description'])
 }
 
-async function updateClaim(claimId: string, data: ClaimUpdateData): Promise<Claim> {
-  const response = await fetch(`${API_BASE_URL}/claims/${claimId}`, {
+async function updateClaim(claimId: string, data: ClaimUpdateData, tenantId: string): Promise<Claim> {
+  const response = await fetch(`${API_BASE_URL}/claims/${claimId}?tenant_id=${tenantId}`, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
@@ -362,6 +370,7 @@ async function updateClaim(claimId: string, data: ClaimUpdateData): Promise<Clai
   }
 
   const claim = await response.json();
+  const payload = claim.claim_payload || {};
   return {
     id: claim.id,
     claimNumber: claim.claim_number,
@@ -370,6 +379,7 @@ async function updateClaim(claimId: string, data: ClaimUpdateData): Promise<Clai
     department: claim.department,
     type: claim.claim_type?.toLowerCase() || 'reimbursement',
     category: claim.category_name || claim.category?.toLowerCase() || 'other',  // Use category_name if available
+    title: payload.title || claim.description || '',
     amount: parseFloat(claim.amount),
     currency: claim.currency || 'INR',
     status: mapBackendStatus(claim.status),
@@ -387,10 +397,11 @@ async function updateClaim(claimId: string, data: ClaimUpdateData): Promise<Clai
 
 export function useUpdateClaim() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: ({ claimId, data }: { claimId: string; data: ClaimUpdateData }) =>
-      updateClaim(claimId, data),
+      updateClaim(claimId, data, user?.tenantId || ''),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['claims'] });
     },

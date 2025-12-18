@@ -29,8 +29,8 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 @router.get("/", response_model=List[DocumentResponse])
 async def list_documents(
+    tenant_id: UUID,
     claim_id: UUID | None = None,
-    tenant_id: Optional[UUID] = None,
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_sync_db)
@@ -75,10 +75,14 @@ async def list_documents(
 @router.get("/{document_id}", response_model=DocumentResponse)
 async def get_document(
     document_id: UUID,
+    tenant_id: Optional[UUID] = None,
     db: Session = Depends(get_sync_db)
 ):
     """Get document by ID"""
-    document = db.query(Document).filter(Document.id == document_id).first()
+    query = db.query(Document).filter(Document.id == document_id)
+    if tenant_id:
+        query = query.filter(Document.tenant_id == tenant_id)
+    document = query.first()
     if not document:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -161,6 +165,7 @@ async def upload_document(
 @router.get("/{document_id}/view")
 async def view_document(
     document_id: UUID,
+    tenant_id: Optional[UUID] = None,
     db: Session = Depends(get_sync_db)
 ):
     """
@@ -168,7 +173,10 @@ async def view_document(
     For GCS documents, returns a signed URL redirect.
     For local documents, serves the file directly.
     """
-    document = db.query(Document).filter(Document.id == document_id).first()
+    query = db.query(Document).filter(Document.id == document_id)
+    if tenant_id:
+        query = query.filter(Document.tenant_id == tenant_id)
+    document = query.first()
     if not document:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -202,13 +210,17 @@ async def view_document(
 @router.get("/{document_id}/signed-url")
 async def get_document_signed_url(
     document_id: UUID,
+    tenant_id: Optional[UUID] = None,
     db: Session = Depends(get_sync_db)
 ):
     """
     Get a signed URL for a document (returns JSON instead of redirect).
     Useful for frontend apps that need to fetch the URL directly.
     """
-    document = db.query(Document).filter(Document.id == document_id).first()
+    query = db.query(Document).filter(Document.id == document_id)
+    if tenant_id:
+        query = query.filter(Document.tenant_id == tenant_id)
+    document = query.first()
     if not document:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -238,6 +250,7 @@ async def get_document_signed_url(
 @router.get("/{document_id}/download")
 async def download_document(
     document_id: UUID,
+    tenant_id: Optional[UUID] = None,
     db: Session = Depends(get_sync_db)
 ):
     """
@@ -245,7 +258,10 @@ async def download_document(
     For GCS documents, returns a signed URL redirect.
     For local documents, serves the file with download headers.
     """
-    document = db.query(Document).filter(Document.id == document_id).first()
+    query = db.query(Document).filter(Document.id == document_id)
+    if tenant_id:
+        query = query.filter(Document.tenant_id == tenant_id)
+    document = query.first()
     if not document:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -282,10 +298,14 @@ async def download_document(
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_document(
     document_id: UUID,
+    tenant_id: Optional[UUID] = None,
     db: Session = Depends(get_sync_db)
 ):
     """Delete a document"""
-    document = db.query(Document).filter(Document.id == document_id).first()
+    query = db.query(Document).filter(Document.id == document_id)
+    if tenant_id:
+        query = query.filter(Document.tenant_id == tenant_id)
+    document = query.first()
     if not document:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -645,7 +665,8 @@ async def run_ocr_with_llm_fallback(image_path: Path) -> Dict[str, Any]:
 async def extract_receipts_with_llm(
     ocr_text: str,
     employee_region: str = "INDIA",
-    use_embedding_validation: bool = True
+    use_embedding_validation: bool = True,
+    tenant_id: Optional[UUID] = None
 ) -> List[Dict[str, Any]]:
     """
     Use Gemini LLM to extract structured receipt data from OCR text.
@@ -661,6 +682,7 @@ async def extract_receipts_with_llm(
         ocr_text: The OCR-extracted text from the document
         employee_region: Employee's region for loading applicable categories
         use_embedding_validation: If True, use semantic embeddings for validation
+        tenant_id: Tenant UUID for multi-tenant category filtering
         
     Returns:
         List of receipt dictionaries with validated categories
@@ -680,7 +702,7 @@ async def extract_receipts_with_llm(
         # Get cached category list for the employee's region
         # This is cached for 24 hours to minimize DB queries
         category_cache = get_category_cache()
-        categories_prompt = category_cache.get_llm_prompt_categories(employee_region)
+        categories_prompt = category_cache.get_llm_prompt_categories(employee_region, tenant_id)
         
         # Pre-detect document type to provide hint to LLM
         text_lower = ocr_text.lower()
@@ -1123,7 +1145,8 @@ def extract_receipts_with_regex(ocr_text: str) -> List[Dict[str, Any]]:
 @router.post("/ocr", response_model=Dict[str, Any])
 async def extract_text_ocr(
     file: UploadFile = File(...),
-    employee_region: str = "INDIA"
+    employee_region: str = "INDIA",
+    tenant_id: Optional[UUID] = None
 ):
     """
     Extract text from image or PDF using OCR.
@@ -1134,6 +1157,7 @@ async def extract_text_ocr(
         file: The document file to process
         employee_region: Employee's region for loading applicable expense categories.
                         Categories are cached by region for 24 hours to optimize costs.
+        tenant_id: Tenant UUID for multi-tenant category filtering.
     """
     # Validate file type - now includes PDF
     allowed_types = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/tiff', 'application/pdf']
@@ -1245,7 +1269,7 @@ async def extract_text_ocr(
             if not all_text_lines and direct_result.get("lines"):
                 full_text = direct_result["text"]
                 # Try LLM with region-specific categories, then fallback to regex
-                receipts = await extract_receipts_with_llm(full_text, employee_region)
+                receipts = await extract_receipts_with_llm(full_text, employee_region, tenant_id=tenant_id)
                 if not receipts:
                     receipts = extract_receipts_with_regex(full_text)
                 return {
@@ -1273,7 +1297,7 @@ async def extract_text_ocr(
         logger.info(f"OCR completed. Method: {method}, Lines: {len(all_text_lines)}, Confidence: {avg_confidence:.2f}, LLM Vision: {used_llm_vision}")
         
         # Try LLM with region-specific categories first, then fallback to regex extraction
-        receipts = await extract_receipts_with_llm(full_text, employee_region)
+        receipts = await extract_receipts_with_llm(full_text, employee_region, tenant_id=tenant_id)
         if not receipts:
             logger.info("LLM extraction returned empty, using regex fallback")
             receipts = extract_receipts_with_regex(full_text)

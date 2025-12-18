@@ -71,20 +71,24 @@ export function GlobalSearch({ className }: GlobalSearchProps) {
 
     try {
       // Search claims - all roles can search claims
+      const claimsParams = new URLSearchParams();
+      if (user?.tenantId) {
+        claimsParams.append('tenant_id', user.tenantId);
+      }
       const claimsResponse = await fetch(
-        `${API_BASE_URL}/claims/?tenant_id=${user?.tenantId || ''}`
+        `${API_BASE_URL}/claims/?${claimsParams.toString()}`
       );
       if (claimsResponse.ok) {
         const claimsData = await claimsResponse.json();
         const claims = claimsData.claims || [];
-        
+
         // Filter claims based on role
         let filteredClaims = claims;
         if (user?.role === 'employee') {
           // Employees can only search their own claims
           filteredClaims = claims.filter((c: any) => c.employee_id === user.id);
         }
-        
+
         // Search in claims
         filteredClaims
           .filter((claim: any) => {
@@ -112,8 +116,14 @@ export function GlobalSearch({ className }: GlobalSearchProps) {
 
       // Search employees - only for HR, Admin, Manager, Finance, System Admin
       if (['hr', 'admin', 'system_admin', 'manager', 'finance'].includes(user?.role || '')) {
+        const empParams = new URLSearchParams();
+        if (user?.tenantId) {
+          empParams.append('tenant_id', user.tenantId);
+        }
+        empParams.append('search', searchQuery);
+
         const employeesResponse = await fetch(
-          `${API_BASE_URL}/employees/?tenant_id=${user?.tenantId || ''}&search=${encodeURIComponent(searchQuery)}`
+          `${API_BASE_URL}/employees/?${empParams.toString()}`
         );
         if (employeesResponse.ok) {
           const employees = await employeesResponse.json();
@@ -133,8 +143,14 @@ export function GlobalSearch({ className }: GlobalSearchProps) {
 
       // Search projects - only for Admin, System Admin, Finance
       if (['admin', 'system_admin', 'finance'].includes(user?.role || '')) {
+        const projectParams = new URLSearchParams();
+        if (user?.tenantId) {
+          projectParams.append('tenant_id', user.tenantId);
+        }
+        projectParams.append('search', searchQuery);
+
         const projectsResponse = await fetch(
-          `${API_BASE_URL}/projects/?tenant_id=${user?.tenantId || ''}&search=${encodeURIComponent(searchQuery)}`
+          `${API_BASE_URL}/projects/?${projectParams.toString()}`
         );
         if (projectsResponse.ok) {
           const projects = await projectsResponse.json();

@@ -3,7 +3,7 @@ Project management endpoints
 """
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import Dict, List, Optional
 from uuid import UUID, uuid4
 
 from database import get_sync_db
@@ -12,6 +12,7 @@ from models import Project, EmployeeProjectAllocation, User
 # Employee is now an alias for User (tables merged)
 Employee = User
 from schemas import ProjectCreate, ProjectResponse, ProjectUpdate
+from api.v1.auth import get_current_user, require_tenant_id
 
 router = APIRouter()
 
@@ -32,39 +33,36 @@ async def _invalidate_project_cache(project_code: str = None, project_id: UUID =
         logging.getLogger(__name__).warning(f"Failed to invalidate project cache: {e}")
 
 
-@router.get("/all/members")
+@router.get("/members/all", response_model=Dict[str, List[str]])
 async def get_all_project_members(
-    tenant_id: Optional[UUID] = None,
+    tenant_id: UUID,
     db: Session = Depends(get_sync_db)
 ):
-    """Get all active project-employee allocations for all projects"""
-    query = db.query(
-        EmployeeProjectAllocation.project_id,
-        EmployeeProjectAllocation.employee_id
+    """Get all members for all projects of a tenant"""
+    # Filter allocations by projects belonging to this tenant
+    query = db.query(EmployeeProjectAllocation).join(
+        Project, EmployeeProjectAllocation.project_id == Project.id
     ).filter(
+        Project.tenant_id == tenant_id,
         EmployeeProjectAllocation.status == "ACTIVE"
     )
     
-    # Filter by tenant if provided
-    if tenant_id:
-        query = query.filter(EmployeeProjectAllocation.tenant_id == tenant_id)
-    
-    results = query.all()
+    allocations = query.all()
     
     # Group by project_id
     project_members = {}
-    for project_id, employee_id in results:
-        pid = str(project_id)
+    for allocation in allocations:
+        pid = str(allocation.project_id)
         if pid not in project_members:
             project_members[pid] = []
-        project_members[pid].append(str(employee_id))
+        project_members[pid].append(str(allocation.employee_id))
     
     return project_members
 
 
 @router.get("/", response_model=List[ProjectResponse])
 async def list_projects(
-    tenant_id: Optional[UUID] = None,
+    tenant_id: UUID,
     search: Optional[str] = None,
     skip: int = 0,
     limit: int = 100,
@@ -93,10 +91,14 @@ async def list_projects(
 @router.get("/{project_id}", response_model=ProjectResponse)
 async def get_project(
     project_id: UUID,
+    tenant_id: Optional[UUID] = None,
     db: Session = Depends(get_sync_db)
 ):
     """Get project by ID"""
-    project = db.query(Project).filter(Project.id == project_id).first()
+    query = db.query(Project).filter(Project.id == project_id)
+    if tenant_id:
+        query = query.filter(Project.tenant_id == tenant_id)
+    project = query.first()
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -109,6 +111,7 @@ async def get_project(
 async def create_project(
     project_data: ProjectCreate,
     background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_sync_db)
 ):
     """Create a new project"""
@@ -122,10 +125,10 @@ async def create_project(
             detail=f"Project with code {project_data.project_code} already exists"
         )
     
-    # Create project with a default tenant_id
+    # Create project with user's tenant_id
     project = Project(
         id=uuid4(),
-        tenant_id=uuid4(),  # TODO: Get from authenticated user
+        tenant_id=current_user.tenant_id,
         project_code=project_data.project_code,
         project_name=project_data.project_name,
         description=project_data.description,

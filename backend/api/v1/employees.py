@@ -105,10 +105,15 @@ async def list_employees(
 @router.get("/{employee_id}", response_model=EmployeeResponse)
 async def get_employee(
     employee_id: UUID,
+    tenant_id: Optional[UUID] = None,
     db: Session = Depends(get_sync_db)
 ):
     """Get employee by ID"""
-    user = db.query(User).filter(User.id == employee_id).first()
+    query = db.query(User).filter(User.id == employee_id)
+    if tenant_id:
+        query = query.filter(User.tenant_id == tenant_id)
+    
+    user = query.first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -200,10 +205,15 @@ async def update_employee(
     employee_id: UUID,
     employee_data: EmployeeCreate,
     background_tasks: BackgroundTasks,
+    tenant_id: Optional[UUID] = None,
     db: Session = Depends(get_sync_db)
 ):
     """Update an employee"""
-    user = db.query(User).filter(User.id == employee_id).first()
+    query = db.query(User).filter(User.id == employee_id)
+    if tenant_id:
+        query = query.filter(User.tenant_id == tenant_id)
+    
+    user = query.first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -261,10 +271,15 @@ async def update_employee(
 async def delete_employee(
     employee_id: UUID,
     background_tasks: BackgroundTasks,
+    tenant_id: Optional[UUID] = None,
     db: Session = Depends(get_sync_db)
 ):
     """Delete an employee (soft delete by setting status to INACTIVE)"""
-    user = db.query(User).filter(User.id == employee_id).first()
+    query = db.query(User).filter(User.id == employee_id)
+    if tenant_id:
+        query = query.filter(User.tenant_id == tenant_id)
+    
+    user = query.first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -288,6 +303,7 @@ async def delete_employee(
 async def get_employee_project_history(
     employee_id: UUID,
     include_inactive: bool = True,
+    tenant_id: Optional[UUID] = None,
     db: Session = Depends(get_sync_db)
 ):
     """
@@ -297,11 +313,16 @@ async def get_employee_project_history(
     Args:
         employee_id: UUID of the employee (user)
         include_inactive: If True, include deallocated/completed projects
+        tenant_id: Optional tenant filter
     
     Returns:
         List of project allocations with project details
     """
-    user = db.query(User).filter(User.id == employee_id).first()
+    query = db.query(User).filter(User.id == employee_id)
+    if tenant_id:
+        query = query.filter(User.tenant_id == tenant_id)
+    
+    user = query.first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

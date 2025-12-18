@@ -1,17 +1,20 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Project } from '@/types';
+import { useAuth } from '@/contexts/AuthContext';
 
 const API_BASE_URL = 'http://localhost:8000/api/v1';
 
 // API functions
 async function fetchProjects(tenantId?: string): Promise<Project[]> {
-  const params = tenantId ? `?tenant_id=${tenantId}` : '';
-  const response = await fetch(`${API_BASE_URL}/projects/${params}`);
+  const url = tenantId
+    ? `${API_BASE_URL}/projects/?tenant_id=${tenantId}`
+    : `${API_BASE_URL}/projects/`;
+  const response = await fetch(url);
   if (!response.ok) {
     throw new Error('Failed to fetch projects');
   }
   const data = await response.json();
-  
+
   // Transform backend response to frontend format
   return data.map((proj: any) => ({
     id: proj.id,
@@ -35,7 +38,7 @@ async function fetchProjectById(id: string): Promise<Project | undefined> {
     throw new Error('Failed to fetch project');
   }
   const proj = await response.json();
-  
+
   return {
     id: proj.id,
     code: proj.project_code,
@@ -66,14 +69,14 @@ async function createProject(project: Omit<Project, 'id'>): Promise<Project> {
       end_date: project.endDate?.toISOString().split('T')[0],
     }),
   });
-  
+
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.detail || 'Failed to create project');
   }
-  
+
   const data = await response.json();
-  
+
   return {
     id: data.id,
     code: data.project_code,
@@ -90,10 +93,13 @@ async function createProject(project: Omit<Project, 'id'>): Promise<Project> {
 }
 
 // Custom hooks
-export function useProjects(tenantId?: string) {
+export function useProjects(tenantIdOverride?: string) {
+  const { user } = useAuth();
+  const tenantId = tenantIdOverride || user?.tenantId;
   return useQuery({
     queryKey: ['projects', tenantId],
     queryFn: () => fetchProjects(tenantId),
+    enabled: !!tenantId,
     staleTime: 5 * 60 * 1000,
   });
 }
@@ -108,16 +114,16 @@ export function useProject(id: string) {
 }
 
 export function useActiveProjects(tenantId?: string) {
-  const { data: projects, ...rest } = useProjects(tenantId);
-  
+  const { data: projects, ...rest } = useProjects(); // Changed to useProjects() without tenantId parameter
+
   const activeProjects = projects?.filter(project => project.status === 'active');
-  
+
   return { data: activeProjects, ...rest };
 }
 
 export function useCreateProject() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: createProject,
     onSuccess: () => {
@@ -143,14 +149,14 @@ async function updateProject(id: string, project: Partial<Project>): Promise<Pro
       manager_id: project.managerId,
     }),
   });
-  
+
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.detail || 'Failed to update project');
   }
-  
+
   const data = await response.json();
-  
+
   return {
     id: data.id,
     code: data.project_code,
@@ -168,7 +174,7 @@ async function updateProject(id: string, project: Partial<Project>): Promise<Pro
 
 export function useUpdateProject() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<Project> }) => updateProject(id, data),
     onSuccess: () => {
@@ -178,8 +184,8 @@ export function useUpdateProject() {
 }
 
 export function useProjectStats(tenantId?: string) {
-  const { data: projects, ...rest } = useProjects(tenantId);
-  
+  const { data: projects, ...rest } = useProjects(); // Changed to useProjects() without tenantId parameter
+
   const stats = projects ? {
     totalBudget: projects.reduce((sum, p) => sum + p.budget, 0),
     totalSpent: projects.reduce((sum, p) => sum + p.spent, 0),
@@ -187,23 +193,31 @@ export function useProjectStats(tenantId?: string) {
     completedCount: projects.filter(p => p.status === 'completed').length,
     onHoldCount: projects.filter(p => p.status === 'on_hold').length,
   } : null;
-  
+
   return { data: stats, ...rest };
 }
 
+// Define ProjectMember type if not already defined
+type ProjectMember = any; // Replace 'any' with actual type if available
+
 // Fetch all project members mapping
-async function fetchAllProjectMembers(): Promise<Record<string, string[]>> {
-  const response = await fetch(`${API_BASE_URL}/projects/all/members`);
+async function fetchAllProjectMembers(tenantId?: string): Promise<ProjectMember[]> {
+  const url = tenantId
+    ? `${API_BASE_URL}/projects/members/all?tenant_id=${tenantId}`
+    : `${API_BASE_URL}/projects/members/all`;
+  const response = await fetch(url);
   if (!response.ok) {
-    throw new Error('Failed to fetch project members');
+    throw new Error('Failed to fetch all project members');
   }
   return response.json();
 }
 
 export function useAllProjectMembers() {
+  const { user } = useAuth();
   return useQuery({
-    queryKey: ['projectMembers'],
-    queryFn: fetchAllProjectMembers,
+    queryKey: ['project-members-all', user?.tenantId],
+    queryFn: () => fetchAllProjectMembers(user?.tenantId),
+    enabled: !!user?.tenantId,
     staleTime: 30 * 1000, // 30 seconds
   });
 }

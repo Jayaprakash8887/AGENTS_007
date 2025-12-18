@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '@/contexts/AuthContext';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
 
@@ -34,16 +35,18 @@ interface GeneralSettings {
 }
 
 // API functions
-async function fetchGeneralSettings(): Promise<GeneralSettings> {
-  const response = await fetch(`${API_BASE_URL}/settings/general`);
+async function fetchGeneralSettings(tenantId?: string): Promise<GeneralSettings> {
+  const params = tenantId ? `?tenant_id=${tenantId}` : '';
+  const response = await fetch(`${API_BASE_URL}/settings/general${params}`);
   if (!response.ok) {
     throw new Error('Failed to fetch settings');
   }
   return response.json();
 }
 
-async function updateGeneralSettings(settings: Partial<GeneralSettings>): Promise<GeneralSettings> {
-  const response = await fetch(`${API_BASE_URL}/settings/general`, {
+async function updateGeneralSettings(settings: Partial<GeneralSettings>, tenantId?: string): Promise<GeneralSettings> {
+  const params = tenantId ? `?tenant_id=${tenantId}` : '';
+  const response = await fetch(`${API_BASE_URL}/settings/general${params}`, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
@@ -58,11 +61,13 @@ async function updateGeneralSettings(settings: Partial<GeneralSettings>): Promis
 
 export default function Settings() {
   const queryClient = useQueryClient();
-  
+  const { user } = useAuth();
+
   // Fetch settings from backend
   const { data: savedSettings, isLoading, error } = useQuery({
-    queryKey: ['generalSettings'],
-    queryFn: fetchGeneralSettings,
+    queryKey: ['generalSettings', user?.tenantId],
+    queryFn: () => fetchGeneralSettings(user?.tenantId),
+    enabled: !!user?.tenantId,
   });
 
   // Local state for form
@@ -96,9 +101,9 @@ export default function Settings() {
 
   // Mutation for saving settings
   const saveMutation = useMutation({
-    mutationFn: updateGeneralSettings,
+    mutationFn: (settings: Partial<GeneralSettings>) => updateGeneralSettings(settings, user?.tenantId),
     onSuccess: (data) => {
-      queryClient.setQueryData(['generalSettings'], data);
+      queryClient.setQueryData(['generalSettings', user?.tenantId], data);
       setHasChanges(false);
       toast({
         title: 'Settings saved',
@@ -161,7 +166,7 @@ export default function Settings() {
             Configure system-wide settings and integrations
           </p>
         </div>
-        
+
         {/* Save/Cancel buttons - shown when there are changes */}
         {hasChanges && (
           <div className="flex gap-2">
@@ -191,141 +196,141 @@ export default function Settings() {
       <div className={`space-y-4 ${hasChanges ? 'pb-24' : ''}`}>
         <Card>
           <CardHeader>
-              <CardTitle>General Settings</CardTitle>
-              <CardDescription>
-                Basic configuration for the expense system
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label>AI-Powered Processing</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Enable AI for OCR and validation
-                  </p>
-                </div>
-                <Switch 
-                  checked={formData.ai_processing} 
-                  onCheckedChange={(checked) => handleChange('ai_processing', checked)} 
-                />
-              </div>
-              <Separator />
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label>Auto-Approval</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Auto-approve high confidence claims (≥95%)
-                  </p>
-                </div>
-                <Switch 
-                  checked={formData.auto_approval} 
-                  onCheckedChange={(checked) => handleChange('auto_approval', checked)} 
-                />
-              </div>
-              <Separator />
-              <div className="space-y-2">
-                <Label>Default Currency</Label>
-                <Select 
-                  value={formData.default_currency}
-                  onValueChange={(value) => handleChange('default_currency', value)}
-                >
-                  <SelectTrigger className="w-[200px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="usd">USD ($)</SelectItem>
-                    <SelectItem value="eur">EUR (€)</SelectItem>
-                    <SelectItem value="gbp">GBP (£)</SelectItem>
-                    <SelectItem value="inr">INR (₹)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Fiscal Year Start</Label>
-                <Select 
-                  value={formData.fiscal_year_start}
-                  onValueChange={(value) => handleChange('fiscal_year_start', value)}
-                >
-                  <SelectTrigger className="w-[200px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="jan">January</SelectItem>
-                    <SelectItem value="apr">April</SelectItem>
-                    <SelectItem value="jul">July</SelectItem>
-                    <SelectItem value="oct">October</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Notification Settings</CardTitle>
-              <CardDescription>
-                Configure system-wide notification preferences
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label>Email Notifications</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Send email notifications for claim updates
-                  </p>
-                </div>
-                <Switch
-                  checked={formData.email_notifications}
-                  onCheckedChange={(checked) => handleChange('email_notifications', checked)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Notification Email</Label>
-                <Input 
-                  placeholder="noreply@company.com" 
-                  value={formData.notification_email}
-                  onChange={(e) => handleChange('notification_email', e.target.value)}
-                />
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Spacer to prevent overlap with floating save bar */}
-          {hasChanges && <div className="h-20" />}
-
-          {/* Floating save bar at bottom when changes exist */}
-          {hasChanges && (
-            <div className="fixed bottom-0 left-0 right-0 bg-background/95 backdrop-blur border-t p-4 flex justify-end gap-2 z-50">
-              <div className="container mx-auto flex justify-between items-center">
+            <CardTitle>General Settings</CardTitle>
+            <CardDescription>
+              Basic configuration for the expense system
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label>AI-Powered Processing</Label>
                 <p className="text-sm text-muted-foreground">
-                  You have unsaved changes
+                  Enable AI for OCR and validation
                 </p>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={handleCancel}
-                    disabled={saveMutation.isPending}
-                  >
-                    <X className="h-4 w-4 mr-2" />
-                    Cancel
-                  </Button>
-                  <Button
-                    onClick={handleSave}
-                    disabled={saveMutation.isPending}
-                  >
-                    {saveMutation.isPending ? (
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    ) : (
-                      <Save className="h-4 w-4 mr-2" />
-                    )}
-                    Save Changes
-                  </Button>
-                </div>
+              </div>
+              <Switch
+                checked={formData.ai_processing}
+                onCheckedChange={(checked) => handleChange('ai_processing', checked)}
+              />
+            </div>
+            <Separator />
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label>Auto-Approval</Label>
+                <p className="text-sm text-muted-foreground">
+                  Auto-approve high confidence claims (≥95%)
+                </p>
+              </div>
+              <Switch
+                checked={formData.auto_approval}
+                onCheckedChange={(checked) => handleChange('auto_approval', checked)}
+              />
+            </div>
+            <Separator />
+            <div className="space-y-2">
+              <Label>Default Currency</Label>
+              <Select
+                value={formData.default_currency}
+                onValueChange={(value) => handleChange('default_currency', value)}
+              >
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="usd">USD ($)</SelectItem>
+                  <SelectItem value="eur">EUR (€)</SelectItem>
+                  <SelectItem value="gbp">GBP (£)</SelectItem>
+                  <SelectItem value="inr">INR (₹)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Fiscal Year Start</Label>
+              <Select
+                value={formData.fiscal_year_start}
+                onValueChange={(value) => handleChange('fiscal_year_start', value)}
+              >
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="jan">January</SelectItem>
+                  <SelectItem value="apr">April</SelectItem>
+                  <SelectItem value="jul">July</SelectItem>
+                  <SelectItem value="oct">October</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Notification Settings</CardTitle>
+            <CardDescription>
+              Configure system-wide notification preferences
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label>Email Notifications</Label>
+                <p className="text-sm text-muted-foreground">
+                  Send email notifications for claim updates
+                </p>
+              </div>
+              <Switch
+                checked={formData.email_notifications}
+                onCheckedChange={(checked) => handleChange('email_notifications', checked)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Notification Email</Label>
+              <Input
+                placeholder="noreply@company.com"
+                value={formData.notification_email}
+                onChange={(e) => handleChange('notification_email', e.target.value)}
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Spacer to prevent overlap with floating save bar */}
+        {hasChanges && <div className="h-20" />}
+
+        {/* Floating save bar at bottom when changes exist */}
+        {hasChanges && (
+          <div className="fixed bottom-0 left-0 right-0 bg-background/95 backdrop-blur border-t p-4 flex justify-end gap-2 z-50">
+            <div className="container mx-auto flex justify-between items-center">
+              <p className="text-sm text-muted-foreground">
+                You have unsaved changes
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={handleCancel}
+                  disabled={saveMutation.isPending}
+                >
+                  <X className="h-4 w-4 mr-2" />
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSave}
+                  disabled={saveMutation.isPending}
+                >
+                  {saveMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4 mr-2" />
+                  )}
+                  Save Changes
+                </Button>
               </div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

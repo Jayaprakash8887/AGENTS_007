@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ClaimDocument } from '@/types';
+import { useAuth } from '@/contexts/AuthContext';
 
 const API_BASE_URL = 'http://localhost:8000/api/v1';
 
@@ -24,8 +25,8 @@ function transformDocument(doc: any): ClaimDocument {
 }
 
 // Fetch documents for a claim
-async function fetchDocumentsForClaim(claimId: string): Promise<ClaimDocument[]> {
-  const response = await fetch(`${API_BASE_URL}/documents/?claim_id=${claimId}`);
+async function fetchDocumentsForClaim(claimId: string, tenantId: string): Promise<ClaimDocument[]> {
+  const response = await fetch(`${API_BASE_URL}/documents/?claim_id=${claimId}&tenant_id=${tenantId}`);
   if (!response.ok) {
     throw new Error('Failed to fetch documents');
   }
@@ -48,16 +49,16 @@ async function fetchDocument(documentId: string): Promise<ClaimDocument | undefi
 async function uploadDocument(claimId: string, file: File): Promise<ClaimDocument> {
   const formData = new FormData();
   formData.append('file', file);
-  
+
   const response = await fetch(`${API_BASE_URL}/documents/upload/${claimId}`, {
     method: 'POST',
     body: formData,
   });
-  
+
   if (!response.ok) {
     throw new Error('Failed to upload document');
   }
-  
+
   const doc = await response.json();
   return transformDocument(doc);
 }
@@ -67,7 +68,7 @@ async function deleteDocument(documentId: string): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/documents/${documentId}`, {
     method: 'DELETE',
   });
-  
+
   if (!response.ok) {
     throw new Error('Failed to delete document');
   }
@@ -75,10 +76,11 @@ async function deleteDocument(documentId: string): Promise<void> {
 
 // Hook to fetch documents for a claim
 export function useDocuments(claimId: string) {
+  const { user } = useAuth();
   return useQuery({
-    queryKey: ['documents', claimId],
-    queryFn: () => fetchDocumentsForClaim(claimId),
-    enabled: !!claimId,
+    queryKey: ['documents', claimId, user?.tenantId],
+    queryFn: () => user?.tenantId ? fetchDocumentsForClaim(claimId, user.tenantId) : [],
+    enabled: !!claimId && !!user?.tenantId,
   });
 }
 
@@ -94,9 +96,9 @@ export function useDocument(documentId: string) {
 // Hook to upload a document
 export function useUploadDocument() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
-    mutationFn: ({ claimId, file }: { claimId: string; file: File }) => 
+    mutationFn: ({ claimId, file }: { claimId: string; file: File }) =>
       uploadDocument(claimId, file),
     onSuccess: (_, variables) => {
       // Invalidate documents query to refetch
@@ -108,7 +110,7 @@ export function useUploadDocument() {
 // Hook to delete a document
 export function useDeleteDocument() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: deleteDocument,
     onSuccess: () => {

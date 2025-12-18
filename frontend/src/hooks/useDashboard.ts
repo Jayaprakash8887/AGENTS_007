@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '@/contexts/AuthContext';
 
 const API_BASE_URL = 'http://localhost:8000/api/v1';
 
@@ -129,49 +130,77 @@ async function fetchPendingApprovals(tenantId?: string): Promise<PendingApproval
 
 // Hooks
 export function useDashboardSummary(employeeId?: string, tenantId?: string) {
+  const { user } = useAuth();
+  const effectiveEmployeeId = employeeId || user?.id;
+  const effectiveTenantId = tenantId || user?.tenantId;
+
   return useQuery({
-    queryKey: ['dashboard-summary', employeeId, tenantId],
-    queryFn: () => fetchDashboardSummary(employeeId, tenantId),
+    queryKey: ['dashboard-summary', effectiveEmployeeId, effectiveTenantId],
+    queryFn: () => fetchDashboardSummary(effectiveEmployeeId, effectiveTenantId),
+    enabled: !!effectiveTenantId,
     refetchInterval: 30000, // Refetch every 30 seconds
   });
 }
 
 export function useClaimsByStatus(employeeId?: string, tenantId?: string) {
+  const { user } = useAuth();
+  const effectiveEmployeeId = employeeId || user?.id;
+  const effectiveTenantId = tenantId || user?.tenantId;
+
   return useQuery({
-    queryKey: ['claims-by-status', employeeId, tenantId],
-    queryFn: () => fetchClaimsByStatus(employeeId, tenantId),
+    queryKey: ['claims-by-status', effectiveEmployeeId, effectiveTenantId],
+    queryFn: () => fetchClaimsByStatus(effectiveEmployeeId, effectiveTenantId),
+    enabled: !!effectiveTenantId,
     refetchInterval: 30000,
   });
 }
 
 export function useClaimsByCategory(employeeId?: string, tenantId?: string) {
+  const { user } = useAuth();
+  const effectiveEmployeeId = employeeId || user?.id;
+  const effectiveTenantId = tenantId || user?.tenantId;
+
   return useQuery({
-    queryKey: ['claims-by-category', employeeId, tenantId],
-    queryFn: () => fetchClaimsByCategory(employeeId, tenantId),
+    queryKey: ['claims-by-category', effectiveEmployeeId, effectiveTenantId],
+    queryFn: () => fetchClaimsByCategory(effectiveEmployeeId, effectiveTenantId),
+    enabled: !!effectiveTenantId,
     refetchInterval: 30000,
   });
 }
 
 export function useRecentActivity(limit: number = 10, employeeId?: string, tenantId?: string) {
+  const { user } = useAuth();
+  const effectiveEmployeeId = employeeId || user?.id;
+  const effectiveTenantId = tenantId || user?.tenantId;
+
   return useQuery({
-    queryKey: ['recent-activity', limit, employeeId, tenantId],
-    queryFn: () => fetchRecentActivity(limit, employeeId, tenantId),
+    queryKey: ['recent-activity', limit, effectiveEmployeeId, effectiveTenantId],
+    queryFn: () => fetchRecentActivity(limit, effectiveEmployeeId, effectiveTenantId),
+    enabled: !!effectiveTenantId,
     refetchInterval: 15000, // Refetch every 15 seconds for more real-time data
   });
 }
 
 export function useAIMetrics(tenantId?: string) {
+  const { user } = useAuth();
+  const effectiveTenantId = tenantId || user?.tenantId;
+
   return useQuery({
-    queryKey: ['ai-metrics', tenantId],
-    queryFn: () => fetchAIMetrics(tenantId),
+    queryKey: ['ai-metrics', effectiveTenantId],
+    queryFn: () => fetchAIMetrics(effectiveTenantId),
+    enabled: !!effectiveTenantId,
     refetchInterval: 60000, // Refetch every minute
   });
 }
 
 export function usePendingApprovals(tenantId?: string) {
+  const { user } = useAuth();
+  const effectiveTenantId = tenantId || user?.tenantId;
+
   return useQuery({
-    queryKey: ['pending-approvals', tenantId],
-    queryFn: () => fetchPendingApprovals(tenantId),
+    queryKey: ['pending-approvals', effectiveTenantId],
+    queryFn: () => fetchPendingApprovals(effectiveTenantId),
+    enabled: !!effectiveTenantId,
     refetchInterval: 30000,
   });
 }
@@ -195,9 +224,13 @@ async function fetchHRMetrics(tenantId?: string): Promise<HRMetrics> {
 }
 
 export function useHRMetrics(tenantId?: string) {
+  const { user } = useAuth();
+  const effectiveTenantId = tenantId || user?.tenantId;
+
   return useQuery({
-    queryKey: ['hr-metrics', tenantId],
-    queryFn: () => fetchHRMetrics(tenantId),
+    queryKey: ['hr-metrics', effectiveTenantId],
+    queryFn: () => fetchHRMetrics(effectiveTenantId),
+    enabled: !!effectiveTenantId,
     refetchInterval: 30000,
   });
 }
@@ -213,9 +246,14 @@ async function fetchDraftClaims(employeeId?: string, limit: number = 5, tenantId
 }
 
 export function useDraftClaims(employeeId?: string, limit: number = 5, tenantId?: string) {
+  const { user } = useAuth();
+  const effectiveEmployeeId = employeeId || user?.id;
+  const effectiveTenantId = tenantId || user?.tenantId;
+
   return useQuery({
-    queryKey: ['draft-claims', employeeId, limit, tenantId],
-    queryFn: () => fetchDraftClaims(employeeId, limit, tenantId),
+    queryKey: ['draft-claims', effectiveEmployeeId, limit, effectiveTenantId],
+    queryFn: () => fetchDraftClaims(effectiveEmployeeId, limit, effectiveTenantId),
+    enabled: !!effectiveTenantId,
     refetchInterval: 15000,
   });
 }
@@ -239,9 +277,14 @@ async function fetchAllowanceSummary(employeeId?: string, tenantId?: string): Pr
 }
 
 export function useAllowanceSummary(employeeId?: string, tenantId?: string) {
+  const { user } = useAuth();
+  const effectiveEmployeeId = employeeId || user?.id;
+  const effectiveTenantId = tenantId || user?.tenantId;
+
   return useQuery({
-    queryKey: ['allowance-summary', employeeId, tenantId],
-    queryFn: () => fetchAllowanceSummary(employeeId, tenantId),
+    queryKey: ['allowance-summary', effectiveEmployeeId, effectiveTenantId],
+    queryFn: () => fetchAllowanceSummary(effectiveEmployeeId, effectiveTenantId),
+    enabled: !!effectiveTenantId,
     refetchInterval: 30000,
   });
 }

@@ -198,7 +198,7 @@ async function fetchPolicies(tenantId?: string, region?: string): Promise<Policy
   const params = new URLSearchParams();
   if (tenantId) params.append('tenant_id', tenantId);
   if (region) params.append('region', region);
-  
+
   const url = `${API_BASE_URL}/policies/${params.toString() ? '?' + params.toString() : ''}`;
   const response = await fetch(url);
   if (!response.ok) {
@@ -207,8 +207,8 @@ async function fetchPolicies(tenantId?: string, region?: string): Promise<Policy
   return response.json();
 }
 
-async function fetchPolicy(id: string): Promise<PolicyUpload> {
-  const response = await fetch(`${API_BASE_URL}/policies/${id}`);
+async function fetchPolicy(id: string, tenantId: string): Promise<PolicyUpload> {
+  const response = await fetch(`${API_BASE_URL}/policies/${id}?tenant_id=${tenantId}`);
   if (!response.ok) {
     throw new Error('Failed to fetch policy');
   }
@@ -227,8 +227,8 @@ async function uploadPolicy(data: FormData): Promise<PolicyUpload> {
   return response.json();
 }
 
-async function approvePolicy(id: string, data: { review_notes?: string; effective_from?: string }): Promise<PolicyUpload> {
-  const response = await fetch(`${API_BASE_URL}/policies/${id}/approve`, {
+async function approvePolicy(id: string, data: { review_notes?: string; effective_from?: string }, tenantId: string): Promise<PolicyUpload> {
+  const response = await fetch(`${API_BASE_URL}/policies/${id}/approve?tenant_id=${tenantId}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -240,8 +240,8 @@ async function approvePolicy(id: string, data: { review_notes?: string; effectiv
   return response.json();
 }
 
-async function rejectPolicy(id: string, review_notes: string): Promise<PolicyUpload> {
-  const response = await fetch(`${API_BASE_URL}/policies/${id}/reject`, {
+async function rejectPolicy(id: string, review_notes: string, tenantId: string): Promise<PolicyUpload> {
+  const response = await fetch(`${API_BASE_URL}/policies/${id}/reject?tenant_id=${tenantId}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ review_notes }),
@@ -253,8 +253,8 @@ async function rejectPolicy(id: string, review_notes: string): Promise<PolicyUpl
   return response.json();
 }
 
-async function reExtractPolicy(id: string): Promise<{ message: string }> {
-  const response = await fetch(`${API_BASE_URL}/policies/${id}/reextract`, {
+async function reExtractPolicy(id: string, tenantId: string): Promise<{ message: string }> {
+  const response = await fetch(`${API_BASE_URL}/policies/${id}/reextract?tenant_id=${tenantId}`, {
     method: 'POST',
   });
   if (!response.ok) {
@@ -264,7 +264,11 @@ async function reExtractPolicy(id: string): Promise<{ message: string }> {
   return response.json();
 }
 
-async function uploadNewVersion(id: string, formData: FormData): Promise<PolicyUpload> {
+async function uploadNewVersion(id: string, formData: FormData, tenantId: string): Promise<PolicyUpload> {
+  // Ensure tenant_id is in FormData if it's a form post, or in query
+  if (!formData.has('tenant_id')) {
+    formData.append('tenant_id', tenantId);
+  }
   const response = await fetch(`${API_BASE_URL}/policies/${id}/new-version`, {
     method: 'POST',
     body: formData,
@@ -277,24 +281,24 @@ async function uploadNewVersion(id: string, formData: FormData): Promise<PolicyU
 }
 
 // Custom Claims API Functions
-async function fetchCustomClaims(): Promise<CustomClaimListItem[]> {
-  const response = await fetch(`${API_BASE_URL}/custom-claims/`);
+async function fetchCustomClaims(tenantId: string): Promise<CustomClaimListItem[]> {
+  const response = await fetch(`${API_BASE_URL}/custom-claims/?tenant_id=${tenantId}`);
   if (!response.ok) {
     throw new Error('Failed to fetch custom claims');
   }
   return response.json();
 }
 
-async function fetchCustomClaim(id: string): Promise<CustomClaim> {
-  const response = await fetch(`${API_BASE_URL}/custom-claims/${id}`);
+async function fetchCustomClaim(id: string, tenantId: string): Promise<CustomClaim> {
+  const response = await fetch(`${API_BASE_URL}/custom-claims/${id}?tenant_id=${tenantId}`);
   if (!response.ok) {
     throw new Error('Failed to fetch custom claim');
   }
   return response.json();
 }
 
-async function createCustomClaim(data: Partial<CustomClaim>, createdBy: string): Promise<CustomClaim> {
-  const response = await fetch(`${API_BASE_URL}/custom-claims/?created_by=${createdBy}`, {
+async function createCustomClaim(data: Partial<CustomClaim>, createdBy: string, tenantId: string): Promise<CustomClaim> {
+  const response = await fetch(`${API_BASE_URL}/custom-claims/?created_by=${createdBy}&tenant_id=${tenantId}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -306,8 +310,8 @@ async function createCustomClaim(data: Partial<CustomClaim>, createdBy: string):
   return response.json();
 }
 
-async function updateCustomClaim(id: string, data: Partial<CustomClaim>, updatedBy: string): Promise<CustomClaim> {
-  const response = await fetch(`${API_BASE_URL}/custom-claims/${id}?updated_by=${updatedBy}`, {
+async function updateCustomClaim(id: string, data: Partial<CustomClaim>, updatedBy: string, tenantId: string): Promise<CustomClaim> {
+  const response = await fetch(`${API_BASE_URL}/custom-claims/${id}?updated_by=${updatedBy}&tenant_id=${tenantId}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -319,8 +323,8 @@ async function updateCustomClaim(id: string, data: Partial<CustomClaim>, updated
   return response.json();
 }
 
-async function deleteCustomClaim(id: string): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/custom-claims/${id}`, {
+async function deleteCustomClaim(id: string, tenantId: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/custom-claims/${id}?tenant_id=${tenantId}`, {
     method: 'DELETE',
   });
   if (!response.ok) {
@@ -329,8 +333,8 @@ async function deleteCustomClaim(id: string): Promise<void> {
   }
 }
 
-async function toggleCustomClaimStatus(id: string, updatedBy: string): Promise<CustomClaim> {
-  const response = await fetch(`${API_BASE_URL}/custom-claims/${id}/toggle-status?updated_by=${updatedBy}`, {
+async function toggleCustomClaimStatus(id: string, updatedBy: string, tenantId: string): Promise<CustomClaim> {
+  const response = await fetch(`${API_BASE_URL}/custom-claims/${id}/toggle-status?updated_by=${updatedBy}&tenant_id=${tenantId}`, {
     method: 'POST',
   });
   if (!response.ok) {
@@ -421,7 +425,7 @@ export default function Policies() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
+
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [isApproveOpen, setIsApproveOpen] = useState(false);
@@ -432,7 +436,7 @@ export default function Policies() {
   const [regionFilter, setRegionFilter] = useState<string>('');
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const newVersionFileInputRef = useRef<HTMLInputElement>(null);
-  
+
   // Form state
   const [uploadForm, setUploadForm] = useState({
     policy_name: '',
@@ -455,7 +459,7 @@ export default function Policies() {
   const [isEditCustomClaimOpen, setIsEditCustomClaimOpen] = useState(false);
   const [selectedCustomClaimId, setSelectedCustomClaimId] = useState<string | null>(null);
   const [customClaimRegionFilter, setCustomClaimRegionFilter] = useState<string>('');
-  
+
   // Custom Claim Form State
   const [customClaimForm, setCustomClaimForm] = useState<{
     claim_name: string;
@@ -510,26 +514,27 @@ export default function Policies() {
 
   // Queries
   const { data: policies, isLoading, error } = useQuery({
-    queryKey: ['policies', user?.tenant_id],
-    queryFn: () => fetchPolicies(user?.tenant_id),
-    enabled: !!user?.tenant_id,
+    queryKey: ['policies', user?.tenantId],
+    queryFn: () => user?.tenantId ? fetchPolicies(user.tenantId) : Promise.resolve([]),
+    enabled: !!user?.tenantId,
   });
 
   const { data: customClaims, isLoading: isLoadingCustomClaims } = useQuery({
-    queryKey: ['custom-claims'],
-    queryFn: fetchCustomClaims,
+    queryKey: ['custom-claims', user?.tenantId],
+    queryFn: () => user?.tenantId ? fetchCustomClaims(user.tenantId) : Promise.resolve([]),
+    enabled: !!user?.tenantId,
   });
 
   const { data: selectedPolicy, isLoading: isLoadingPolicy } = useQuery({
-    queryKey: ['policy', selectedPolicyId],
-    queryFn: () => selectedPolicyId ? fetchPolicy(selectedPolicyId) : null,
-    enabled: !!selectedPolicyId && (isViewOpen || isApproveOpen),
+    queryKey: ['policy', selectedPolicyId, user?.tenantId],
+    queryFn: () => (selectedPolicyId && user?.tenantId) ? fetchPolicy(selectedPolicyId, user.tenantId) : null,
+    enabled: !!selectedPolicyId && !!user?.tenantId && (isViewOpen || isApproveOpen),
   });
 
   const { data: selectedCustomClaim, isLoading: isLoadingCustomClaim } = useQuery({
-    queryKey: ['custom-claim', selectedCustomClaimId],
-    queryFn: () => selectedCustomClaimId ? fetchCustomClaim(selectedCustomClaimId) : null,
-    enabled: !!selectedCustomClaimId && (isViewCustomClaimOpen || isEditCustomClaimOpen),
+    queryKey: ['custom-claim', selectedCustomClaimId, user?.tenantId],
+    queryFn: () => (selectedCustomClaimId && user?.tenantId) ? fetchCustomClaim(selectedCustomClaimId, user.tenantId) : null,
+    enabled: !!selectedCustomClaimId && !!user?.tenantId && (isViewCustomClaimOpen || isEditCustomClaimOpen),
   });
 
   // Mutations
@@ -547,8 +552,8 @@ export default function Policies() {
   });
 
   const approveMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: { review_notes?: string; effective_from?: string } }) => 
-      approvePolicy(id, data),
+    mutationFn: ({ id, data }: { id: string; data: { review_notes?: string; effective_from?: string } }) =>
+      approvePolicy(id, data, user?.tenantId || ''),
     onSuccess: () => {
       toast({ title: 'Success', description: 'Policy approved and activated.' });
       setIsApproveOpen(false);
@@ -562,7 +567,7 @@ export default function Policies() {
   });
 
   const rejectMutation = useMutation({
-    mutationFn: ({ id, notes }: { id: string; notes: string }) => rejectPolicy(id, notes),
+    mutationFn: ({ id, notes }: { id: string; notes: string }) => rejectPolicy(id, notes, user?.tenantId || ''),
     onSuccess: () => {
       toast({ title: 'Success', description: 'Policy rejected.' });
       setIsRejectOpen(false);
@@ -575,7 +580,7 @@ export default function Policies() {
   });
 
   const reExtractMutation = useMutation({
-    mutationFn: reExtractPolicy,
+    mutationFn: (id: string) => reExtractPolicy(id, user?.tenantId || ''),
     onSuccess: () => {
       toast({ title: 'Success', description: 'Re-extraction started. Refresh in a moment.' });
       queryClient.invalidateQueries({ queryKey: ['policies'] });
@@ -586,7 +591,7 @@ export default function Policies() {
   });
 
   const newVersionMutation = useMutation({
-    mutationFn: ({ id, formData }: { id: string; formData: FormData }) => uploadNewVersion(id, formData),
+    mutationFn: ({ id, formData }: { id: string; formData: FormData }) => uploadNewVersion(id, formData, user?.tenantId || ''),
     onSuccess: () => {
       toast({ title: 'Success', description: 'New version uploaded successfully. AI extraction in progress.' });
       setIsNewVersionOpen(false);
@@ -601,7 +606,7 @@ export default function Policies() {
 
   // Custom Claims Mutations
   const createCustomClaimMutation = useMutation({
-    mutationFn: (data: Partial<CustomClaim>) => createCustomClaim(data, user?.id || ''),
+    mutationFn: (data: Partial<CustomClaim>) => createCustomClaim(data, user?.id || '', user?.tenantId || ''),
     onSuccess: () => {
       toast({ title: 'Success', description: 'Custom claim created successfully.' });
       setIsCreateCustomClaimOpen(false);
@@ -614,8 +619,8 @@ export default function Policies() {
   });
 
   const updateCustomClaimMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<CustomClaim> }) => 
-      updateCustomClaim(id, data, user?.id || ''),
+    mutationFn: ({ id, data }: { id: string; data: Partial<CustomClaim> }) =>
+      updateCustomClaim(id, data, user?.id || '', user?.tenantId || ''),
     onSuccess: () => {
       toast({ title: 'Success', description: 'Custom claim updated successfully.' });
       setIsEditCustomClaimOpen(false);
@@ -629,7 +634,7 @@ export default function Policies() {
   });
 
   const deleteCustomClaimMutation = useMutation({
-    mutationFn: deleteCustomClaim,
+    mutationFn: (id: string) => deleteCustomClaim(id, user?.tenantId || ''),
     onSuccess: () => {
       toast({ title: 'Success', description: 'Custom claim deleted successfully.' });
       queryClient.invalidateQueries({ queryKey: ['custom-claims'] });
@@ -640,7 +645,7 @@ export default function Policies() {
   });
 
   const toggleCustomClaimStatusMutation = useMutation({
-    mutationFn: (id: string) => toggleCustomClaimStatus(id, user?.id || ''),
+    mutationFn: (id: string) => toggleCustomClaimStatus(id, user?.id || '', user?.tenantId || ''),
     onSuccess: () => {
       toast({ title: 'Success', description: 'Custom claim status updated.' });
       queryClient.invalidateQueries({ queryKey: ['custom-claims'] });
@@ -666,7 +671,10 @@ export default function Policies() {
       formData.append('region', uploadForm.region);
     }
     formData.append('uploaded_by', user?.id || '');
-    
+    if (user?.tenantId) {
+      formData.append('tenant_id', user.tenantId);
+    }
+
     uploadMutation.mutate(formData);
   };
 
@@ -714,7 +722,7 @@ export default function Policies() {
       formData.append('region', newVersionForm.region);
     }
     formData.append('uploaded_by', user?.id || '');
-    
+
     newVersionMutation.mutate({ id: selectedPolicyId, formData });
   };
 
@@ -736,7 +744,7 @@ export default function Policies() {
   const updateCustomField = (index: number, field: Partial<CustomFieldDefinition>) => {
     setCustomClaimForm(prev => ({
       ...prev,
-      custom_fields: prev.custom_fields.map((f, i) => 
+      custom_fields: prev.custom_fields.map((f, i) =>
         i === index ? { ...f, ...field } : f
       ),
     }));
@@ -921,7 +929,7 @@ export default function Policies() {
               </div>
               <div className="space-y-2">
                 <Label>Policy Document *</Label>
-                <div 
+                <div
                   className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:border-primary/50 transition-colors"
                   onClick={() => fileInputRef.current?.click()}
                 >
@@ -1036,10 +1044,10 @@ export default function Policies() {
         </CardHeader>
         <CardContent>
           {(() => {
-            const filteredPolicies = policies?.filter(p => 
+            const filteredPolicies = policies?.filter(p =>
               !regionFilter || regionFilter === ' ' || p.region === regionFilter || (!p.region && regionFilter === ' ')
             );
-            
+
             if (!filteredPolicies || filteredPolicies.length === 0) {
               return (
                 <div className="text-center py-12">
@@ -1048,7 +1056,7 @@ export default function Policies() {
                     {regionFilter && regionFilter !== ' ' ? 'No policies found for this region' : 'No policies uploaded'}
                   </h3>
                   <p className="text-muted-foreground mb-4">
-                    {regionFilter && regionFilter !== ' ' 
+                    {regionFilter && regionFilter !== ' '
                       ? 'Try selecting a different region or clear the filter.'
                       : 'Upload a policy document to get started with AI-powered category extraction.'}
                   </p>
@@ -1061,7 +1069,7 @@ export default function Policies() {
                 </div>
               );
             }
-            
+
             return (
               <Table>
                 <TableHeader>
@@ -1077,89 +1085,89 @@ export default function Policies() {
                 </TableHeader>
                 <TableBody>
                   {filteredPolicies.map((policy) => (
-                  <TableRow key={policy.id}>
-                    <TableCell>
-                      <div>
-                        <p className="font-medium">{policy.policy_name}</p>
-                        <p className="text-sm text-muted-foreground">{policy.policy_number}</p>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="text-xs">
-                        {policy.region || 'Global'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <FileText className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-sm">{policy.file_name}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell>{getStatusBadge(policy.status)}</TableCell>
-                    <TableCell>
-                      <Badge variant="secondary">{policy.categories_count} categories</Badge>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {format(new Date(policy.created_at), 'MMM d, yyyy')}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            setSelectedPolicyId(policy.id);
-                            setIsViewOpen(true);
-                          }}
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        {policy.status === 'EXTRACTED' && (
-                          <>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="text-green-600"
-                              onClick={() => {
-                                setSelectedPolicyId(policy.id);
-                                setIsApproveOpen(true);
-                              }}
-                            >
-                              <CheckCircle className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="text-red-600"
-                              onClick={() => {
-                                setSelectedPolicyId(policy.id);
-                                setIsRejectOpen(true);
-                              }}
-                            >
-                              <XCircle className="h-4 w-4" />
-                            </Button>
-                          </>
-                        )}
-                        {policy.status === 'ACTIVE' && (
+                    <TableRow key={policy.id}>
+                      <TableCell>
+                        <div>
+                          <p className="font-medium">{policy.policy_name}</p>
+                          <p className="text-sm text-muted-foreground">{policy.policy_number}</p>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="text-xs">
+                          {policy.region || 'Global'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <FileText className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-sm">{policy.file_name}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>{getStatusBadge(policy.status)}</TableCell>
+                      <TableCell>
+                        <Badge variant="secondary">{policy.categories_count} categories</Badge>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {format(new Date(policy.created_at), 'MMM d, yyyy')}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-2">
                           <Button
                             variant="ghost"
                             size="sm"
-                            title="Upload new version"
                             onClick={() => {
                               setSelectedPolicyId(policy.id);
-                              setSelectedPolicyName(policy.policy_name);
-                              setIsNewVersionOpen(true);
+                              setIsViewOpen(true);
                             }}
                           >
-                            <Edit className="h-4 w-4" />
+                            <Eye className="h-4 w-4" />
                           </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                          {policy.status === 'EXTRACTED' && (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-green-600"
+                                onClick={() => {
+                                  setSelectedPolicyId(policy.id);
+                                  setIsApproveOpen(true);
+                                }}
+                              >
+                                <CheckCircle className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-red-600"
+                                onClick={() => {
+                                  setSelectedPolicyId(policy.id);
+                                  setIsRejectOpen(true);
+                                }}
+                              >
+                                <XCircle className="h-4 w-4" />
+                              </Button>
+                            </>
+                          )}
+                          {policy.status === 'ACTIVE' && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              title="Upload new version"
+                              onClick={() => {
+                                setSelectedPolicyId(policy.id);
+                                setSelectedPolicyName(policy.policy_name);
+                                setIsNewVersionOpen(true);
+                              }}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             );
           })()}
         </CardContent>
@@ -1206,18 +1214,18 @@ export default function Policies() {
               <Loader2 className="h-8 w-8 animate-spin" />
             </div>
           ) : (() => {
-            const filteredCustomClaims = customClaims?.filter(cc => 
-              !customClaimRegionFilter || customClaimRegionFilter === ' ' || 
+            const filteredCustomClaims = customClaims?.filter(cc =>
+              !customClaimRegionFilter || customClaimRegionFilter === ' ' ||
               cc.region === customClaimRegionFilter || (!cc.region && customClaimRegionFilter === ' ')
             );
-            
+
             if (!filteredCustomClaims || filteredCustomClaims.length === 0) {
               return (
                 <div className="text-center py-12">
                   <Settings className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                   <h3 className="text-lg font-semibold mb-2">
-                    {customClaimRegionFilter && customClaimRegionFilter !== ' ' 
-                      ? 'No custom claims found for this region' 
+                    {customClaimRegionFilter && customClaimRegionFilter !== ' '
+                      ? 'No custom claims found for this region'
                       : 'No custom claims defined'}
                   </h3>
                   <p className="text-muted-foreground mb-4">
@@ -1234,7 +1242,7 @@ export default function Policies() {
                 </div>
               );
             }
-            
+
             return (
               <Table>
                 <TableHeader>
@@ -1269,7 +1277,7 @@ export default function Policies() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        {claim.max_amount 
+                        {claim.max_amount
                           ? `${claim.currency} ${claim.max_amount.toLocaleString()}`
                           : 'No limit'}
                       </TableCell>
@@ -1306,8 +1314,10 @@ export default function Policies() {
                             variant="ghost"
                             size="sm"
                             onClick={async () => {
-                              const fullClaim = await fetchCustomClaim(claim.id);
-                              openEditCustomClaim(fullClaim);
+                              if (user?.tenantId) {
+                                const fullClaim = await fetchCustomClaim(claim.id, user.tenantId);
+                                openEditCustomClaim(fullClaim);
+                              }
                             }}
                           >
                             <Edit className="h-4 w-4" />
@@ -1549,9 +1559,9 @@ export default function Policies() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsRejectOpen(false)}>Cancel</Button>
-            <Button 
-              variant="destructive" 
-              onClick={handleReject} 
+            <Button
+              variant="destructive"
+              onClick={handleReject}
               disabled={rejectMutation.isPending || !rejectNotes.trim()}
             >
               {rejectMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
@@ -1604,7 +1614,7 @@ export default function Policies() {
             </div>
             <div className="space-y-2">
               <Label>New Policy Document *</Label>
-              <div 
+              <div
                 className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:border-primary/50 transition-colors"
                 onClick={() => newVersionFileInputRef.current?.click()}
               >
@@ -1681,7 +1691,7 @@ export default function Policies() {
                   <Label htmlFor="cc_category_type">Category Type *</Label>
                   <Select
                     value={customClaimForm.category_type}
-                    onValueChange={(value: 'REIMBURSEMENT' | 'ALLOWANCE') => 
+                    onValueChange={(value: 'REIMBURSEMENT' | 'ALLOWANCE') =>
                       setCustomClaimForm({ ...customClaimForm, category_type: value })}
                   >
                     <SelectTrigger>
@@ -1868,7 +1878,7 @@ export default function Policies() {
                   Add Field
                 </Button>
               </div>
-              
+
               {customClaimForm.custom_fields.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-4">
                   No custom fields defined. Click "Add Field" to create custom fields for this claim.
@@ -1913,7 +1923,7 @@ export default function Policies() {
                             <Label className="text-xs">Type</Label>
                             <Select
                               value={field.type}
-                              onValueChange={(value: CustomFieldDefinition['type']) => 
+                              onValueChange={(value: CustomFieldDefinition['type']) =>
                                 updateCustomField(index, { type: value })}
                             >
                               <SelectTrigger className="text-sm">
@@ -1954,7 +1964,7 @@ export default function Policies() {
                             <Label className="text-xs">Options (comma-separated)</Label>
                             <Input
                               value={field.options.join(', ')}
-                              onChange={(e) => updateCustomField(index, { 
+                              onChange={(e) => updateCustomField(index, {
                                 options: e.target.value.split(',').map(s => s.trim()).filter(Boolean)
                               })}
                               placeholder="Option 1, Option 2, Option 3"
@@ -1969,7 +1979,7 @@ export default function Policies() {
                               <Input
                                 type="number"
                                 value={field.validation?.min || ''}
-                                onChange={(e) => updateCustomField(index, { 
+                                onChange={(e) => updateCustomField(index, {
                                   validation: { ...field.validation, min: e.target.value ? parseFloat(e.target.value) : undefined }
                                 })}
                                 placeholder="Min"
@@ -1981,7 +1991,7 @@ export default function Policies() {
                               <Input
                                 type="number"
                                 value={field.validation?.max || ''}
-                                onChange={(e) => updateCustomField(index, { 
+                                onChange={(e) => updateCustomField(index, {
                                   validation: { ...field.validation, max: e.target.value ? parseFloat(e.target.value) : undefined }
                                 })}
                                 placeholder="Max"
@@ -1997,7 +2007,7 @@ export default function Policies() {
                               <Input
                                 type="number"
                                 value={field.validation?.min_length || ''}
-                                onChange={(e) => updateCustomField(index, { 
+                                onChange={(e) => updateCustomField(index, {
                                   validation: { ...field.validation, min_length: e.target.value ? parseInt(e.target.value) : undefined }
                                 })}
                                 placeholder="Min chars"
@@ -2009,7 +2019,7 @@ export default function Policies() {
                               <Input
                                 type="number"
                                 value={field.validation?.max_length || ''}
-                                onChange={(e) => updateCustomField(index, { 
+                                onChange={(e) => updateCustomField(index, {
                                   validation: { ...field.validation, max_length: e.target.value ? parseInt(e.target.value) : undefined }
                                 })}
                                 placeholder="Max chars"
@@ -2206,7 +2216,7 @@ export default function Policies() {
                   <Label htmlFor="edit_cc_category_type">Category Type *</Label>
                   <Select
                     value={customClaimForm.category_type}
-                    onValueChange={(value: 'REIMBURSEMENT' | 'ALLOWANCE') => 
+                    onValueChange={(value: 'REIMBURSEMENT' | 'ALLOWANCE') =>
                       setCustomClaimForm({ ...customClaimForm, category_type: value })}
                   >
                     <SelectTrigger>
@@ -2378,7 +2388,7 @@ export default function Policies() {
                   Add Field
                 </Button>
               </div>
-              
+
               {customClaimForm.custom_fields.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-4">
                   No custom fields defined.
@@ -2423,7 +2433,7 @@ export default function Policies() {
                             <Label className="text-xs">Type</Label>
                             <Select
                               value={field.type}
-                              onValueChange={(value: CustomFieldDefinition['type']) => 
+                              onValueChange={(value: CustomFieldDefinition['type']) =>
                                 updateCustomField(index, { type: value })}
                             >
                               <SelectTrigger className="text-sm">
@@ -2464,7 +2474,7 @@ export default function Policies() {
                             <Label className="text-xs">Options (comma-separated)</Label>
                             <Input
                               value={field.options.join(', ')}
-                              onChange={(e) => updateCustomField(index, { 
+                              onChange={(e) => updateCustomField(index, {
                                 options: e.target.value.split(',').map(s => s.trim()).filter(Boolean)
                               })}
                               placeholder="Option 1, Option 2, Option 3"

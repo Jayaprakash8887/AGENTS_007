@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '@/contexts/AuthContext';
 
 const API_BASE_URL = 'http://localhost:8000/api/v1';
 
@@ -208,7 +209,7 @@ async function fetchTenantBranding(tenantId: string): Promise<BrandingResponse> 
 async function uploadBrandingFile(tenantId: string, fileType: string, file: File): Promise<any> {
     const formData = new FormData();
     formData.append('file', file);
-    
+
     const response = await fetch(`${API_BASE_URL}/branding/${tenantId}/upload/${fileType}`, {
         method: 'POST',
         body: formData,
@@ -287,9 +288,12 @@ export function useUpdateTenant() {
 }
 
 export function useDesignations(tenantId?: string, includeInactive = false) {
+    const { user } = useAuth();
+    const effectiveTenantId = tenantId || user?.tenantId;
     return useQuery({
-        queryKey: ['designations', tenantId, includeInactive],
-        queryFn: () => fetchDesignations(tenantId, includeInactive),
+        queryKey: ['designations', effectiveTenantId, includeInactive],
+        queryFn: () => fetchDesignations(effectiveTenantId, includeInactive),
+        enabled: !!effectiveTenantId,
     });
 }
 
@@ -333,11 +337,13 @@ export function useSetDesignationRoles() {
     });
 }
 
-export function useTenantAdmins(tenantId: string) {
+export function useTenantAdmins(tenantId?: string) {
+    const { user } = useAuth();
+    const effectiveTenantId = tenantId || user?.tenantId;
     return useQuery({
-        queryKey: ['tenant-admins', tenantId],
-        queryFn: () => getTenantAdmins(tenantId),
-        enabled: !!tenantId,
+        queryKey: ['tenant-admins', effectiveTenantId],
+        queryFn: () => getTenantAdmins(effectiveTenantId!),
+        enabled: !!effectiveTenantId,
     });
 }
 
@@ -373,11 +379,13 @@ export function useBrandingSpecs() {
     });
 }
 
-export function useTenantBranding(tenantId: string) {
+export function useTenantBranding(tenantId?: string) {
+    const { user } = useAuth();
+    const effectiveTenantId = tenantId || user?.tenantId;
     return useQuery({
-        queryKey: ['tenant-branding', tenantId],
-        queryFn: () => fetchTenantBranding(tenantId),
-        enabled: !!tenantId,
+        queryKey: ['tenant-branding', effectiveTenantId],
+        queryFn: () => fetchTenantBranding(effectiveTenantId!),
+        enabled: !!effectiveTenantId,
     });
 }
 

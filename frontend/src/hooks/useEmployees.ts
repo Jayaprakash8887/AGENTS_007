@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Employee } from '@/types';
+import { useAuth } from '@/contexts/AuthContext';
 
 const API_BASE_URL = 'http://localhost:8000/api/v1';
 
@@ -77,8 +78,8 @@ async function fetchEmployees(tenantId?: string): Promise<Employee[]> {
   return data.map(mapBackendEmployee);
 }
 
-async function fetchEmployeeById(id: string): Promise<Employee | undefined> {
-  const response = await fetch(`${API_BASE_URL}/employees/${id}`);
+async function fetchEmployeeById(id: string, tenantId: string): Promise<Employee | undefined> {
+  const response = await fetch(`${API_BASE_URL}/employees/${id}?tenant_id=${tenantId}`);
   if (!response.ok) {
     if (response.status === 404) return undefined;
     throw new Error('Failed to fetch employee');
@@ -121,7 +122,7 @@ async function createEmployee(employee: Partial<Employee> & { tenantId?: string 
   return mapBackendEmployee(data);
 }
 
-async function updateEmployee(id: string, employee: Partial<Employee>): Promise<Employee> {
+async function updateEmployee(id: string, employee: Partial<Employee>, tenantId: string): Promise<Employee> {
   // Note: roles are NOT sent - they are derived from designation-to-role mappings on backend
   const backendEmployee = {
     employee_id: employee.employeeId,
@@ -139,7 +140,7 @@ async function updateEmployee(id: string, employee: Partial<Employee>): Promise<
     project_ids: employee.projectIds ? [employee.projectIds] : [],
   };
 
-  const response = await fetch(`${API_BASE_URL}/employees/${id}`, {
+  const response = await fetch(`${API_BASE_URL}/employees/${id}?tenant_id=${tenantId}`, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
@@ -156,25 +157,28 @@ async function updateEmployee(id: string, employee: Partial<Employee>): Promise<
 }
 
 // Custom hooks
-export function useEmployees(tenantId?: string) {
+export function useEmployees() {
+  const { user } = useAuth();
   return useQuery({
-    queryKey: ['employees', tenantId],
-    queryFn: () => fetchEmployees(tenantId),
+    queryKey: ['employees', user?.tenantId],
+    queryFn: () => fetchEmployees(user?.tenantId),
+    enabled: !!user?.tenantId,
     staleTime: 5 * 60 * 1000,
   });
 }
 
 export function useEmployee(id: string) {
+  const { user } = useAuth();
   return useQuery({
-    queryKey: ['employees', id],
-    queryFn: () => fetchEmployeeById(id),
-    enabled: !!id,
+    queryKey: ['employees', id, user?.tenantId],
+    queryFn: () => user?.tenantId ? fetchEmployeeById(id, user.tenantId) : undefined,
+    enabled: !!id && !!user?.tenantId,
     staleTime: 5 * 60 * 1000,
   });
 }
 
-export function useEmployeesByDepartment(department: string | 'all', tenantId?: string) {
-  const { data: employees, ...rest } = useEmployees(tenantId);
+export function useEmployeesByDepartment(department: string | 'all') {
+  const { data: employees, ...rest } = useEmployees();
 
   const filteredEmployees = department === 'all'
     ? employees
@@ -185,9 +189,10 @@ export function useEmployeesByDepartment(department: string | 'all', tenantId?: 
 
 export function useCreateEmployee() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
 
   return useMutation({
-    mutationFn: createEmployee,
+    mutationFn: (employee: Partial<Employee>) => createEmployee({ ...employee, tenantId: user?.tenantId }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employees'] });
     },
@@ -196,9 +201,11 @@ export function useCreateEmployee() {
 
 export function useUpdateEmployee() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
 
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<Employee> }) => updateEmployee(id, data),
+    mutationFn: ({ id, data }: { id: string; data: Partial<Employee> }) =>
+      updateEmployee(id, data, user?.tenantId || ''),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employees'] });
     },
@@ -221,8 +228,8 @@ export interface EmployeeProjectHistory {
 }
 
 // Fetch employee project history
-async function fetchEmployeeProjectHistory(employeeId: string, includeInactive: boolean = true): Promise<EmployeeProjectHistory[]> {
-  const response = await fetch(`${API_BASE_URL}/employees/${employeeId}/project-history?include_inactive=${includeInactive}`);
+async function fetchEmployeeProjectHistory(employeeId: string, tenantId: string, includeInactive: boolean = true): Promise<EmployeeProjectHistory[]> {
+  const response = await fetch(`${API_BASE_URL}/employees/${employeeId}/project-history?include_inactive=${includeInactive}&tenant_id=${tenantId}`);
   if (!response.ok) {
     if (response.status === 404) return [];
     throw new Error('Failed to fetch employee project history');
@@ -232,10 +239,11 @@ async function fetchEmployeeProjectHistory(employeeId: string, includeInactive: 
 
 // Hook to get employee project history (all projects - current and past)
 export function useEmployeeProjectHistory(employeeId: string | undefined, includeInactive: boolean = true) {
+  const { user } = useAuth();
   return useQuery({
-    queryKey: ['employeeProjectHistory', employeeId, includeInactive],
-    queryFn: () => fetchEmployeeProjectHistory(employeeId!, includeInactive),
-    enabled: !!employeeId,
+    queryKey: ['employeeProjectHistory', employeeId, includeInactive, user?.tenantId],
+    queryFn: () => (employeeId && user?.tenantId) ? fetchEmployeeProjectHistory(employeeId, user.tenantId, includeInactive) : [],
+    enabled: !!employeeId && !!user?.tenantId,
     staleTime: 5 * 60 * 1000,
   });
 }
@@ -255,8 +263,8 @@ interface AllocateEmployeeData {
   notes?: string;
 }
 
-async function allocateEmployeeToProject(data: AllocateEmployeeData): Promise<EmployeeProjectHistory> {
-  const response = await fetch(`${API_BASE_URL}/employees/${data.employeeId}/allocate-project`, {
+async function allocateEmployeeToProject(data: AllocateEmployeeData, tenantId: string): Promise<EmployeeProjectHistory> {
+  const response = await fetch(`${API_BASE_URL}/employees/${data.employeeId}/allocate-project?tenant_id=${tenantId}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -280,9 +288,10 @@ async function allocateEmployeeToProject(data: AllocateEmployeeData): Promise<Em
 
 export function useAllocateEmployeeToProject() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
 
   return useMutation({
-    mutationFn: allocateEmployeeToProject,
+    mutationFn: (data: AllocateEmployeeData) => allocateEmployeeToProject(data, user?.tenantId || ''),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employees'] });
       queryClient.invalidateQueries({ queryKey: ['employeeProjectHistory'] });

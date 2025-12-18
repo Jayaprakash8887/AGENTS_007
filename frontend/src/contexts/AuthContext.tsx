@@ -199,7 +199,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   // Fetch employee details from API
-  const fetchEmployeeById = useCallback(async (employeeId: string): Promise<User | null> => {
+  const fetchEmployeeById = useCallback(async (employeeId: string, tenantId?: string): Promise<User | null> => {
     try {
       const token = localStorage.getItem(TOKEN_KEY);
       const headers: Record<string, string> = {};
@@ -207,7 +207,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         headers['Authorization'] = `Bearer ${token}`;
       }
 
-      const response = await fetch(`${API_BASE_URL}/employees/${employeeId}`, { headers });
+      const url = new URL(`${API_BASE_URL}/employees/${employeeId}`);
+      if (tenantId) {
+        url.searchParams.append('tenant_id', tenantId);
+      }
+
+      const response = await fetch(url.toString(), { headers });
       if (!response.ok) {
         console.error('Failed to fetch employee:', response.status);
         return null;
@@ -242,7 +247,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Refresh current user data from API
   const refreshUser = useCallback(async () => {
     if (user?.id) {
-      const updatedUser = await fetchEmployeeById(user.id);
+      const updatedUser = await fetchEmployeeById(user.id, user.tenantId);
       if (updatedUser) {
         setUser(updatedUser);
         localStorage.setItem(USER_KEY, JSON.stringify(updatedUser));

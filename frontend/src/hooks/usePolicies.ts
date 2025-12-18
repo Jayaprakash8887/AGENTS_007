@@ -26,13 +26,14 @@ export interface ExtractedClaimCategory {
   created_at: string;
   updated_at: string;
   is_custom_claim?: boolean;  // True if this is a custom claim (not from policy)
+  submission_window_days?: number;
 }
 
 // Fetch extracted claims from policies
 async function fetchExtractedClaims(tenantId?: string): Promise<ExtractedClaimCategory[]> {
   const params = new URLSearchParams();
   if (tenantId) params.append('tenant_id', tenantId);
-  
+
   const url = `${API_BASE_URL}/policies/extracted-claims${params.toString() ? '?' + params.toString() : ''}`;
   const response = await fetch(url);
   if (!response.ok) {
@@ -45,9 +46,9 @@ async function fetchExtractedClaims(tenantId?: string): Promise<ExtractedClaimCa
 export function useExtractedClaims() {
   const { user } = useAuth();
   return useQuery({
-    queryKey: ['extracted-claims', user?.tenant_id],
-    queryFn: () => fetchExtractedClaims(user?.tenant_id),
-    enabled: !!user?.tenant_id,
+    queryKey: ['extracted-claims', user?.tenantId],
+    queryFn: () => fetchExtractedClaims(user?.tenantId),
+    enabled: !!user?.tenantId,
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 }
@@ -56,9 +57,9 @@ export function useExtractedClaims() {
 export function useAllowancesByRegion(region: string | undefined) {
   const { user } = useAuth();
   return useQuery({
-    queryKey: ['extracted-claims', 'allowances', region, user?.tenant_id],
-    queryFn: () => fetchExtractedClaims(user?.tenant_id),
-    enabled: !!user?.tenant_id,
+    queryKey: ['extracted-claims', 'allowances', region, user?.tenantId],
+    queryFn: () => fetchExtractedClaims(user?.tenantId),
+    enabled: !!user?.tenantId,
     select: (data) => {
       // Filter by category type ALLOWANCE and matching region
       return data.filter(
@@ -76,9 +77,9 @@ export function useAllowancesByRegion(region: string | undefined) {
 export function useReimbursementsByRegion(region: string | undefined) {
   const { user } = useAuth();
   return useQuery({
-    queryKey: ['extracted-claims', 'reimbursements', region, user?.tenant_id],
-    queryFn: () => fetchExtractedClaims(user?.tenant_id),
-    enabled: !!user?.tenant_id,
+    queryKey: ['extracted-claims', 'reimbursements', region, user?.tenantId],
+    queryFn: () => fetchExtractedClaims(user?.tenantId),
+    enabled: !!user?.tenantId,
     select: (data) => {
       // Filter by category type REIMBURSEMENT and matching region
       return data.filter(

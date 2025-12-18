@@ -748,6 +748,7 @@ class PolicyRejectRequest(BaseModel):
 
 # Claim Validation Schemas
 class ClaimValidationRequest(BaseModel):
+    tenant_id: UUID
     category_code: str
     category_type: CategoryType
     amount: float

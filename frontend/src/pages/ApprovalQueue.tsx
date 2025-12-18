@@ -64,13 +64,13 @@ export default function ApprovalQueue() {
     action: 'approve' | 'reject' | 'return' | null;
   }>({ open: false, action: null });
   const [actionComment, setActionComment] = useState('');
-  
+
   const tenantId = user?.tenantId;
-  const { data: allClaims = [], isLoading, error, refetch } = useClaims(tenantId);
+  const { data: allClaims = [], isLoading, error, refetch } = useClaims();
 
   const pendingClaims = useMemo(() => {
     const pendingStatus = getPendingStatusForRole(user?.role || 'employee');
-    
+
     // Filter claims based on role
     let claims = allClaims.filter(claim => {
       if (pendingStatus) {
@@ -79,7 +79,7 @@ export default function ApprovalQueue() {
       // Admin sees all pending claims
       return ['pending_manager', 'pending_hr', 'pending_finance'].includes(claim.status);
     });
-    
+
     return claims.sort((a, b) => {
       switch (sortBy) {
         case 'amount':
@@ -102,61 +102,61 @@ export default function ApprovalQueue() {
 
   const confirmAction = async () => {
     if (!currentClaim) return;
-    
+
     const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
     const action = actionDialog.action;
-    
+
     try {
       let endpoint = '';
       let body: Record<string, string> = {};
-      
+
       if (action === 'approve') {
-        endpoint = `${API_BASE_URL}/claims/${currentClaim.id}/approve`;
+        endpoint = `${API_BASE_URL}/claims/${currentClaim.id}/approve?tenant_id=${tenantId || ''}`;
         if (actionComment) body = { comment: actionComment };
       } else if (action === 'reject') {
-        endpoint = `${API_BASE_URL}/claims/${currentClaim.id}/reject`;
+        endpoint = `${API_BASE_URL}/claims/${currentClaim.id}/reject?tenant_id=${tenantId || ''}`;
         if (actionComment) body = { comment: actionComment };
       } else if (action === 'return') {
-        endpoint = `${API_BASE_URL}/claims/${currentClaim.id}/return`;
+        endpoint = `${API_BASE_URL}/claims/${currentClaim.id}/return?tenant_id=${tenantId || ''}`;
         body = { return_reason: actionComment || 'Please review and correct the claim' };
       }
-      
+
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      
+
       if (!response.ok) {
         const error = await response.json();
         throw new Error(error.detail || 'Action failed');
       }
-      
+
       const messages = {
         approve: 'Claim approved successfully',
         reject: 'Claim rejected',
         return: 'Claim returned to employee',
       };
       toast({ title: messages[action!] });
-      
+
       // Refresh claims list
       await refetch();
-      
+
       // Move to next claim or reset index
       if (pendingClaims.length <= 1) {
         setSelectedClaimIndex(0);
       } else if (selectedClaimIndex >= pendingClaims.length - 1) {
         setSelectedClaimIndex(Math.max(0, pendingClaims.length - 2));
       }
-      
+
     } catch (error) {
-      toast({ 
-        title: 'Action failed', 
+      toast({
+        title: 'Action failed',
         description: error instanceof Error ? error.message : 'Unknown error',
-        variant: 'destructive' 
+        variant: 'destructive'
       });
     }
-    
+
     setActionDialog({ open: false, action: null });
     setActionComment('');
   };
@@ -356,8 +356,8 @@ export default function ApprovalQueue() {
                           (currentClaim.complianceScore || 0) >= 80
                             ? 'bg-success/10 text-success border-success/20'
                             : (currentClaim.complianceScore || 0) >= 60
-                            ? 'bg-warning/10 text-warning border-warning/20'
-                            : 'bg-destructive/10 text-destructive border-destructive/20'
+                              ? 'bg-warning/10 text-warning border-warning/20'
+                              : 'bg-destructive/10 text-destructive border-destructive/20'
                         )}
                       >
                         {(currentClaim.complianceScore || 0).toFixed(0)}% Compliant
@@ -394,13 +394,13 @@ export default function ApprovalQueue() {
                         Policy Checks ({currentClaim.policyChecks.filter(c => c.status === 'pass').length}/{currentClaim.policyChecks.length} passed)
                       </span>
                       {currentClaim.policyChecks.map((check) => (
-                        <div 
+                        <div
                           key={check.id}
                           className={cn(
                             "flex items-center gap-1 text-xs rounded px-1.5 py-0.5",
                             check.status === 'pass' ? "bg-success/10 text-success" :
-                            check.status === 'warning' ? "bg-warning/10 text-warning" :
-                            "bg-destructive/10 text-destructive"
+                              check.status === 'warning' ? "bg-warning/10 text-warning" :
+                                "bg-destructive/10 text-destructive"
                           )}
                         >
                           {check.status === 'pass' ? (
