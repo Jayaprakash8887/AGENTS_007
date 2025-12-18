@@ -100,7 +100,8 @@ class CategoryCacheService:
     def get_categories_for_region(
         self,
         region: str,
-        category_type: Optional[str] = None
+        category_type: Optional[str] = None,
+        tenant_id: Optional[UUID] = None
     ) -> List[CachedCategory]:
         """
         Get cached categories for a region.
@@ -108,18 +109,20 @@ class CategoryCacheService:
         Args:
             region: Employee's region (e.g., 'INDIA', 'US')
             category_type: Optional filter - 'REIMBURSEMENT' or 'ALLOWANCE'
+            tenant_id: Tenant UUID (required for multi-tenant support)
             
         Returns:
             List of cached categories
         """
         region_upper = region.upper() if region else "GLOBAL"
+        cache_key = f"{tenant_id or 'default'}_{region_upper}"
         
         # Check cache
-        cache_entry = self._get_cache_entry(region_upper)
+        cache_entry = self._get_cache_entry(cache_key)
         
         if not cache_entry:
             # Load from database
-            cache_entry = self._load_categories_from_db(region_upper)
+            cache_entry = self._load_categories_from_db(region_upper, tenant_id)
         
         if not cache_entry:
             return []
@@ -134,12 +137,13 @@ class CategoryCacheService:
     
     def get_reimbursement_categories_for_region(
         self,
-        region: str
+        region: str,
+        tenant_id: Optional[UUID] = None
     ) -> List[CachedCategory]:
         """Get only reimbursement categories for a region"""
-        return self.get_categories_for_region(region, "REIMBURSEMENT")
+        return self.get_categories_for_region(region, "REIMBURSEMENT", tenant_id)
     
-    def get_llm_prompt_categories(self, region: str) -> str:
+    def get_llm_prompt_categories(self, region: str, tenant_id: Optional[UUID] = None) -> str:
         """
         Get pre-formatted category list for LLM prompt.
         
@@ -148,15 +152,17 @@ class CategoryCacheService:
         
         Args:
             region: Employee's region
+            tenant_id: Tenant UUID (required for multi-tenant support)
             
         Returns:
             Formatted string for LLM prompt
         """
         region_upper = region.upper() if region else "GLOBAL"
+        cache_key = f"{tenant_id or 'default'}_{region_upper}"
         
-        cache_entry = self._get_cache_entry(region_upper)
+        cache_entry = self._get_cache_entry(cache_key)
         if not cache_entry:
-            cache_entry = self._load_categories_from_db(region_upper)
+            cache_entry = self._load_categories_from_db(region_upper, tenant_id)
         
         if cache_entry:
             return cache_entry.llm_prompt_text
@@ -320,13 +326,17 @@ class CategoryCacheService:
                 del self._cache[region]
         return None
     
-    def _load_categories_from_db(self, region: str) -> Optional[RegionCache]:
+    def _load_categories_from_db(self, region: str, tenant_id: Optional[UUID] = None) -> Optional[RegionCache]:
         """Load categories from database and cache them (includes PolicyCategory + CustomClaim)"""
         try:
             from database import get_sync_db
             from models import PolicyCategory, PolicyUpload, CustomClaim
             from sqlalchemy.orm import Session
             from sqlalchemy import and_, or_
+            
+            if not tenant_id:
+                logger.warning("No tenant_id provided for category loading - multi-tenant support requires tenant_id")
+                return None
             
             db: Session = next(get_sync_db())
             
@@ -335,7 +345,7 @@ class CategoryCacheService:
                 PolicyUpload, PolicyCategory.policy_upload_id == PolicyUpload.id
             ).filter(
                 and_(
-                    PolicyCategory.tenant_id == UUID(settings.DEFAULT_TENANT_ID),
+                    PolicyCategory.tenant_id == tenant_id,
                     PolicyCategory.is_active == True,
                     PolicyUpload.status == "ACTIVE",
                     or_(
@@ -377,7 +387,7 @@ class CategoryCacheService:
             # Custom claims are standalone categories not linked to policy documents
             custom_claims_query = db.query(CustomClaim).filter(
                 and_(
-                    CustomClaim.tenant_id == UUID(settings.DEFAULT_TENANT_ID),
+                    CustomClaim.tenant_id == tenant_id,
                     CustomClaim.is_active == True,
                     or_(
                         CustomClaim.region == region,
@@ -439,8 +449,9 @@ class CategoryCacheService:
             )
             
             # Store in cache
+            cache_key = f"{tenant_id}_{region}"
             with self._cache_lock:
-                self._cache[region] = cache_entry
+                self._cache[cache_key] = cache_entry
             
             logger.info(
                 f"Cached {len(reimbursement_categories)} reimbursement, "

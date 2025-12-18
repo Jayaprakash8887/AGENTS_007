@@ -135,6 +135,28 @@ async def require_auth(
     return user
 
 
+def require_tenant_id(tenant_id: Optional[str]) -> str:
+    """
+    Validate that tenant_id is provided.
+    Raises HTTP 400 if tenant_id is missing.
+    
+    Args:
+        tenant_id: The tenant ID string (can be None)
+    
+    Returns:
+        The validated tenant_id string
+        
+    Raises:
+        HTTPException: If tenant_id is None or empty
+    """
+    if not tenant_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="tenant_id is required. Please ensure you are logged in."
+        )
+    return tenant_id
+
+
 # ============ API Endpoints ============
 
 @router.post("/login", response_model=LoginResponse)

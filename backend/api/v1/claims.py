@@ -23,7 +23,6 @@ from schemas import (
     ReturnToEmployee, SettleClaim, HRCorrection,
     BatchClaimCreate, BatchClaimResponse, ApproveRejectClaim
 )
-from config import settings
 from agents.orchestrator import process_claim_task
 from services.storage import upload_to_gcs
 from services.duplicate_detection import check_duplicate_claim, check_batch_duplicates
@@ -107,7 +106,7 @@ async def create_batch_claims(
         db=db,
         employee_id=batch.employee_id,
         claims_data=claims_data,
-        tenant_id=UUID(settings.DEFAULT_TENANT_ID)
+        tenant_id=employee.tenant_id
     )
     
     # Block submission if exact duplicates found
@@ -202,7 +201,7 @@ async def create_batch_claims(
         
         # Create claim
         new_claim = Claim(
-            tenant_id=UUID(settings.DEFAULT_TENANT_ID),
+            tenant_id=employee.tenant_id,
             claim_number=claim_number,
             employee_id=employee.id,
             employee_name=f"{employee.first_name} {employee.last_name}",
@@ -288,7 +287,7 @@ async def create_batch_claims_with_document(
         db=db,
         employee_id=batch.employee_id,
         claims_data=claims_data,
-        tenant_id=UUID(settings.DEFAULT_TENANT_ID)
+        tenant_id=employee.tenant_id
     )
     
     # Block submission if exact duplicates found
@@ -421,7 +420,7 @@ async def create_batch_claims_with_document(
         
         # Create claim
         new_claim = Claim(
-            tenant_id=UUID(settings.DEFAULT_TENANT_ID),
+            tenant_id=employee.tenant_id,
             claim_number=claim_number,
             employee_id=employee.id,
             employee_name=f"{employee.first_name} {employee.last_name}",
@@ -506,7 +505,7 @@ async def create_claim(
     
     # Create claim
     new_claim = Claim(
-        tenant_id=UUID(settings.DEFAULT_TENANT_ID),
+        tenant_id=employee.tenant_id,
         claim_number=claim_number,
         employee_id=employee.id,
         employee_name=f"{employee.first_name} {employee.last_name}",
@@ -1106,6 +1105,16 @@ async def check_duplicate(
     """
     from datetime import datetime
     
+    # Get employee to retrieve tenant_id
+    result = await db.execute(select(Employee).where(Employee.id == employee_id))
+    employee = result.scalar_one_or_none()
+    
+    if not employee:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Employee not found: {employee_id}"
+        )
+    
     try:
         # Parse claim_date
         if 'T' in claim_date:
@@ -1119,7 +1128,7 @@ async def check_duplicate(
             amount=amount,
             claim_date=parsed_date,
             transaction_ref=transaction_ref,
-            tenant_id=UUID(settings.DEFAULT_TENANT_ID)
+            tenant_id=employee.tenant_id
         )
         
         return {

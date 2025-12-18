@@ -13,7 +13,7 @@ import logging
 
 from database import get_sync_db
 from models import SystemSettings
-from config import settings
+from api.v1.auth import require_tenant_id
 
 logger = logging.getLogger(__name__)
 
@@ -111,9 +111,12 @@ def parse_bool(value: str) -> bool:
 
 
 @router.get("/general", response_model=GeneralSettingsResponse)
-def get_general_settings(db: Session = Depends(get_sync_db)):
+def get_general_settings(
+    tenant_id: UUID,
+    db: Session = Depends(get_sync_db)
+):
     """Get all general settings"""
-    tenant_id = UUID(settings.DEFAULT_TENANT_ID)
+    require_tenant_id(str(tenant_id))
     
     result = GeneralSettingsResponse()
     
@@ -133,11 +136,12 @@ def get_general_settings(db: Session = Depends(get_sync_db)):
 
 @router.put("/general", response_model=GeneralSettingsResponse)
 def update_general_settings(
+    tenant_id: UUID,
     updates: GeneralSettingsUpdate,
     db: Session = Depends(get_sync_db)
 ):
     """Update general settings"""
-    tenant_id = UUID(settings.DEFAULT_TENANT_ID)
+    require_tenant_id(str(tenant_id))
     
     # Update each provided setting
     updates_dict = updates.model_dump(exclude_none=True)
@@ -163,13 +167,17 @@ def update_general_settings(
             logger.info(f"Updated setting {key} to {str_value}")
     
     # Return updated settings
-    return get_general_settings(db)
+    return get_general_settings(tenant_id=tenant_id, db=db)
 
 
 @router.get("/{key}")
-def get_setting(key: str, db: Session = Depends(get_sync_db)):
+def get_setting(
+    key: str,
+    tenant_id: UUID,
+    db: Session = Depends(get_sync_db)
+):
     """Get a specific setting by key"""
-    tenant_id = UUID(settings.DEFAULT_TENANT_ID)
+    require_tenant_id(str(tenant_id))
     
     value = get_setting_value(db, key, tenant_id)
     if value is None and key in DEFAULT_SETTINGS:
@@ -210,11 +218,12 @@ def get_setting(key: str, db: Session = Depends(get_sync_db)):
 @router.put("/{key}")
 def update_setting(
     key: str,
+    tenant_id: UUID,
     update: SettingUpdate,
     db: Session = Depends(get_sync_db)
 ):
     """Update a specific setting"""
-    tenant_id = UUID(settings.DEFAULT_TENANT_ID)
+    require_tenant_id(str(tenant_id))
     
     # Get default info if available
     default = DEFAULT_SETTINGS.get(key, {"type": "string", "description": None, "category": "general"})
@@ -247,11 +256,12 @@ def update_setting(
 
 @router.get("/")
 def get_all_settings(
+    tenant_id: UUID,
     category: Optional[str] = None,
     db: Session = Depends(get_sync_db)
 ):
     """Get all settings, optionally filtered by category"""
-    tenant_id = UUID(settings.DEFAULT_TENANT_ID)
+    require_tenant_id(str(tenant_id))
     
     query = db.query(SystemSettings).filter(SystemSettings.tenant_id == tenant_id)
     

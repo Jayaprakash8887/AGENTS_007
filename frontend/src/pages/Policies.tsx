@@ -194,8 +194,13 @@ interface CustomClaimListItem {
 }
 
 // API Functions
-async function fetchPolicies(): Promise<PolicyUploadListItem[]> {
-  const response = await fetch(`${API_BASE_URL}/policies/`);
+async function fetchPolicies(tenantId?: string, region?: string): Promise<PolicyUploadListItem[]> {
+  const params = new URLSearchParams();
+  if (tenantId) params.append('tenant_id', tenantId);
+  if (region) params.append('region', region);
+  
+  const url = `${API_BASE_URL}/policies/${params.toString() ? '?' + params.toString() : ''}`;
+  const response = await fetch(url);
   if (!response.ok) {
     throw new Error('Failed to fetch policies');
   }
@@ -505,8 +510,9 @@ export default function Policies() {
 
   // Queries
   const { data: policies, isLoading, error } = useQuery({
-    queryKey: ['policies'],
-    queryFn: fetchPolicies,
+    queryKey: ['policies', user?.tenant_id],
+    queryFn: () => fetchPolicies(user?.tenant_id),
+    enabled: !!user?.tenant_id,
   });
 
   const { data: customClaims, isLoading: isLoadingCustomClaims } = useQuery({

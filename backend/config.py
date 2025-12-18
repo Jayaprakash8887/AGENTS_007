@@ -241,7 +241,7 @@ class Settings(BaseSettings):
     
     # Tenant
     MULTI_TENANT_ENABLED: bool = False
-    DEFAULT_TENANT_ID: str = "00000000-0000-0000-0000-000000000001"
+    # Note: tenant_id must always come from authenticated user - no default allowed
     
     # File Upload
     MAX_UPLOAD_SIZE_MB: int = 10

@@ -388,7 +388,8 @@ class EmbeddingService:
         text: str,
         region: str,
         category_type: str = "REIMBURSEMENT",
-        top_k: int = 3
+        top_k: int = 3,
+        tenant_id: Optional[UUID] = None
     ) -> List[Tuple[str, float, bool]]:
         """
         Match text against category embeddings using semantic similarity.
@@ -398,12 +399,13 @@ class EmbeddingService:
             region: Employee's region
             category_type: REIMBURSEMENT or ALLOWANCE
             top_k: Number of top matches to return
+            tenant_id: Tenant UUID (required for multi-tenant support)
             
         Returns:
             List of (category_code, similarity_score, is_above_threshold)
         """
         # Get cached embeddings for region
-        cache = await self._get_region_embeddings(region, category_type)
+        cache = await self._get_region_embeddings(region, category_type, tenant_id)
         
         if not cache or not cache.embeddings:
             logger.warning(f"No embeddings found for region: {region}, type: {category_type}")
@@ -486,10 +488,11 @@ class EmbeddingService:
     async def _get_region_embeddings(
         self,
         region: str,
-        category_type: str
+        category_type: str,
+        tenant_id: Optional[UUID] = None
     ) -> Optional[RegionEmbeddingCache]:
         """Get embeddings for a region, loading from storage if needed"""
-        cache_key = f"{region}_{category_type}"
+        cache_key = f"{tenant_id or 'default'}_{region}_{category_type}"
         
         with self._cache_lock:
             cache = self._cache.get(cache_key)
@@ -501,7 +504,7 @@ class EmbeddingService:
         
         if not embeddings:
             # Try to generate from database
-            embeddings = await self._generate_region_embeddings(region, category_type)
+            embeddings = await self._generate_region_embeddings(region, category_type, tenant_id)
         
         if not embeddings:
             return None
@@ -535,13 +538,18 @@ class EmbeddingService:
     async def _generate_region_embeddings(
         self,
         region: str,
-        category_type: str
+        category_type: str,
+        tenant_id: Optional[UUID] = None
     ) -> List[CategoryEmbedding]:
         """Generate embeddings for all categories in a region from database (PolicyCategory + CustomClaim)"""
         try:
             from database import get_sync_db
             from models import PolicyCategory, PolicyUpload, CustomClaim
             from sqlalchemy import and_, or_
+            
+            if not tenant_id:
+                logger.warning("No tenant_id provided for embedding generation - multi-tenant support requires tenant_id")
+                return []
             
             db = next(get_sync_db())
             
@@ -552,7 +560,7 @@ class EmbeddingService:
                 PolicyUpload, PolicyCategory.policy_upload_id == PolicyUpload.id
             ).filter(
                 and_(
-                    PolicyCategory.tenant_id == UUID(settings.DEFAULT_TENANT_ID),
+                    PolicyCategory.tenant_id == tenant_id,
                     PolicyCategory.category_type == category_type,
                     PolicyCategory.is_active == True,
                     PolicyUpload.status == "ACTIVE",
@@ -584,7 +592,7 @@ class EmbeddingService:
             # ============ Query CustomClaim (standalone categories) ============
             custom_claims = db.query(CustomClaim).filter(
                 and_(
-                    CustomClaim.tenant_id == UUID(settings.DEFAULT_TENANT_ID),
+                    CustomClaim.tenant_id == tenant_id,
                     CustomClaim.category_type == category_type,
                     CustomClaim.is_active == True,
                     or_(
@@ -796,7 +804,8 @@ class EmbeddingService:
     async def refresh_region_embeddings(
         self,
         region: str,
-        category_type: Optional[str] = None
+        category_type: Optional[str] = None,
+        tenant_id: Optional[UUID] = None
     ) -> int:
         """
         Force refresh embeddings for a region.
@@ -814,7 +823,7 @@ class EmbeddingService:
                 file_path.unlink()
             
             # Regenerate
-            embeddings = await self._generate_region_embeddings(region, cat_type)
+            embeddings = await self._generate_region_embeddings(region, cat_type, tenant_id)
             count += len(embeddings)
         
         # Invalidate cache

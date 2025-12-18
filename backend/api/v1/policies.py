@@ -20,7 +20,7 @@ from schemas import (
     ValidationStatus, ActiveCategoryResponse, PolicyAuditLogResponse,
     ExtractedClaimListResponse
 )
-from config import settings
+from api.v1.auth import require_tenant_id
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +80,7 @@ def generate_policy_number(db: Session) -> str:
 
 def log_policy_action(
     db: Session,
+    tenant_id: UUID,
     entity_type: str,
     entity_id: UUID,
     action: str,
@@ -90,7 +91,7 @@ def log_policy_action(
 ):
     """Create audit log entry for policy actions"""
     audit_log = PolicyAuditLog(
-        tenant_id=UUID(settings.DEFAULT_TENANT_ID),
+        tenant_id=tenant_id,
         entity_type=entity_type,
         entity_id=entity_id,
         action=action,
@@ -112,12 +113,17 @@ async def upload_policy(
     description: str = Form(None),
     region: str = Form(None),  # Region/location this policy applies to
     uploaded_by: UUID = Form(...),
+    tenant_id: str = Form(...),  # Required tenant_id from authenticated user
     db: Session = Depends(get_sync_db)
 ):
     """
     Upload a policy document for AI extraction.
     Supported formats: PDF, DOCX, JPG, PNG
     """
+    # Validate tenant_id
+    require_tenant_id(tenant_id)
+    tenant_uuid = UUID(tenant_id)
+    
     # Validate file type
     allowed_types = ["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", 
                      "image/jpeg", "image/png"]
@@ -150,7 +156,7 @@ async def upload_policy(
     
     # Create policy upload record
     policy_upload = PolicyUpload(
-        tenant_id=UUID(settings.DEFAULT_TENANT_ID),
+        tenant_id=tenant_uuid,
         policy_name=policy_name,
         policy_number=policy_number,
         description=description,
@@ -171,7 +177,7 @@ async def upload_policy(
     
     # Log the action
     log_policy_action(
-        db, "POLICY_UPLOAD", policy_upload.id, "CREATE",
+        db, tenant_uuid, "POLICY_UPLOAD", policy_upload.id, "CREATE",
         uploaded_by, None, {"policy_number": policy_number, "file_name": file.filename},
         f"Policy document uploaded: {policy_name}"
     )
@@ -245,21 +251,29 @@ async def extract_policy_categories(policy_id: UUID, db: Session):
 
 @router.get("/", response_model=List[PolicyUploadListResponse])
 def list_policies(
+    tenant_id: str,  # Required - must be provided
     status: Optional[str] = None,
     is_active: Optional[bool] = None,
+    region: Optional[str] = None,
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_sync_db)
 ):
     """List all policy uploads with optional filtering"""
+    # Validate tenant_id
+    require_tenant_id(tenant_id)
+    tenant_uuid = UUID(tenant_id)
+    
     query = db.query(PolicyUpload).filter(
-        PolicyUpload.tenant_id == UUID(settings.DEFAULT_TENANT_ID)
+        PolicyUpload.tenant_id == tenant_uuid
     )
     
     if status:
         query = query.filter(PolicyUpload.status == status)
     if is_active is not None:
         query = query.filter(PolicyUpload.is_active == is_active)
+    if region:
+        query = query.filter(PolicyUpload.region == region)
     
     policies = query.order_by(PolicyUpload.created_at.desc()).offset(skip).limit(limit).all()
     
@@ -289,6 +303,8 @@ def list_policies(
 
 @router.get("/extracted-claims", response_model=List[ExtractedClaimListResponse])
 def list_extracted_claims(
+    tenant_id: str,  # Required - must be provided
+    region: Optional[str] = None,
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_sync_db)
@@ -296,14 +312,23 @@ def list_extracted_claims(
     """List all extracted claims (categories) from all policies AND custom claims"""
     from models import CustomClaim
     
+    # Validate tenant_id
+    require_tenant_id(tenant_id)
+    tenant_uuid = UUID(tenant_id)
+    
     result = []
     
     # ============ 1. Get PolicyCategory items ============
-    categories = db.query(PolicyCategory, PolicyUpload).join(
+    query = db.query(PolicyCategory, PolicyUpload).join(
         PolicyUpload, PolicyCategory.policy_upload_id == PolicyUpload.id
     ).filter(
-        PolicyCategory.tenant_id == UUID(settings.DEFAULT_TENANT_ID)
-    ).order_by(PolicyUpload.created_at.desc(), PolicyCategory.display_order).all()
+        PolicyCategory.tenant_id == tenant_uuid
+    )
+    
+    if region:
+        query = query.filter(PolicyUpload.region == region)
+    
+    categories = query.order_by(PolicyUpload.created_at.desc(), PolicyCategory.display_order).all()
     
     for cat, policy in categories:
         result.append(ExtractedClaimListResponse(
@@ -340,9 +365,14 @@ def list_extracted_claims(
         ))
     
     # ============ 2. Get CustomClaim items (standalone) ============
-    custom_claims = db.query(CustomClaim).filter(
-        CustomClaim.tenant_id == UUID(settings.DEFAULT_TENANT_ID)
-    ).order_by(CustomClaim.created_at.desc(), CustomClaim.display_order).all()
+    custom_query = db.query(CustomClaim).filter(
+        CustomClaim.tenant_id == tenant_uuid
+    )
+    
+    if region:
+        custom_query = custom_query.filter(CustomClaim.region == region)
+    
+    custom_claims = custom_query.order_by(CustomClaim.created_at.desc(), CustomClaim.display_order).all()
     
     for cc in custom_claims:
         result.append(ExtractedClaimListResponse(
@@ -383,12 +413,20 @@ def list_extracted_claims(
 
 
 @router.get("/{policy_id}", response_model=PolicyUploadResponse)
-def get_policy(policy_id: UUID, db: Session = Depends(get_sync_db)):
+def get_policy(
+    policy_id: UUID,
+    tenant_id: str,  # Required - must be provided
+    db: Session = Depends(get_sync_db)
+):
     """Get policy details with extracted categories"""
+    # Validate tenant_id
+    require_tenant_id(tenant_id)
+    tenant_uuid = UUID(tenant_id)
+    
     policy = db.query(PolicyUpload).filter(
         and_(
             PolicyUpload.id == policy_id,
-            PolicyUpload.tenant_id == UUID(settings.DEFAULT_TENANT_ID)
+            PolicyUpload.tenant_id == tenant_uuid
         )
     ).first()
     
@@ -458,14 +496,19 @@ def get_policy(policy_id: UUID, db: Session = Depends(get_sync_db)):
 @router.post("/{policy_id}/reextract")
 async def reextract_policy(
     policy_id: UUID,
+    tenant_id: str,  # Required - must be provided
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_sync_db)
 ):
     """Re-trigger AI extraction for a policy document"""
+    # Validate tenant_id
+    require_tenant_id(tenant_id)
+    tenant_uuid = UUID(tenant_id)
+    
     policy = db.query(PolicyUpload).filter(
         and_(
             PolicyUpload.id == policy_id,
-            PolicyUpload.tenant_id == UUID(settings.DEFAULT_TENANT_ID)
+            PolicyUpload.tenant_id == tenant_uuid
         )
     ).first()
     
@@ -494,17 +537,22 @@ async def upload_new_version(
     description: str = Form(None),
     region: str = Form(None),
     uploaded_by: UUID = Form(...),
+    tenant_id: str = Form(...),  # Required - must be provided
     db: Session = Depends(get_sync_db)
 ):
     """
     Upload a new version of an existing policy document.
     The old policy will be archived when this new version is approved.
     """
+    # Validate tenant_id
+    require_tenant_id(tenant_id)
+    tenant_uuid = UUID(tenant_id)
+    
     # Get the existing policy
     existing_policy = db.query(PolicyUpload).filter(
         and_(
             PolicyUpload.id == policy_id,
-            PolicyUpload.tenant_id == UUID(settings.DEFAULT_TENANT_ID)
+            PolicyUpload.tenant_id == tenant_uuid
         )
     ).first()
     
@@ -544,7 +592,7 @@ async def upload_new_version(
     
     # Create new policy upload record with reference to old policy
     new_policy = PolicyUpload(
-        tenant_id=UUID(settings.DEFAULT_TENANT_ID),
+        tenant_id=tenant_uuid,
         policy_name=existing_policy.policy_name,  # Keep same name
         policy_number=policy_number,
         description=description or existing_policy.description,
@@ -567,7 +615,7 @@ async def upload_new_version(
     
     # Log the action
     log_policy_action(
-        db, "POLICY_VERSION_UPLOAD", new_policy.id, "CREATE",
+        db, tenant_uuid, "POLICY_VERSION_UPLOAD", new_policy.id, "CREATE",
         uploaded_by, None, 
         {"policy_number": policy_number, "file_name": file.filename, "version": new_version, "replaces": str(existing_policy.id)},
         f"New version (v{new_version}) uploaded for policy: {existing_policy.policy_name}"
@@ -652,10 +700,15 @@ async def update_category(
     category_id: UUID,
     updates: PolicyCategoryUpdate,
     background_tasks: BackgroundTasks,
+    tenant_id: str,  # Required - must be provided
     updated_by: UUID = None,
     db: Session = Depends(get_sync_db)
 ):
     """Update a policy category (admin can edit AI-extracted values)"""
+    # Validate tenant_id
+    require_tenant_id(tenant_id)
+    tenant_uuid = UUID(tenant_id)
+    
     category = db.query(PolicyCategory).filter(PolicyCategory.id == category_id).first()
     
     if not category:
@@ -679,7 +732,7 @@ async def update_category(
     # Log the update
     if updated_by:
         log_policy_action(
-            db, "POLICY_CATEGORY", category_id, "UPDATE",
+            db, tenant_uuid, "POLICY_CATEGORY", category_id, "UPDATE",
             updated_by, old_values, update_data,
             f"Category updated: {category.category_name}"
         )
@@ -725,13 +778,18 @@ async def approve_policy(
     policy_id: UUID,
     approval: PolicyApprovalRequest,
     background_tasks: BackgroundTasks,
+    tenant_id: str,  # Required - must be provided
     db: Session = Depends(get_sync_db)
 ):
     """Approve a policy and make its categories active for claim submission"""
+    # Validate tenant_id
+    require_tenant_id(tenant_id)
+    tenant_uuid = UUID(tenant_id)
+    
     policy = db.query(PolicyUpload).filter(
         and_(
             PolicyUpload.id == policy_id,
-            PolicyUpload.tenant_id == UUID(settings.DEFAULT_TENANT_ID)
+            PolicyUpload.tenant_id == tenant_uuid
         )
     ).first()
     
@@ -741,7 +799,7 @@ async def approve_policy(
         # Find HR Manager user as default approver
         hr_manager = db.query(User).filter(
             and_(
-                User.tenant_id == UUID(settings.DEFAULT_TENANT_ID),
+                User.tenant_id == tenant_uuid,
                 User.roles.any("HR")
             )
         ).first()
@@ -751,7 +809,7 @@ async def approve_policy(
             # Fallback to any admin user
             admin_user = db.query(User).filter(
                 and_(
-                    User.tenant_id == UUID(settings.DEFAULT_TENANT_ID),
+                    User.tenant_id == tenant_uuid,
                     User.roles.any("ADMIN")
                 )
             ).first()
@@ -798,7 +856,7 @@ async def approve_policy(
     
     # Log approval
     log_policy_action(
-        db, "POLICY_UPLOAD", policy_id, "APPROVE",
+        db, tenant_uuid, "POLICY_UPLOAD", policy_id, "APPROVE",
         approved_by, {"status": "EXTRACTED"}, {"status": "ACTIVE"},
         f"Policy approved and activated: {policy.policy_name}"
     )
@@ -807,20 +865,25 @@ async def approve_policy(
     # Invalidate cache in background
     background_tasks.add_task(_invalidate_policy_cache, policy_id, policy.region)
     
-    return get_policy(policy_id, db)
+    return get_policy(policy_id, tenant_id, db)
 
 
 @router.post("/{policy_id}/reject")
 def reject_policy(
     policy_id: UUID,
     rejection: PolicyRejectRequest,
+    tenant_id: str,  # Required - must be provided
     db: Session = Depends(get_sync_db)
 ):
     """Reject a policy"""
+    # Validate tenant_id
+    require_tenant_id(tenant_id)
+    tenant_uuid = UUID(tenant_id)
+    
     policy = db.query(PolicyUpload).filter(
         and_(
             PolicyUpload.id == policy_id,
-            PolicyUpload.tenant_id == UUID(settings.DEFAULT_TENANT_ID)
+            PolicyUpload.tenant_id == tenant_uuid
         )
     ).first()
     
@@ -830,7 +893,7 @@ def reject_policy(
     # Find rejector - use HR Manager as default
     hr_manager = db.query(User).filter(
         and_(
-            User.tenant_id == UUID(settings.DEFAULT_TENANT_ID),
+            User.tenant_id == tenant_uuid,
             User.roles.any("HR")
         )
     ).first()
@@ -844,7 +907,7 @@ def reject_policy(
     
     # Log rejection
     log_policy_action(
-        db, "POLICY_UPLOAD", policy_id, "REJECT",
+        db, tenant_uuid, "POLICY_UPLOAD", policy_id, "REJECT",
         rejected_by, {"status": old_status}, {"status": "REJECTED"},
         f"Policy rejected: {rejection.review_notes}"
     )
@@ -857,6 +920,7 @@ def reject_policy(
 
 @router.get("/categories/active", response_model=List[ActiveCategoryResponse])
 def get_active_categories(
+    tenant_id: str,  # Required - must be provided
     category_type: Optional[str] = None,
     db: Session = Depends(get_sync_db)
 ):
@@ -864,10 +928,14 @@ def get_active_categories(
     Get all active categories from the currently active policy.
     Used for claim submission dropdown.
     """
+    # Validate tenant_id
+    require_tenant_id(tenant_id)
+    tenant_uuid = UUID(tenant_id)
+    
     # Find active policy
     active_policy = db.query(PolicyUpload).filter(
         and_(
-            PolicyUpload.tenant_id == UUID(settings.DEFAULT_TENANT_ID),
+            PolicyUpload.tenant_id == tenant_uuid,
             PolicyUpload.is_active == True,
             PolicyUpload.status == "ACTIVE"
         )
@@ -923,6 +991,7 @@ def validate_claim(
 
 @router.get("/audit-logs", response_model=List[PolicyAuditLogResponse])
 def get_audit_logs(
+    tenant_id: str,  # Required - must be provided
     entity_type: Optional[str] = None,
     entity_id: Optional[UUID] = None,
     action: Optional[str] = None,
@@ -931,8 +1000,12 @@ def get_audit_logs(
     db: Session = Depends(get_sync_db)
 ):
     """Get policy audit logs"""
+    # Validate tenant_id
+    require_tenant_id(tenant_id)
+    tenant_uuid = UUID(tenant_id)
+    
     query = db.query(PolicyAuditLog).filter(
-        PolicyAuditLog.tenant_id == UUID(settings.DEFAULT_TENANT_ID)
+        PolicyAuditLog.tenant_id == tenant_uuid
     )
     
     if entity_type:
@@ -1086,6 +1159,7 @@ async def invalidate_embedding_cache(
 @router.post("/embeddings/match")
 async def test_embedding_match(
     text: str,
+    tenant_id: UUID,
     region: str = "INDIA",
     category_type: str = "REIMBURSEMENT",
     top_k: int = 3
@@ -1097,6 +1171,7 @@ async def test_embedding_match(
     
     Args:
         text: Text to match (e.g., vendor name + description)
+        tenant_id: Tenant UUID (required)
         region: Employee region
         category_type: REIMBURSEMENT or ALLOWANCE
         top_k: Number of top matches to return
@@ -1104,12 +1179,14 @@ async def test_embedding_match(
     Returns:
         Top matching categories with similarity scores
     """
+    require_tenant_id(tenant_id)
+    
     try:
         from services.embedding_service import get_embedding_service
         
         embedding_service = get_embedding_service()
         matches = await embedding_service.match_category(
-            text, region, category_type, top_k
+            text, region, category_type, top_k, tenant_id
         )
         
         return {

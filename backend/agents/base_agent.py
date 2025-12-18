@@ -87,18 +87,32 @@ class BaseAgent(ABC):
         status: str, 
         result_data: Dict[str, Any],
         execution_time_ms: int,
-        error_message: Optional[str] = None
+        error_message: Optional[str] = None,
+        tenant_id: Optional[str] = None
     ):
         """Log agent execution for learning and monitoring"""
         try:
             from database import get_sync_db
-            from models import AgentExecution
+            from models import AgentExecution, Claim
             from uuid import UUID
             
             db = next(get_sync_db())
             
+            # Get tenant_id from claim if not provided
+            resolved_tenant_id = None
+            if tenant_id:
+                resolved_tenant_id = UUID(tenant_id)
+            elif claim_id:
+                claim = db.query(Claim).filter(Claim.id == UUID(claim_id)).first()
+                if claim:
+                    resolved_tenant_id = claim.tenant_id
+            
+            if not resolved_tenant_id:
+                self.logger.warning("No tenant_id available for logging execution")
+                return
+            
             execution = AgentExecution(
-                tenant_id=UUID(settings.DEFAULT_TENANT_ID),
+                tenant_id=resolved_tenant_id,
                 claim_id=UUID(claim_id) if claim_id else None,
                 agent_name=self.agent_name,
                 agent_version=self.version,

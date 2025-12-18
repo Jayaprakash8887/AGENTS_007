@@ -155,8 +155,13 @@ async def create_employee(
     # Generate a default hashed password
     default_password = hashlib.sha256(f"temp_{employee_data.employee_id}".encode()).hexdigest()
     
-    # Use provided tenant_id, fall back to a default if not provided
-    employee_tenant_id = employee_data.tenant_id if employee_data.tenant_id else UUID('00000000-0000-0000-0000-000000000001')
+    # tenant_id is required - must be provided in the request
+    if not employee_data.tenant_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="tenant_id is required when creating an employee"
+        )
+    employee_tenant_id = employee_data.tenant_id
     
     user = User(
         id=uuid4(),

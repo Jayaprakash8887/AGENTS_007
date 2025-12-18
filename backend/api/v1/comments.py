@@ -11,7 +11,7 @@ from pydantic import BaseModel
 
 from database import get_async_db
 from models import Comment, Claim, User
-from config import settings
+from api.v1.auth import require_tenant_id
 
 router = APIRouter()
 
@@ -19,6 +19,7 @@ router = APIRouter()
 class CommentCreate(BaseModel):
     """Schema for creating a comment"""
     claim_id: UUID
+    tenant_id: UUID
     comment_text: str
     comment_type: str = "GENERAL"
     user_name: str
@@ -44,16 +45,14 @@ class CommentResponse(BaseModel):
 
 @router.get("/", response_model=List[CommentResponse])
 async def list_comments(
+    tenant_id: UUID,
     claim_id: Optional[UUID] = None,
-    tenant_id: Optional[UUID] = None,
     db: AsyncSession = Depends(get_async_db),
 ):
-    """List comments, optionally filtered by claim_id and tenant_id"""
-    query = select(Comment)
+    """List comments, filtered by tenant_id and optionally by claim_id"""
+    require_tenant_id(tenant_id)
     
-    # Filter by tenant if provided
-    if tenant_id:
-        query = query.where(Comment.tenant_id == tenant_id)
+    query = select(Comment).where(Comment.tenant_id == tenant_id)
     
     if claim_id:
         query = query.where(Comment.claim_id == claim_id)
@@ -90,6 +89,8 @@ async def create_comment(
     db: AsyncSession = Depends(get_async_db),
 ):
     """Create a new comment on a claim"""
+    require_tenant_id(comment_data.tenant_id)
+    
     # Verify claim exists
     result = await db.execute(select(Claim).where(Claim.id == comment_data.claim_id))
     claim = result.scalar_one_or_none()
@@ -127,7 +128,7 @@ async def create_comment(
     # Create comment
     comment = Comment(
         id=uuid4(),
-        tenant_id=settings.DEFAULT_TENANT_ID,
+        tenant_id=comment_data.tenant_id,
         claim_id=comment_data.claim_id,
         comment_text=comment_data.comment_text,
         comment_type=comment_data.comment_type,

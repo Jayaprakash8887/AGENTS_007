@@ -16,7 +16,7 @@ from models import CustomClaim, User
 from schemas import (
     CustomClaimCreate, CustomClaimUpdate, CustomClaimResponse, CustomClaimListResponse
 )
-from config import settings
+from api.v1.auth import require_tenant_id
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +97,7 @@ def normalize_custom_fields_for_response(custom_fields: List[dict]) -> List[dict
 async def create_custom_claim(
     claim_data: CustomClaimCreate,
     created_by: UUID,
+    tenant_id: UUID,
     db: Session = Depends(get_sync_db)
 ):
     """
@@ -108,7 +109,7 @@ async def create_custom_claim(
     
     # Create custom claim record
     custom_claim = CustomClaim(
-        tenant_id=UUID(settings.DEFAULT_TENANT_ID),
+        tenant_id=tenant_id,
         claim_name=claim_data.claim_name,
         claim_code=claim_code,
         description=claim_data.description,
@@ -171,6 +172,7 @@ async def create_custom_claim(
 
 @router.get("/", response_model=List[CustomClaimListResponse])
 async def list_custom_claims(
+    tenant_id: UUID,
     region: Optional[str] = None,
     category_type: Optional[str] = None,
     is_active: Optional[bool] = None,
@@ -180,7 +182,7 @@ async def list_custom_claims(
     List all custom claim definitions with optional filters.
     """
     query = db.query(CustomClaim).filter(
-        CustomClaim.tenant_id == UUID(settings.DEFAULT_TENANT_ID)
+        CustomClaim.tenant_id == tenant_id
     )
     
     # Apply filters
@@ -218,6 +220,7 @@ async def list_custom_claims(
 @router.get("/{claim_id}", response_model=CustomClaimResponse)
 async def get_custom_claim(
     claim_id: UUID,
+    tenant_id: UUID,
     db: Session = Depends(get_sync_db)
 ):
     """
@@ -226,7 +229,7 @@ async def get_custom_claim(
     custom_claim = db.query(CustomClaim).filter(
         and_(
             CustomClaim.id == claim_id,
-            CustomClaim.tenant_id == UUID(settings.DEFAULT_TENANT_ID)
+            CustomClaim.tenant_id == tenant_id
         )
     ).first()
     
@@ -270,6 +273,7 @@ async def update_custom_claim(
     claim_id: UUID,
     claim_data: CustomClaimUpdate,
     updated_by: UUID,
+    tenant_id: UUID,
     db: Session = Depends(get_sync_db)
 ):
     """
@@ -278,7 +282,7 @@ async def update_custom_claim(
     custom_claim = db.query(CustomClaim).filter(
         and_(
             CustomClaim.id == claim_id,
-            CustomClaim.tenant_id == UUID(settings.DEFAULT_TENANT_ID)
+            CustomClaim.tenant_id == tenant_id
         )
     ).first()
     
@@ -343,6 +347,7 @@ async def update_custom_claim(
 @router.delete("/{claim_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_custom_claim(
     claim_id: UUID,
+    tenant_id: UUID,
     db: Session = Depends(get_sync_db)
 ):
     """
@@ -351,7 +356,7 @@ async def delete_custom_claim(
     custom_claim = db.query(CustomClaim).filter(
         and_(
             CustomClaim.id == claim_id,
-            CustomClaim.tenant_id == UUID(settings.DEFAULT_TENANT_ID)
+            CustomClaim.tenant_id == tenant_id
         )
     ).first()
     
@@ -378,6 +383,7 @@ async def delete_custom_claim(
 async def toggle_custom_claim_status(
     claim_id: UUID,
     updated_by: UUID,
+    tenant_id: UUID,
     db: Session = Depends(get_sync_db)
 ):
     """
@@ -386,7 +392,7 @@ async def toggle_custom_claim_status(
     custom_claim = db.query(CustomClaim).filter(
         and_(
             CustomClaim.id == claim_id,
-            CustomClaim.tenant_id == UUID(settings.DEFAULT_TENANT_ID)
+            CustomClaim.tenant_id == tenant_id
         )
     ).first()
     

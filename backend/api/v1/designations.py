@@ -14,6 +14,7 @@ from datetime import datetime
 from database import get_sync_db
 from models import Tenant, Designation, DesignationRoleMapping
 from services.role_service import get_available_roles
+from api.v1.auth import require_tenant_id
 
 router = APIRouter()
 
@@ -67,16 +68,6 @@ class RoleMappingResponse(BaseModel):
 
 # ==================== HELPER FUNCTIONS ====================
 
-def get_tenant_id_from_context(db: Session) -> UUID:
-    """
-    Get tenant_id from request context.
-    For now, using default tenant. In production, this would come from auth.
-    """
-    # TODO: Get from authentication context
-    from config import settings
-    return UUID(settings.DEFAULT_TENANT_ID)
-
-
 def designation_to_response(designation: Designation, db: Session) -> dict:
     """Convert designation model to response with roles."""
     roles = [m.role for m in designation.role_mappings]
@@ -109,7 +100,7 @@ async def list_available_roles():
 
 @router.get("/", response_model=List[DesignationResponse])
 async def list_designations(
-    tenant_id: Optional[UUID] = None,
+    tenant_id: UUID,
     include_inactive: bool = False,
     skip: int = 0,
     limit: int = 100,
@@ -117,10 +108,8 @@ async def list_designations(
 ):
     """
     List designations for a tenant.
-    If tenant_id not provided, uses default tenant from context.
     """
-    if not tenant_id:
-        tenant_id = get_tenant_id_from_context(db)
+    require_tenant_id(tenant_id)
     
     query = db.query(Designation).filter(Designation.tenant_id == tenant_id)
     
@@ -135,14 +124,13 @@ async def list_designations(
 @router.post("/", response_model=DesignationResponse, status_code=status.HTTP_201_CREATED)
 async def create_designation(
     designation_data: DesignationCreate,
-    tenant_id: Optional[UUID] = None,
+    tenant_id: UUID,
     db: Session = Depends(get_sync_db)
 ):
     """
     Create a new designation for a tenant.
     """
-    if not tenant_id:
-        tenant_id = get_tenant_id_from_context(db)
+    require_tenant_id(tenant_id)
     
     # Verify tenant exists
     tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()

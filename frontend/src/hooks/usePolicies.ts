@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '@/contexts/AuthContext';
 
 const API_BASE_URL = 'http://localhost:8000/api/v1';
 
@@ -28,8 +29,12 @@ export interface ExtractedClaimCategory {
 }
 
 // Fetch extracted claims from policies
-async function fetchExtractedClaims(): Promise<ExtractedClaimCategory[]> {
-  const response = await fetch(`${API_BASE_URL}/policies/extracted-claims`);
+async function fetchExtractedClaims(tenantId?: string): Promise<ExtractedClaimCategory[]> {
+  const params = new URLSearchParams();
+  if (tenantId) params.append('tenant_id', tenantId);
+  
+  const url = `${API_BASE_URL}/policies/extracted-claims${params.toString() ? '?' + params.toString() : ''}`;
+  const response = await fetch(url);
   if (!response.ok) {
     throw new Error('Failed to fetch extracted claims');
   }
@@ -38,18 +43,22 @@ async function fetchExtractedClaims(): Promise<ExtractedClaimCategory[]> {
 
 // Hook to get all extracted claims
 export function useExtractedClaims() {
+  const { user } = useAuth();
   return useQuery({
-    queryKey: ['extracted-claims'],
-    queryFn: fetchExtractedClaims,
+    queryKey: ['extracted-claims', user?.tenant_id],
+    queryFn: () => fetchExtractedClaims(user?.tenant_id),
+    enabled: !!user?.tenant_id,
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 }
 
 // Hook to get allowances filtered by region
 export function useAllowancesByRegion(region: string | undefined) {
+  const { user } = useAuth();
   return useQuery({
-    queryKey: ['extracted-claims', 'allowances', region],
-    queryFn: fetchExtractedClaims,
+    queryKey: ['extracted-claims', 'allowances', region, user?.tenant_id],
+    queryFn: () => fetchExtractedClaims(user?.tenant_id),
+    enabled: !!user?.tenant_id,
     select: (data) => {
       // Filter by category type ALLOWANCE and matching region
       return data.filter(
@@ -65,9 +74,11 @@ export function useAllowancesByRegion(region: string | undefined) {
 
 // Hook to get reimbursement categories filtered by region
 export function useReimbursementsByRegion(region: string | undefined) {
+  const { user } = useAuth();
   return useQuery({
-    queryKey: ['extracted-claims', 'reimbursements', region],
-    queryFn: fetchExtractedClaims,
+    queryKey: ['extracted-claims', 'reimbursements', region, user?.tenant_id],
+    queryFn: () => fetchExtractedClaims(user?.tenant_id),
+    enabled: !!user?.tenant_id,
     select: (data) => {
       // Filter by category type REIMBURSEMENT and matching region
       return data.filter(
