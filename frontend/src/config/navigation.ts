@@ -37,13 +37,13 @@ export const adminNavigation: NavItem[] = [
     label: 'Employees',
     href: '/employees',
     icon: 'Users',
-    roles: ['hr', 'admin'],
+    roles: ['admin'],
   },
   {
     label: 'Projects',
     href: '/projects',
     icon: 'FolderKanban',
-    roles: ['hr', 'finance', 'admin'],
+    roles: ['admin'],
   },
   {
     label: 'Settlements',

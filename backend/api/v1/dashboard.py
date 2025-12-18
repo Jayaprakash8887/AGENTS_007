@@ -3,7 +3,7 @@ Dashboard and analytics endpoints
 """
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from sqlalchemy import func, and_
+from sqlalchemy import func, and_, case
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
 from uuid import UUID
@@ -315,13 +315,13 @@ async def get_allowance_summary(
         Claim.category,
         func.count(Claim.id).label('total_count'),
         func.sum(
-            func.case(
+            case(
                 (Claim.status.in_(['PENDING_MANAGER', 'PENDING_HR', 'PENDING_FINANCE']), 1),
                 else_=0
             )
         ).label('pending_count'),
         func.sum(
-            func.case(
+            case(
                 (Claim.status == 'FINANCE_APPROVED', 1),
                 else_=0
             )
