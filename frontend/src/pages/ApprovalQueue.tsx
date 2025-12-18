@@ -514,14 +514,17 @@ export default function ApprovalQueue() {
                   </Link>
                 </Button>
                 <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    className="gap-2 text-warning hover:text-warning"
-                    onClick={() => handleAction('return')}
-                  >
-                    <RotateCcw className="h-4 w-4" />
-                    Return
-                  </Button>
+                  {/* Return button only visible to managers */}
+                  {user?.role === 'manager' && (
+                    <Button
+                      variant="outline"
+                      className="gap-2 text-warning hover:text-warning"
+                      onClick={() => handleAction('return')}
+                    >
+                      <RotateCcw className="h-4 w-4" />
+                      Return
+                    </Button>
+                  )}
                   <Button
                     variant="outline"
                     className="gap-2 text-destructive hover:text-destructive"
