@@ -244,8 +244,8 @@ export default function ClaimDetails() {
         {/* Actions */}
         {canApprove && (
           <div className="flex gap-2">
-            {/* Return button only visible to managers */}
-            {user?.role === 'manager' && (
+            {/* Return button visible to managers, HR, and finance */}
+            {(user?.role === 'manager' || user?.role === 'hr' || user?.role === 'finance') && (
               <Button
                 variant="outline"
                 className="gap-2 text-warning"
