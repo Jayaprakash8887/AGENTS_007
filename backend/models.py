@@ -3,7 +3,7 @@ Database models using SQLAlchemy ORM for PostgreSQL
 """
 from sqlalchemy import (
     Column, String, Integer, Float, Boolean, DateTime, Date, Text, 
-    Numeric, ForeignKey, Index, CheckConstraint
+    Numeric, ForeignKey, Index, CheckConstraint, UniqueConstraint
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB, ARRAY
 from sqlalchemy.ext.declarative import declarative_base
@@ -241,7 +241,7 @@ class User(Base):
     employment_status = Column(String(20), default="ACTIVE")  # ACTIVE, INACTIVE, ON_LEAVE
     
     # Region/Location (e.g., 'INDIA', 'USA', 'SEZ_BANGALORE', 'STP_CHENNAI')
-    region = Column(String(100), nullable=True)
+    region = Column(ARRAY(String), nullable=True)
     
     # Roles & Permissions
     # All tenant users get EMPLOYEE role by default (except SYSTEM_ADMIN which is platform-level)
@@ -643,7 +643,7 @@ class PolicyUpload(Base):
     effective_to = Column(Date)
     
     # Region/Location applicability (e.g., 'INDIA', 'USA', 'SEZ_BANGALORE', 'STP_CHENNAI')
-    region = Column(String(100), nullable=True)  # NULL means applicable to all regions
+    region = Column(ARRAY(String), nullable=True)  # NULL means applicable to all regions
     
     # Audit
     uploaded_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
@@ -821,7 +821,7 @@ class CustomClaim(Base):
     category_type = Column(String(20), nullable=False)
     
     # Region/Location applicability
-    region = Column(String(100), nullable=True)  # NULL means applicable to all regions
+    region = Column(ARRAY(String), nullable=True)  # NULL or empty means applicable to all regions
     
     # Limits
     max_amount = Column(Numeric(12, 2))
@@ -940,5 +940,32 @@ class Notification(Base):
         Index("idx_notifications_cleared", "is_cleared"),
         Index("idx_notifications_created", "created_at"),
         Index("idx_notifications_user_unread", "user_id", "is_read"),
+    )
+
+
+class Region(Base):
+    """
+    Tenant-specific regions for policy and employee management.
+    """
+    __tablename__ = "regions"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(UUID(as_uuid=True), nullable=False)
+    
+    name = Column(String(100), nullable=False)
+    code = Column(String(50))  # e.g., IND, US-CA
+    currency = Column(String(10))  # e.g., INR, USD
+    description = Column(Text)
+    
+    is_active = Column(Boolean, default=True)
+    
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    
+    __table_args__ = (
+        UniqueConstraint('tenant_id', 'name', name='uq_region_name_tenant'),
+        Index("idx_regions_tenant", "tenant_id"),
+        Index("idx_regions_active", "is_active"),
     )
 

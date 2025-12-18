@@ -25,6 +25,7 @@ const EmployeeDetails = lazy(() => import('./pages/EmployeeDetails'));
 const Projects = lazy(() => import('./pages/Projects'));
 const Policies = lazy(() => import('./pages/Policies'));
 const ClaimManagement = lazy(() => import('./pages/ClaimManagement'));
+const RegionManagement = lazy(() => import('./pages/RegionManagement'));
 const Settlements = lazy(() => import('./pages/Settlements'));
 const SettlementsPending = lazy(() => import('./pages/SettlementsPending'));
 const SettlementsCompleted = lazy(() => import('./pages/SettlementsCompleted'));
@@ -72,7 +73,7 @@ const App = () => (
                 </Suspense>
               }
             />
-            
+
             {/* Protected routes */}
             <Route element={
               <ProtectedRoute>
@@ -197,6 +198,16 @@ const App = () => (
                   <Suspense fallback={<PageLoader />}>
                     <ProtectedRoute allowedRoles={['admin']}>
                       <Policies />
+                    </ProtectedRoute>
+                  </Suspense>
+                }
+              />
+              <Route
+                path="/policies/regions"
+                element={
+                  <Suspense fallback={<PageLoader />}>
+                    <ProtectedRoute allowedRoles={['admin']}>
+                      <RegionManagement />
                     </ProtectedRoute>
                   </Suspense>
                 }

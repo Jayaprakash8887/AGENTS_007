@@ -201,7 +201,7 @@ class UserUpdate(BaseModel):
     address: Optional[str] = None
     department: Optional[str] = None
     designation: Optional[str] = None
-    region: Optional[str] = None  # Region/location for policy applicability
+    region: Optional[List[str]] = None  # Region/location for policy applicability
     roles: Optional[List[UserRole]] = None
     employment_status: Optional[str] = None
     manager_id: Optional[UUID] = None
@@ -216,7 +216,7 @@ class UserResponse(UserBase):
     employment_status: Optional[str] = "ACTIVE"
     date_of_joining: Optional[date] = None
     manager_id: Optional[UUID] = None
-    region: Optional[str] = None  # Region/location for policy applicability
+    region: Optional[List[str]] = None  # Region/location for policy applicability
     user_data: Dict[str, Any] = {}
     created_at: datetime
     
@@ -248,7 +248,7 @@ class EmployeeCreate(BaseModel):
     address: Optional[str] = None
     department: Optional[str] = None
     designation: Optional[str] = None
-    region: Optional[str] = None  # Region/location for policy applicability
+    region: Optional[List[str]] = None  # Region/location for policy applicability
     date_of_joining: Optional[date] = None
     manager_id: Optional[str] = None
     project_ids: Optional[List[str]] = []
@@ -276,7 +276,7 @@ class EmployeeResponse(BaseModel):
     manager_id: Optional[UUID] = None
     date_of_joining: Optional[date] = None
     employment_status: str = "ACTIVE"
-    region: Optional[str] = None  # Region/location for policy applicability
+    region: Optional[List[str]] = None  # Region/location for policy applicability
     roles: List[str] = []  # Dynamically resolved from designation-to-role mappings
     employee_data: Dict[str, Any] = {}
     created_at: datetime
@@ -682,7 +682,7 @@ class ExtractedClaimListResponse(PolicyCategoryResponse):
     policy_status: str
     policy_version: Optional[str]
     policy_effective_from: Optional[date]
-    policy_region: Optional[str] = None  # Region this policy applies to
+    policy_region: Optional[List[str]] = None  # Region this policy applies to
 
 
 # Policy Upload Schemas
@@ -709,7 +709,7 @@ class PolicyUploadResponse(BaseModel):
     replaces_policy_id: Optional[UUID] = None
     effective_from: Optional[date]
     effective_to: Optional[date]
-    region: Optional[str] = None  # Region/location this policy applies to
+    region: Optional[List[str]] = None  # Region/location this policy applies to
     uploaded_by: UUID
     approved_by: Optional[UUID]
     approved_at: Optional[datetime]
@@ -731,7 +731,7 @@ class PolicyUploadListResponse(BaseModel):
     version: int
     is_active: bool
     effective_from: Optional[date]
-    region: Optional[str] = None  # Region/location this policy applies to
+    region: Optional[List[str]] = None  # Region/location this policy applies to
     categories_count: int = 0
     uploaded_by: UUID
     created_at: datetime
@@ -876,7 +876,7 @@ class CustomClaimBase(BaseModel):
     claim_name: str = Field(..., min_length=1, max_length=200)
     description: Optional[str] = None
     category_type: CustomClaimCategoryType
-    region: Optional[str] = None  # Region where this claim type is applicable
+    region: Optional[List[str]] = None  # Region where this claim type is applicable
     max_amount: Optional[float] = Field(None, ge=0)
     min_amount: Optional[float] = Field(None, ge=0)
     default_amount: Optional[float] = Field(None, ge=0)
@@ -903,7 +903,7 @@ class CustomClaimUpdate(BaseModel):
     claim_name: Optional[str] = Field(None, min_length=1, max_length=200)
     description: Optional[str] = None
     category_type: Optional[CustomClaimCategoryType] = None
-    region: Optional[str] = None
+    region: Optional[List[str]] = None
     max_amount: Optional[float] = Field(None, ge=0)
     min_amount: Optional[float] = Field(None, ge=0)
     default_amount: Optional[float] = Field(None, ge=0)
@@ -928,7 +928,7 @@ class CustomClaimResponse(BaseModel):
     claim_code: str
     description: Optional[str]
     category_type: str
-    region: Optional[str]
+    region: Optional[List[str]]
     max_amount: Optional[float]
     min_amount: Optional[float]
     default_amount: Optional[float]
@@ -959,7 +959,7 @@ class CustomClaimListResponse(BaseModel):
     claim_code: str
     description: Optional[str]
     category_type: str
-    region: Optional[str]
+    region: Optional[List[str]]
     max_amount: Optional[float]
     currency: str
     requires_receipt: bool
@@ -970,3 +970,31 @@ class CustomClaimListResponse(BaseModel):
     class Config:
         from_attributes = True
 
+
+# ==================== REGION SCHEMAS ====================
+
+class RegionBase(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    code: Optional[str] = Field(None, max_length=50)
+    currency: Optional[str] = Field(None, max_length=10)
+    description: Optional[str] = None
+    is_active: bool = True
+
+class RegionCreate(RegionBase):
+    pass
+
+class RegionUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    code: Optional[str] = Field(None, max_length=50)
+    currency: Optional[str] = Field(None, max_length=10)
+    description: Optional[str] = None
+    is_active: Optional[bool] = None
+
+class RegionResponse(RegionBase):
+    id: UUID
+    tenant_id: UUID
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True

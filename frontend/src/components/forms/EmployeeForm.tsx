@@ -32,6 +32,8 @@ import {
   CommandInput,
   CommandItem,
 } from '@/components/ui/command';
+import { useRegions } from '@/hooks/useRegions';
+import { MultiSelect } from '@/components/ui/multi-select';
 
 interface Project {
   id: string;
@@ -61,8 +63,10 @@ export function EmployeeForm({
   defaultValues,
   currentEmployeeId,
 }: EmployeeFormProps) {
+  const { data: regions, isLoading: regionsLoading } = useRegions();
+
   // Filter out current employee from managers list to prevent self-selection
-  const availableManagers = currentEmployeeId 
+  const availableManagers = currentEmployeeId
     ? managers.filter(m => m.id !== currentEmployeeId)
     : managers;
 
@@ -78,7 +82,7 @@ export function EmployeeForm({
       address: '',
       department: '',
       designation: '',
-      region: '',
+      region: [],
       dateOfJoining: '',
       managerId: '',
       projectIds: '',
@@ -252,26 +256,12 @@ export function EmployeeForm({
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Region / Location (Optional)</FormLabel>
-                <Select onValueChange={field.onChange} defaultValue={field.value}>
-                  <FormControl>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select region" />
-                    </SelectTrigger>
-                  </FormControl>
-                  <SelectContent>
-                    <SelectItem value=" ">No specific region</SelectItem>
-                    <SelectItem value="INDIA">India</SelectItem>
-                    <SelectItem value="USA">United States</SelectItem>
-                    <SelectItem value="UK">United Kingdom</SelectItem>
-                    <SelectItem value="SEZ_BANGALORE">SEZ - Bangalore</SelectItem>
-                    <SelectItem value="SEZ_CHENNAI">SEZ - Chennai</SelectItem>
-                    <SelectItem value="SEZ_HYDERABAD">SEZ - Hyderabad</SelectItem>
-                    <SelectItem value="STP_PUNE">STP - Pune</SelectItem>
-                    <SelectItem value="STP_NOIDA">STP - Noida</SelectItem>
-                    <SelectItem value="DOMESTIC">Domestic</SelectItem>
-                    <SelectItem value="INTERNATIONAL">International</SelectItem>
-                  </SelectContent>
-                </Select>
+                <MultiSelect
+                  options={regions?.filter(r => r.isActive).map(r => ({ label: r.name, value: r.name })) || []}
+                  selected={field.value as string[] || []}
+                  onChange={field.onChange}
+                  placeholder="Select regions..."
+                />
                 <FormMessage />
               </FormItem>
             )}

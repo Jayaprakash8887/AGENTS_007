@@ -1,0 +1,164 @@
+
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Region } from '@/types';
+import { useAuth } from '@/contexts/AuthContext';
+
+const API_BASE_URL = 'http://localhost:8000/api/v1';
+
+// Build URL with query params
+const buildUrl = (baseUrl: string, params: Record<string, any>) => {
+    const url = new URL(baseUrl);
+    Object.keys(params).forEach(key => {
+        if (params[key]) {
+            url.searchParams.append(key, params[key]);
+        }
+    });
+    return url.toString();
+};
+
+async function fetchRegions(tenantId?: string): Promise<Region[]> {
+    const url = buildUrl(`${API_BASE_URL}/regions/`, { tenant_id: tenantId });
+    const response = await fetch(url);
+    if (!response.ok) {
+        throw new Error('Failed to fetch regions');
+    }
+    const data = await response.json();
+
+    // Transform backend response to frontend format
+    return data.map((region: any) => ({
+        id: region.id,
+        name: region.name,
+        code: region.code,
+        currency: region.currency,
+        description: region.description,
+        isActive: region.is_active,
+        createdAt: region.created_at,
+        updatedAt: region.updated_at,
+    }));
+}
+
+async function createRegion(region: Partial<Region>, tenantId?: string): Promise<Region> {
+    const response = await fetch(`${API_BASE_URL}/regions/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            name: region.name,
+            code: region.code,
+            currency: region.currency,
+            description: region.description,
+            is_active: region.isActive ?? true,
+        }),
+    });
+
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || 'Failed to create region');
+    }
+
+    const data = await response.json();
+
+    return {
+        id: data.id,
+        name: data.name,
+        code: data.code,
+        currency: data.currency,
+        description: data.description,
+        isActive: data.is_active,
+        createdAt: data.created_at,
+        updatedAt: data.updated_at,
+    };
+}
+
+async function updateRegion({ id, data }: { id: string; data: Partial<Region> }): Promise<Region> {
+    const response = await fetch(`${API_BASE_URL}/regions/${id}`, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            name: data.name,
+            code: data.code,
+            currency: data.currency,
+            description: data.description,
+            is_active: data.isActive,
+        }),
+    });
+
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || 'Failed to update region');
+    }
+
+    const result = await response.json();
+
+    return {
+        id: result.id,
+        name: result.name,
+        code: result.code,
+        currency: result.currency,
+        description: result.description,
+        isActive: result.is_active,
+        createdAt: result.created_at,
+        updatedAt: result.updated_at,
+    };
+}
+
+async function deleteRegion(id: string): Promise<void> {
+    const response = await fetch(`${API_BASE_URL}/regions/${id}`, {
+        method: 'DELETE',
+    });
+
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || 'Failed to delete region');
+    }
+}
+
+// Custom hooks
+export function useRegions(tenantIdOverride?: string) {
+    const { user } = useAuth();
+    const tenantId = tenantIdOverride || user?.tenantId;
+
+    return useQuery({
+        queryKey: ['regions', tenantId],
+        queryFn: () => fetchRegions(tenantId),
+        enabled: !!tenantId,
+        staleTime: 5 * 60 * 1000,
+    });
+}
+
+export function useCreateRegion() {
+    const queryClient = useQueryClient();
+    const { user } = useAuth();
+
+    return useMutation({
+        mutationFn: (data: Partial<Region>) => createRegion(data, user?.tenantId),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['regions'] });
+        },
+    });
+}
+
+export function useUpdateRegion() {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: updateRegion,
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['regions'] });
+        },
+    });
+}
+
+export function useDeleteRegion() {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: deleteRegion,
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['regions'] });
+        },
+    });
+}

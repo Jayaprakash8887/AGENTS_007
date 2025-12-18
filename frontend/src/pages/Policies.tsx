@@ -54,6 +54,8 @@ import { toast } from '@/hooks/use-toast';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { useAuth } from '@/contexts/AuthContext';
+import { MultiSelect } from '@/components/ui/multi-select';
+import { useRegions } from '@/hooks/useRegions';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
 
@@ -111,7 +113,7 @@ interface PolicyUpload {
   review_notes?: string;
   created_at: string;
   updated_at: string;
-  region?: string;
+  region?: string[];
   categories: PolicyCategory[];
 }
 
@@ -124,7 +126,7 @@ interface PolicyUploadListItem {
   version: number;
   is_active: boolean;
   effective_from?: string;
-  region?: string;
+  region?: string[];
   categories_count: number;
   uploaded_by: string;
   created_at: string;
@@ -157,7 +159,7 @@ interface CustomClaim {
   claim_code: string;
   description?: string;
   category_type: 'REIMBURSEMENT' | 'ALLOWANCE';
-  region?: string;
+  region?: string[];
   max_amount?: number;
   min_amount?: number;
   default_amount?: number;
@@ -184,7 +186,7 @@ interface CustomClaimListItem {
   claim_code: string;
   description?: string;
   category_type: 'REIMBURSEMENT' | 'ALLOWANCE';
-  region?: string;
+  region?: string[];
   max_amount?: number;
   currency: string;
   requires_receipt: boolean;
@@ -371,20 +373,7 @@ function formatFileSize(bytes?: number): string {
   return parseFloat((bytes / Math.pow(1024, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
-// Region options for policies
-const REGION_OPTIONS = [
-  { value: '', label: 'All Regions (Global)' },
-  { value: 'INDIA', label: 'India' },
-  { value: 'USA', label: 'United States' },
-  { value: 'UK', label: 'United Kingdom' },
-  { value: 'SEZ_BANGALORE', label: 'SEZ - Bangalore' },
-  { value: 'SEZ_CHENNAI', label: 'SEZ - Chennai' },
-  { value: 'SEZ_HYDERABAD', label: 'SEZ - Hyderabad' },
-  { value: 'STP_PUNE', label: 'STP - Pune' },
-  { value: 'STP_NOIDA', label: 'STP - Noida' },
-  { value: 'DOMESTIC', label: 'Domestic' },
-  { value: 'INTERNATIONAL', label: 'International' },
-];
+
 
 // Field type options for custom claims
 const FIELD_TYPE_OPTIONS = [
@@ -424,7 +413,17 @@ const getEmptyCustomField = (): CustomFieldDefinition => ({
 export default function Policies() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
+
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Fetch dynamic regions
+  const { data: regionList = [] } = useRegions();
+
+  // Map regions to options format for MultiSelect
+  const regionOptions = [
+    { value: 'GLOBAL', label: 'Global (All Regions)' },
+    ...regionList.map(r => ({ value: r.name, label: r.name }))
+  ];
 
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isViewOpen, setIsViewOpen] = useState(false);
@@ -441,12 +440,12 @@ export default function Policies() {
   const [uploadForm, setUploadForm] = useState({
     policy_name: '',
     description: '',
-    region: '',
+    region: [] as string[],
     file: null as File | null,
   });
   const [newVersionForm, setNewVersionForm] = useState({
     description: '',
-    region: '',
+    region: [] as string[],
     file: null as File | null,
   });
   const [approveNotes, setApproveNotes] = useState('');
@@ -465,7 +464,7 @@ export default function Policies() {
     claim_name: string;
     description: string;
     category_type: 'REIMBURSEMENT' | 'ALLOWANCE';
-    region: string;
+    region: string[];
     max_amount: string;
     min_amount: string;
     default_amount: string;
@@ -480,7 +479,7 @@ export default function Policies() {
     claim_name: '',
     description: '',
     category_type: 'REIMBURSEMENT',
-    region: '',
+    region: [] as string[],
     max_amount: '',
     min_amount: '',
     default_amount: '',
@@ -498,7 +497,7 @@ export default function Policies() {
       claim_name: '',
       description: '',
       category_type: 'REIMBURSEMENT',
-      region: '',
+      region: [],
       max_amount: '',
       min_amount: '',
       default_amount: '',
@@ -543,7 +542,7 @@ export default function Policies() {
     onSuccess: () => {
       toast({ title: 'Success', description: 'Policy uploaded successfully. AI extraction in progress.' });
       setIsUploadOpen(false);
-      setUploadForm({ policy_name: '', description: '', region: '', file: null });
+      setUploadForm({ policy_name: '', description: '', region: [], file: null });
       queryClient.invalidateQueries({ queryKey: ['policies'] });
     },
     onError: (error: Error) => {
@@ -595,7 +594,7 @@ export default function Policies() {
     onSuccess: () => {
       toast({ title: 'Success', description: 'New version uploaded successfully. AI extraction in progress.' });
       setIsNewVersionOpen(false);
-      setNewVersionForm({ description: '', region: '', file: null });
+      setNewVersionForm({ description: '', region: [], file: null });
       queryClient.invalidateQueries({ queryKey: ['policies'] });
       queryClient.invalidateQueries({ queryKey: ['extracted-claims'] });
     },
@@ -667,8 +666,10 @@ export default function Policies() {
     if (uploadForm.description) {
       formData.append('description', uploadForm.description);
     }
-    if (uploadForm.region) {
-      formData.append('region', uploadForm.region);
+
+    if (uploadForm.region && uploadForm.region.length > 0) {
+      // Append each region separately for List[str] binding
+      uploadForm.region.forEach(r => formData.append('region', r));
     }
     formData.append('uploaded_by', user?.id || '');
     if (user?.tenantId) {
@@ -718,8 +719,9 @@ export default function Policies() {
     if (newVersionForm.description) {
       formData.append('description', newVersionForm.description);
     }
-    if (newVersionForm.region) {
-      formData.append('region', newVersionForm.region);
+
+    if (newVersionForm.region && newVersionForm.region.length > 0) {
+      newVersionForm.region.forEach(r => formData.append('region', r));
     }
     formData.append('uploaded_by', user?.id || '');
 
@@ -820,7 +822,7 @@ export default function Policies() {
       claim_name: claim.claim_name,
       description: claim.description || '',
       category_type: claim.category_type,
-      region: claim.region || '',
+      region: claim.region || [],
       max_amount: claim.max_amount?.toString() || '',
       min_amount: claim.min_amount?.toString() || '',
       default_amount: claim.default_amount?.toString() || '',
@@ -908,21 +910,13 @@ export default function Policies() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="region">Region / Location</Label>
-                <Select
-                  value={uploadForm.region}
-                  onValueChange={(value) => setUploadForm({ ...uploadForm, region: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select region (leave empty for global)" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {REGION_OPTIONS.map((option) => (
-                      <SelectItem key={option.value || 'global'} value={option.value || ' '}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <MultiSelect
+                  options={regionOptions}
+                  selected={uploadForm.region || []}
+                  onChange={(selected) => setUploadForm({ ...uploadForm, region: selected })}
+                  placeholder="Select regions..."
+                  className="w-full"
+                />
                 <p className="text-xs text-muted-foreground">
                   Select the region this policy applies to. Leave empty for global policies.
                 </p>
@@ -1032,7 +1026,7 @@ export default function Policies() {
                   <SelectValue placeholder="Filter by Region" />
                 </SelectTrigger>
                 <SelectContent>
-                  {REGION_OPTIONS.map((option) => (
+                  {regionOptions.map((option) => (
                     <SelectItem key={option.value || 'all'} value={option.value || ' '}>
                       {option.label}
                     </SelectItem>
@@ -1193,7 +1187,7 @@ export default function Policies() {
                     <SelectValue placeholder="Filter by Region" />
                   </SelectTrigger>
                   <SelectContent>
-                    {REGION_OPTIONS.map((option) => (
+                    {regionOptions.map((option) => (
                       <SelectItem key={option.value || 'all'} value={option.value || ' '}>
                         {option.label}
                       </SelectItem>
@@ -1593,21 +1587,13 @@ export default function Policies() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="new_version_region">Region / Location</Label>
-              <Select
-                value={newVersionForm.region}
-                onValueChange={(value) => setNewVersionForm({ ...newVersionForm, region: value === ' ' ? '' : value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select region (leave empty to keep existing)" />
-                </SelectTrigger>
-                <SelectContent>
-                  {REGION_OPTIONS.map((option) => (
-                    <SelectItem key={option.value || 'global'} value={option.value || ' '}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <MultiSelect
+                options={regionOptions}
+                selected={newVersionForm.region || []}
+                onChange={(selected) => setNewVersionForm({ ...newVersionForm, region: selected })}
+                placeholder="Select regions..."
+                className="w-full"
+              />
               <p className="text-xs text-muted-foreground">
                 Leave empty to keep the existing region setting
               </p>
@@ -1651,7 +1637,7 @@ export default function Policies() {
           <DialogFooter>
             <Button variant="outline" onClick={() => {
               setIsNewVersionOpen(false);
-              setNewVersionForm({ description: '', region: '', file: null });
+              setNewVersionForm({ description: '', region: [], file: null });
             }}>Cancel</Button>
             <Button onClick={handleNewVersionUpload} disabled={newVersionMutation.isPending || !newVersionForm.file}>
               {newVersionMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
@@ -1707,21 +1693,13 @@ export default function Policies() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="cc_region">Region</Label>
-                  <Select
-                    value={customClaimForm.region}
-                    onValueChange={(value) => setCustomClaimForm({ ...customClaimForm, region: value === ' ' ? '' : value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select region (global if empty)" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {REGION_OPTIONS.map((option) => (
-                        <SelectItem key={option.value || 'global'} value={option.value || ' '}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <MultiSelect
+                    options={regionOptions}
+                    selected={customClaimForm.region || []}
+                    onChange={(selected) => setCustomClaimForm({ ...customClaimForm, region: selected })}
+                    placeholder="Select regions..."
+                    className="w-full"
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="cc_currency">Currency</Label>
@@ -2232,21 +2210,13 @@ export default function Policies() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="edit_cc_region">Region</Label>
-                  <Select
-                    value={customClaimForm.region}
-                    onValueChange={(value) => setCustomClaimForm({ ...customClaimForm, region: value === ' ' ? '' : value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select region (global if empty)" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {REGION_OPTIONS.map((option) => (
-                        <SelectItem key={option.value || 'global'} value={option.value || ' '}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <MultiSelect
+                    options={regionOptions}
+                    selected={customClaimForm.region || []}
+                    onChange={(selected) => setCustomClaimForm({ ...customClaimForm, region: selected })}
+                    placeholder="Select regions..."
+                    className="w-full"
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="edit_cc_currency">Currency</Label>

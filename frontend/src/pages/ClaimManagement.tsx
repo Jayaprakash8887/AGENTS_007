@@ -48,6 +48,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { toast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
+import { useRegions } from '@/hooks/useRegions';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
 
@@ -115,24 +116,18 @@ function getPolicyStatusBadge(status: string) {
     }
 }
 
-// Region options for filtering
-const REGION_OPTIONS = [
-    { value: '', label: 'All Regions' },
-    { value: 'INDIA', label: 'India' },
-    { value: 'USA', label: 'United States' },
-    { value: 'UK', label: 'United Kingdom' },
-    { value: 'SEZ_BANGALORE', label: 'SEZ - Bangalore' },
-    { value: 'SEZ_CHENNAI', label: 'SEZ - Chennai' },
-    { value: 'SEZ_HYDERABAD', label: 'SEZ - Hyderabad' },
-    { value: 'STP_PUNE', label: 'STP - Pune' },
-    { value: 'STP_NOIDA', label: 'STP - Noida' },
-    { value: 'DOMESTIC', label: 'Domestic' },
-    { value: 'INTERNATIONAL', label: 'International' },
-];
+// Region options removed - using dynamic regions
 
 export default function ClaimManagement() {
     const { user } = useAuth();
     const queryClient = useQueryClient();
+    const { data: regions } = useRegions();
+
+    const regionOptions = [
+        { value: '', label: 'All Regions' },
+        ...(regions || []).map(r => ({ value: r.name, label: r.name }))
+    ];
+
     const [searchTerm, setSearchTerm] = useState('');
     const [regionFilter, setRegionFilter] = useState('');
     const [selectedCategory, setSelectedCategory] = useState<ExtractedClaim | null>(null);
@@ -228,7 +223,7 @@ export default function ClaimManagement() {
                             <SelectValue placeholder="Filter by Region" />
                         </SelectTrigger>
                         <SelectContent>
-                            {REGION_OPTIONS.map((option) => (
+                            {regionOptions.map((option) => (
                                 <SelectItem key={option.value || 'all'} value={option.value || ' '}>
                                     {option.label}
                                 </SelectItem>

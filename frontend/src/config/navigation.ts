@@ -97,6 +97,11 @@ export const adminOnlyNavigation: NavItem[] = [
     icon: 'FileText',
     children: [
       {
+        label: 'Region Management',
+        href: '/policies/regions',
+        icon: 'Globe',
+      },
+      {
         label: 'Policy Management',
         href: '/policies',
         icon: 'FileText',

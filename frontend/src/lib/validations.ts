@@ -32,7 +32,7 @@ export const employeeSchema = z.object({
   department: z.string()
     .min(1, 'Department is required'),
   designation: z.string().optional(),
-  region: z.string().optional(),
+  region: z.array(z.string()).optional(),
   dateOfJoining: z.string().optional(),
   managerId: z.string().optional(),
   projectIds: z.string().optional(),
