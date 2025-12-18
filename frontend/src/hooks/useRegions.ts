@@ -38,7 +38,10 @@ async function fetchRegions(tenantId?: string): Promise<Region[]> {
 }
 
 async function createRegion(region: Partial<Region>, tenantId?: string): Promise<Region> {
-    const response = await fetch(`${API_BASE_URL}/regions/`, {
+    const url = tenantId 
+        ? `${API_BASE_URL}/regions/?tenant_id=${tenantId}`
+        : `${API_BASE_URL}/regions/`;
+    const response = await fetch(url, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -71,8 +74,11 @@ async function createRegion(region: Partial<Region>, tenantId?: string): Promise
     };
 }
 
-async function updateRegion({ id, data }: { id: string; data: Partial<Region> }): Promise<Region> {
-    const response = await fetch(`${API_BASE_URL}/regions/${id}`, {
+async function updateRegion({ id, data, tenantId }: { id: string; data: Partial<Region>; tenantId?: string }): Promise<Region> {
+    const url = tenantId 
+        ? `${API_BASE_URL}/regions/${id}?tenant_id=${tenantId}`
+        : `${API_BASE_URL}/regions/${id}`;
+    const response = await fetch(url, {
         method: 'PUT',
         headers: {
             'Content-Type': 'application/json',
@@ -105,8 +111,11 @@ async function updateRegion({ id, data }: { id: string; data: Partial<Region> })
     };
 }
 
-async function deleteRegion(id: string): Promise<void> {
-    const response = await fetch(`${API_BASE_URL}/regions/${id}`, {
+async function deleteRegion({ id, tenantId }: { id: string; tenantId?: string }): Promise<void> {
+    const url = tenantId 
+        ? `${API_BASE_URL}/regions/${id}?tenant_id=${tenantId}`
+        : `${API_BASE_URL}/regions/${id}`;
+    const response = await fetch(url, {
         method: 'DELETE',
     });
 
@@ -143,9 +152,11 @@ export function useCreateRegion() {
 
 export function useUpdateRegion() {
     const queryClient = useQueryClient();
+    const { user } = useAuth();
 
     return useMutation({
-        mutationFn: updateRegion,
+        mutationFn: ({ id, data }: { id: string; data: Partial<Region> }) => 
+            updateRegion({ id, data, tenantId: user?.tenantId }),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['regions'] });
         },
@@ -154,9 +165,10 @@ export function useUpdateRegion() {
 
 export function useDeleteRegion() {
     const queryClient = useQueryClient();
+    const { user } = useAuth();
 
     return useMutation({
-        mutationFn: deleteRegion,
+        mutationFn: (id: string) => deleteRegion({ id, tenantId: user?.tenantId }),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['regions'] });
         },

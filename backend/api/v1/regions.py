@@ -6,23 +6,25 @@ from uuid import UUID
 from database import get_sync_db
 from models import Region, User
 from schemas import RegionCreate, RegionUpdate, RegionResponse
-from api.v1.auth import get_current_user
 
 router = APIRouter()
 
 @router.get("/", response_model=List[RegionResponse])
-def list_regions(
+async def list_regions(
     skip: int = 0,
     limit: int = 100,
     active_only: bool = False,
     tenant_id: Optional[UUID] = None,
-    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_sync_db)
 ):
     """List all regions for the tenant"""
-    effective_tenant_id = tenant_id or current_user.tenant_id
+    if not tenant_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="tenant_id is required"
+        )
     
-    query = db.query(Region).filter(Region.tenant_id == effective_tenant_id)
+    query = db.query(Region).filter(Region.tenant_id == tenant_id)
     
     if active_only:
         query = query.filter(Region.is_active == True)
@@ -31,15 +33,21 @@ def list_regions(
     return regions
 
 @router.post("/", response_model=RegionResponse)
-def create_region(
+async def create_region(
     region: RegionCreate,
-    current_user: User = Depends(get_current_user),
+    tenant_id: Optional[UUID] = None,
     db: Session = Depends(get_sync_db)
 ):
     """Create a new region"""
+    if not tenant_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="tenant_id is required"
+        )
+    
     # Verify uniqueness
     existing = db.query(Region).filter(
-        Region.tenant_id == current_user.tenant_id,
+        Region.tenant_id == tenant_id,
         func.lower(Region.name) == region.name.lower()
     ).first()
     
@@ -50,7 +58,7 @@ def create_region(
         )
         
     db_region = Region(
-        tenant_id=current_user.tenant_id,
+        tenant_id=tenant_id,
         **region.model_dump()
     )
     
@@ -60,16 +68,22 @@ def create_region(
     return db_region
 
 @router.put("/{region_id}", response_model=RegionResponse)
-def update_region(
+async def update_region(
     region_id: UUID,
     region_update: RegionUpdate,
-    current_user: User = Depends(get_current_user),
+    tenant_id: Optional[UUID] = None,
     db: Session = Depends(get_sync_db)
 ):
     """Update a region"""
+    if not tenant_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="tenant_id is required"
+        )
+    
     db_region = db.query(Region).filter(
         Region.id == region_id,
-        Region.tenant_id == current_user.tenant_id
+        Region.tenant_id == tenant_id
     ).first()
     
     if not db_region:
@@ -81,7 +95,7 @@ def update_region(
     # Check name uniqueness if name is being updated
     if region_update.name and region_update.name.lower() != db_region.name.lower():
         existing = db.query(Region).filter(
-            Region.tenant_id == current_user.tenant_id,
+            Region.tenant_id == tenant_id,
             func.lower(Region.name) == region_update.name.lower()
         ).first()
         if existing:
@@ -99,15 +113,21 @@ def update_region(
     return db_region
 
 @router.delete("/{region_id}")
-def delete_region(
+async def delete_region(
     region_id: UUID,
-    current_user: User = Depends(get_current_user),
+    tenant_id: Optional[UUID] = None,
     db: Session = Depends(get_sync_db)
 ):
     """Delete a region (soft delete preferred, but hard delete allowed if unused)"""
+    if not tenant_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="tenant_id is required"
+        )
+    
     db_region = db.query(Region).filter(
         Region.id == region_id,
-        Region.tenant_id == current_user.tenant_id
+        Region.tenant_id == tenant_id
     ).first()
     
     if not db_region:
