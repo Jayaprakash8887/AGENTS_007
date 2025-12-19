@@ -56,6 +56,7 @@ import { format } from 'date-fns';
 import { useAuth } from '@/contexts/AuthContext';
 import { MultiSelect } from '@/components/ui/multi-select';
 import { useRegions } from '@/hooks/useRegions';
+import { useFormatting } from '@/hooks/useFormatting';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
 
@@ -413,6 +414,7 @@ const getEmptyCustomField = (): CustomFieldDefinition => ({
 export default function Policies() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const { formatCurrency, formatDate, formatDateTime } = useFormatting();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -1102,7 +1104,7 @@ export default function Policies() {
                         <Badge variant="secondary">{policy.categories_count} categories</Badge>
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
-                        {format(new Date(policy.created_at), 'MMM d, yyyy')}
+                        {formatDate(new Date(policy.created_at))}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-2">
@@ -1384,7 +1386,7 @@ export default function Policies() {
                 </div>
                 <div>
                   <Label className="text-muted-foreground">Uploaded</Label>
-                  <p className="mt-1">{format(new Date(selectedPolicy.created_at), 'MMM d, yyyy HH:mm')}</p>
+                  <p className="mt-1">{formatDateTime(new Date(selectedPolicy.created_at))}</p>
                 </div>
               </div>
 
@@ -1423,7 +1425,7 @@ export default function Policies() {
                           </div>
                           <div className="flex items-center gap-4">
                             {category.max_amount && (
-                              <span className="text-sm">Max: ₹{category.max_amount.toLocaleString()}</span>
+                              <span className="text-sm">Max: {formatCurrency(category.max_amount)}</span>
                             )}
                             {category.ai_confidence && (
                               <Badge variant="outline" className="text-xs">

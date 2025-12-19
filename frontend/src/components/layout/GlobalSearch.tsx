@@ -17,6 +17,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
+import { useFormatting } from '@/hooks/useFormatting';
 
 const API_BASE_URL = 'http://localhost:8000/api/v1';
 
@@ -54,6 +55,8 @@ export function GlobalSearch({ className }: GlobalSearchProps) {
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  
+  const { formatCurrency } = useFormatting();
 
   const placeholder = placeholderByRole[user?.role || 'employee'] || 'Search...';
 
@@ -106,7 +109,7 @@ export function GlobalSearch({ className }: GlobalSearchProps) {
               id: claim.id,
               type: 'claim',
               title: claim.claim_number,
-              subtitle: `${claim.employee_name} • ${claim.category} • ₹${claim.amount?.toLocaleString()}`,
+              subtitle: `${claim.employee_name} • ${claim.category} • ${formatCurrency(claim.amount || 0)}`,
               status: claim.status,
               amount: claim.amount,
               icon: 'claim',
@@ -197,7 +200,7 @@ export function GlobalSearch({ className }: GlobalSearchProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [user]);
+  }, [user, formatCurrency]);
 
   useEffect(() => {
     if (searchDebounceRef.current) {

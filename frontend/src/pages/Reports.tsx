@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
+import { useFormatting } from '@/hooks/useFormatting';
 import {
   BarChart,
   Bar,
@@ -71,6 +72,7 @@ const departmentData = [
 
 export default function Reports() {
   const [dateRange, setDateRange] = useState('6m');
+  const { formatCurrency } = useFormatting();
 
   return (
     <div className="space-y-6">
@@ -252,7 +254,7 @@ export default function Reports() {
                     <XAxis dataKey="month" className="text-xs" />
                     <YAxis className="text-xs" />
                     <Tooltip
-                      formatter={(value: number) => `$${value.toLocaleString()}`}
+                      formatter={(value: number) => formatCurrency(value)}
                     />
                     <Bar dataKey="amount" fill="#2563eb" radius={[4, 4, 0, 0]} />
                   </BarChart>
@@ -370,7 +372,7 @@ export default function Reports() {
                     <XAxis type="number" className="text-xs" />
                     <YAxis dataKey="department" type="category" width={100} className="text-xs" />
                     <Tooltip
-                      formatter={(value: number) => `$${value.toLocaleString()}`}
+                      formatter={(value: number) => formatCurrency(value)}
                     />
                     <Bar dataKey="amount" fill="#2563eb" radius={[0, 4, 4, 0]} />
                   </BarChart>
@@ -386,7 +388,7 @@ export default function Reports() {
                   <p className="text-sm font-medium text-muted-foreground">
                     {dept.department}
                   </p>
-                  <p className="text-2xl font-bold">${dept.amount.toLocaleString()}</p>
+                  <p className="text-2xl font-bold">{formatCurrency(dept.amount)}</p>
                   <p className="text-xs text-muted-foreground">{dept.claims} claims</p>
                 </CardContent>
               </Card>

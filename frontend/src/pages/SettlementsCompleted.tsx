@@ -18,16 +18,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { format } from 'date-fns';
 import { useClaims } from '@/hooks/useClaims';
 import { useAuth } from '@/contexts/AuthContext';
 import { Link } from 'react-router-dom';
+import { useFormatting } from '@/hooks/useFormatting';
 
 export default function SettlementsCompleted() {
   const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedClaim, setSelectedClaim] = useState<any>(null);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  
+  const { formatCurrency, formatDate } = useFormatting();
 
   const { data: allClaims = [], isLoading } = useClaims();
 
@@ -49,10 +51,6 @@ export default function SettlementsCompleted() {
   const totalSettledAmount = useMemo(() => {
     return settledClaims.reduce((sum, claim) => sum + (claim.amount || 0), 0);
   }, [settledClaims]);
-
-  const formatCurrency = (amount: number) => {
-    return `₹${amount.toLocaleString('en-IN')}`;
-  };
 
   const handleViewDetails = (claim: any) => {
     setSelectedClaim(claim);
@@ -178,7 +176,7 @@ export default function SettlementsCompleted() {
                     </TableCell>
                     <TableCell>
                       {claim.settledDate
-                        ? format(new Date(claim.settledDate), 'MMM d, yyyy')
+                        ? formatDate(claim.settledDate)
                         : '-'}
                     </TableCell>
                     <TableCell className="font-mono text-sm">
@@ -265,7 +263,7 @@ export default function SettlementsCompleted() {
                     <p className="text-sm text-muted-foreground">Settlement Date</p>
                     <p className="font-medium">
                       {selectedClaim.settledDate
-                        ? format(new Date(selectedClaim.settledDate), 'MMMM d, yyyy')
+                        ? formatDate(selectedClaim.settledDate)
                         : 'N/A'}
                     </p>
                   </div>

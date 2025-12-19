@@ -622,8 +622,8 @@ async def list_claims(
     total_result = await db.execute(count_query)
     total = total_result.scalar()
     
-    # Get paginated results
-    query = query.offset(skip).limit(limit).order_by(Claim.created_at.desc())
+    # Get paginated results - order by updated_at desc so latest modified comes first
+    query = query.offset(skip).limit(limit).order_by(Claim.updated_at.desc())
     result = await db.execute(query)
     claims = result.scalars().all()
     

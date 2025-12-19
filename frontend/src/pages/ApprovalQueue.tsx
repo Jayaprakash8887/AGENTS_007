@@ -1,6 +1,5 @@
 import { useState, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { format } from 'date-fns';
 import {
   ChevronLeft,
   ChevronRight,
@@ -38,6 +37,7 @@ import {
 import { ClaimStatusBadge } from '@/components/claims/ClaimStatusBadge';
 import { AIConfidenceBadge } from '@/components/claims/AIConfidenceBadge';
 import { useClaims } from '@/hooks/useClaims';
+import { useFormatting } from '@/hooks/useFormatting';
 import { formatCategory } from '@/lib/categoryUtils';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/hooks/use-toast';
@@ -67,6 +67,7 @@ export default function ApprovalQueue() {
 
   const tenantId = user?.tenantId;
   const { data: allClaims = [], isLoading, error, refetch } = useClaims();
+  const { formatDate, formatDateTime, formatCurrency } = useFormatting();
 
   const pendingClaims = useMemo(() => {
     const pendingStatus = getPendingStatusForRole(user?.role || 'employee');
@@ -271,7 +272,7 @@ export default function ApprovalQueue() {
                       <div className="flex items-center justify-between gap-2">
                         <p className="font-medium truncate">{claim.title}</p>
                         <span className="shrink-0 font-semibold text-sm">
-                          ₹{claim.amount.toLocaleString()}
+                          {formatCurrency(claim.amount)}
                         </span>
                       </div>
                       <div className="flex items-center gap-2 mt-1">
@@ -280,7 +281,7 @@ export default function ApprovalQueue() {
                         </span>
                         <span className="text-xs text-muted-foreground">•</span>
                         <span className="text-xs text-muted-foreground">
-                          {format(claim.submissionDate || new Date(), 'MMM dd')}
+                          {formatDate(claim.submissionDate)}
                         </span>
                       </div>
                       <div className="flex items-center gap-2 mt-2">
@@ -440,7 +441,7 @@ export default function ApprovalQueue() {
                 <div>
                   <p className="text-sm text-muted-foreground">Amount</p>
                   <p className="font-semibold text-lg">
-                    ₹{currentClaim.amount.toLocaleString()}
+                    {formatCurrency(currentClaim.amount)}
                   </p>
                 </div>
                 <div>
@@ -456,7 +457,7 @@ export default function ApprovalQueue() {
                 <div>
                   <p className="text-sm text-muted-foreground">Expense Date</p>
                   <p className="font-medium">
-                    {format(currentClaim.claimDate || currentClaim.submissionDate || new Date(), 'MMMM dd, yyyy')}
+                    {formatDate(currentClaim.claimDate || currentClaim.submissionDate)}
                   </p>
                 </div>
                 <div>
@@ -480,7 +481,7 @@ export default function ApprovalQueue() {
                   <p className="font-medium">{currentClaim.employeeName || 'Unknown Employee'}</p>
                   <p className="text-sm text-muted-foreground">
                     {currentClaim.department || 'Unknown Dept'} •{' '}
-                    {format(currentClaim.submissionDate || new Date(), 'MMM dd, yyyy HH:mm')}
+                    {formatDateTime(currentClaim.submissionDate || new Date())}
                   </p>
                 </div>
               </div>

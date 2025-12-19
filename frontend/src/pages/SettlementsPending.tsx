@@ -35,6 +35,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { Link } from 'react-router-dom';
 import { Claim } from '@/types';
+import { useFormatting } from '@/hooks/useFormatting';
 
 const API_BASE_URL = 'http://localhost:8000/api/v1';
 
@@ -51,6 +52,8 @@ export default function SettlementsPending() {
     notes: '',
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  const { formatCurrency, formatDate } = useFormatting();
 
   const { data: allClaims = [], isLoading, refetch } = useClaims();
 
@@ -151,10 +154,6 @@ export default function SettlementsPending() {
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  const formatCurrency = (amount: number) => {
-    return `₹${amount.toLocaleString('en-IN')}`;
   };
 
   if (isLoading) {
@@ -306,7 +305,7 @@ export default function SettlementsPending() {
                     </TableCell>
                     <TableCell>
                       {claim.submissionDate
-                        ? format(new Date(claim.submissionDate), 'MMM d, yyyy')
+                        ? formatDate(claim.submissionDate)
                         : '-'}
                     </TableCell>
                     <TableCell>

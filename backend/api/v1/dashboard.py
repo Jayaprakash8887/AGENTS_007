@@ -11,7 +11,7 @@ from uuid import UUID
 from database import get_sync_db
 from models import Claim, User, Approval, AgentExecution
 from services.redis_cache import redis_cache
-
+from utils.timezone import now_tz, first_day_of_month_tz
 # Employee is now an alias for User (tables merged)
 Employee = User
 
@@ -61,8 +61,8 @@ async def get_dashboard_summary(
         and_(*pending_conditions)
     ).scalar() or 0
     
-    # Approved claims (this month)
-    first_day_of_month = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    # Approved claims (this month) - use tenant timezone
+    first_day_of_month = first_day_of_month_tz().replace(tzinfo=None)
     approved_conditions = base_conditions + [
         Claim.status == 'FINANCE_APPROVED',
         Claim.updated_at >= first_day_of_month
@@ -325,8 +325,8 @@ async def get_hr_metrics(
         hr_pending_query = hr_pending_query.filter(Claim.tenant_id == tenant_id)
     hr_pending = hr_pending_query.scalar() or 0
     
-    # Claims approved by HR this month
-    first_day_of_month = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    # Claims approved by HR this month - use tenant timezone
+    first_day_of_month = first_day_of_month_tz().replace(tzinfo=None)
     hr_approved_query = db.query(func.count(Claim.id)).filter(
         Claim.status.in_(['HR_APPROVED', 'PENDING_FINANCE', 'FINANCE_APPROVED', 'SETTLED']),
         Claim.updated_at >= first_day_of_month
@@ -395,8 +395,8 @@ async def get_allowance_summary(
     if employee_id:
         query = query.filter(Claim.employee_id == employee_id)
     
-    # Filter for current month
-    first_day_of_month = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    # Filter for current month - use tenant timezone
+    first_day_of_month = first_day_of_month_tz().replace(tzinfo=None)
     query = query.filter(Claim.created_at >= first_day_of_month)
     
     results = query.group_by(Claim.category).all()

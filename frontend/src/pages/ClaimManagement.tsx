@@ -45,10 +45,10 @@ import {
     Search
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { format } from 'date-fns';
 import { toast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRegions } from '@/hooks/useRegions';
+import { useFormatting } from '@/hooks/useFormatting';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
 
@@ -122,6 +122,7 @@ export default function ClaimManagement() {
     const { user } = useAuth();
     const queryClient = useQueryClient();
     const { data: regions } = useRegions();
+    const { formatCurrency } = useFormatting();
 
     const regionOptions = [
         { value: '', label: 'All Regions' },
@@ -280,7 +281,7 @@ export default function ClaimManagement() {
                                         </Badge>
                                     </TableCell>
                                     <TableCell>
-                                        {claim.max_amount ? `₹${claim.max_amount.toLocaleString()}` : <span className="text-muted-foreground text-sm">Unlimited</span>}
+                                        {claim.max_amount ? formatCurrency(claim.max_amount) : <span className="text-muted-foreground text-sm">Unlimited</span>}
                                     </TableCell>
                                     <TableCell>
                                         <span className={claim.requires_receipt ? "text-green-600 font-medium text-sm" : "text-muted-foreground text-sm"}>

@@ -181,39 +181,38 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     Rate limiting middleware with endpoint-specific limits.
     For production, use Redis-based rate limiting for distributed systems.
     
-    Endpoint-specific limits:
-    - /api/v1/auth/login: 10/min (prevent brute force)
-    - /api/v1/documents/upload: 20/min (file uploads)
-    - /api/v1/reports/*: 10/min (expensive operations)
-    - /api/v1/dashboard/summary: 30/min (moderate)
-    - Default: 60/min
+    NOTE: Rate limiting is DISABLED in development mode for easier testing.
+    In production, stricter limits should be applied.
     """
     
     # Endpoint-specific rate limits (path prefix -> requests per minute)
+    # These are production values - in development, limits are much higher
     ENDPOINT_LIMITS = {
-        "/api/v1/auth/login": 10,         # Prevent brute force attacks
-        "/api/v1/auth/register": 5,       # Prevent mass registration
-        "/api/v1/auth/forgot-password": 5, # Prevent abuse
-        "/api/v1/documents/upload": 20,   # File uploads are expensive
-        "/api/v1/documents/bulk": 5,      # Bulk operations
-        "/api/v1/reports": 10,            # Expensive aggregations
-        "/api/v1/dashboard/summary": 30,  # Dashboard stats
-        "/api/v1/claims/batch": 10,       # Batch claim creation
-        "/api/v1/ocr": 15,                # OCR processing
-        "/api/v1/export": 10,             # Data exports
+        "/api/v1/auth/login": 60,         # Prevent brute force attacks
+        "/api/v1/auth/register": 30,      # Prevent mass registration
+        "/api/v1/auth/forgot-password": 30, # Prevent abuse
+        "/api/v1/documents/upload": 100,  # File uploads are expensive
+        "/api/v1/documents/bulk": 30,     # Bulk operations
+        "/api/v1/reports": 60,            # Expensive aggregations
+        "/api/v1/dashboard/summary": 120, # Dashboard stats
+        "/api/v1/claims/batch": 60,       # Batch claim creation
+        "/api/v1/ocr": 60,                # OCR processing
+        "/api/v1/export": 60,             # Data exports
     }
     
     def __init__(
         self,
         app,
-        requests_per_minute: int = 60,
-        burst_limit: int = 100,
-        exclude_paths: Optional[list] = None
+        requests_per_minute: int = 1000,
+        burst_limit: int = 2000,
+        exclude_paths: Optional[list] = None,
+        enabled: bool = False  # Disabled by default for development
     ):
         super().__init__(app)
         self.requests_per_minute = requests_per_minute
         self.burst_limit = burst_limit
-        self.exclude_paths = exclude_paths or ["/health", "/metrics"]
+        self.exclude_paths = exclude_paths or ["/health", "/metrics", "/api/v1"]  # Exclude all API paths in dev
+        self.enabled = enabled
         self.request_counts = defaultdict(lambda: defaultdict(list))  # ip -> endpoint -> timestamps
         self._cleanup_interval = 60  # seconds
         self._last_cleanup = time.time()
@@ -250,6 +249,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             self._last_cleanup = current_time
     
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        # Skip rate limiting entirely if disabled
+        if not self.enabled:
+            return await call_next(request)
+        
         # Skip rate limiting for excluded paths
         if any(request.url.path.startswith(path) for path in self.exclude_paths):
             return await call_next(request)

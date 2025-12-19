@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { format } from 'date-fns';
 import {
   ArrowLeft,
   Phone,
@@ -30,6 +29,7 @@ import { cn } from '@/lib/utils';
 import { mockAllowances, allowancePolicies } from '@/data/mockAllowances';
 import { AllowanceStatus, AllowanceType } from '@/types/allowance';
 import { useAuth } from '@/contexts/AuthContext';
+import { useFormatting } from '@/hooks/useFormatting';
 
 const typeIcons: Record<AllowanceType, React.ElementType> = {
   on_call: Phone,
@@ -66,6 +66,8 @@ export default function AllowanceDetails() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [comment, setComment] = useState('');
+  
+  const { formatCurrency, formatDate, formatDateTime } = useFormatting();
 
   const allowance = mockAllowances.find((a) => a.id === id);
   const policy = allowance
@@ -160,8 +162,8 @@ export default function AllowanceDetails() {
                   <div>
                     <p className="text-sm text-muted-foreground">Period</p>
                     <p className="font-medium">
-                      {format(allowance.period.startDate, 'MMM dd')} -{' '}
-                      {format(allowance.period.endDate, 'MMM dd, yyyy')}
+                      {formatDate(allowance.period.startDate)} -{' '}
+                      {formatDate(allowance.period.endDate)}
                     </p>
                   </div>
                 </div>
@@ -179,7 +181,7 @@ export default function AllowanceDetails() {
               <div className="grid gap-4 sm:grid-cols-3">
                 <div className="rounded-lg border p-4 text-center">
                   <p className="text-2xl font-bold text-primary">
-                    ₹{allowance.amount.toLocaleString()}
+                    {formatCurrency(allowance.amount)}
                   </p>
                   <p className="text-sm text-muted-foreground">Amount</p>
                 </div>
@@ -275,7 +277,7 @@ export default function AllowanceDetails() {
                       <div className="flex items-center justify-between">
                         <p className="font-medium capitalize">{item.action}</p>
                         <span className="text-sm text-muted-foreground">
-                          {format(item.timestamp, 'MMM dd, yyyy HH:mm')}
+                          {formatDateTime(item.timestamp)}
                         </span>
                       </div>
                       <p className="text-sm text-muted-foreground">
@@ -319,7 +321,7 @@ export default function AllowanceDetails() {
                           {c.author.role}
                         </Badge>
                         <span className="text-xs text-muted-foreground">
-                          {format(c.createdAt, 'MMM dd, HH:mm')}
+                          {formatDateTime(c.createdAt)}
                         </span>
                       </div>
                       <p className="text-sm mt-1">{c.content}</p>
@@ -424,7 +426,7 @@ export default function AllowanceDetails() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Submitted</span>
-                  <span>{format(allowance.submittedAt, 'MMM dd, yyyy')}</span>
+                  <span>{formatDate(allowance.submittedAt)}</span>
                 </div>
               </div>
             </CardContent>
@@ -448,7 +450,7 @@ export default function AllowanceDetails() {
               <div className="text-sm space-y-2">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Max Amount</span>
-                  <span className="font-medium">₹{policy.maxAmount.toLocaleString()}</span>
+                  <span className="font-medium">{formatCurrency(policy.maxAmount)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Cut-off Date</span>

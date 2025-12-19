@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { format } from 'date-fns';
 import {
   ArrowLeft,
   Send,
@@ -30,6 +29,7 @@ import { useDocuments } from '@/hooks/useDocuments';
 import { useComments, useCreateComment } from '@/hooks/useComments';
 import { Separator } from '@/components/ui/separator';
 import { useAuth } from '@/contexts/AuthContext';
+import { useFormatting } from '@/hooks/useFormatting';
 import { toast } from '@/hooks/use-toast';
 import { useReimbursementsByRegion } from '@/hooks/usePolicies';
 import { PolicyChecks } from '@/components/claims/PolicyChecks';
@@ -44,6 +44,7 @@ export default function EditClaim() {
   const updateClaim = useUpdateClaim();
   const createCommentMutation = useCreateComment();
   const { user } = useAuth();
+  const { formatCurrency, formatDateTime } = useFormatting();
   
   // Fetch reimbursement categories for policy validation
   const { data: reimbursementCategories = [] } = useReimbursementsByRegion(user?.region);
@@ -57,14 +58,19 @@ export default function EditClaim() {
   const [isSaving, setIsSaving] = useState(false);
   const [comment, setComment] = useState('');
 
+  // Helper to format date for input
+  const formatDateForInput = (date: Date | string | null) => {
+    if (!date) return new Date().toISOString().split('T')[0];
+    const d = typeof date === 'string' ? new Date(date) : date;
+    return d.toISOString().split('T')[0];
+  };
+
   // Initialize form data when claim loads
   useEffect(() => {
     if (claim) {
       setFormData({
         amount: claim.amount?.toString() || '',
-        claim_date: claim.claimDate 
-          ? format(new Date(claim.claimDate), 'yyyy-MM-dd')
-          : format(new Date(), 'yyyy-MM-dd'),
+        claim_date: formatDateForInput(claim.claimDate),
         description: claim.description || '',
       });
     }
@@ -100,17 +106,17 @@ export default function EditClaim() {
     if (maxAmount && claimAmount > maxAmount) {
       return { 
         status: 'fail' as const, 
-        message: `Amount ₹${claimAmount.toLocaleString()} exceeds policy limit of ₹${maxAmount.toLocaleString()}` 
+        message: `Amount ${formatCurrency(claimAmount)} exceeds policy limit of ${formatCurrency(maxAmount)}` 
       };
     }
     
     return { 
       status: 'pass' as const, 
       message: maxAmount 
-        ? `Amount ₹${claimAmount.toLocaleString()} within policy limit of ₹${maxAmount.toLocaleString()}`
+        ? `Amount ${formatCurrency(claimAmount)} within policy limit of ${formatCurrency(maxAmount)}`
         : "Amount verified - no policy limit defined"
     };
-  }, [formData.amount, selectedCategoryPolicy]);
+  }, [formData.amount, selectedCategoryPolicy, formatCurrency]);
   
   // Date validation against policy
   const dateValidation = useMemo(() => {
@@ -535,7 +541,7 @@ export default function EditClaim() {
                       </div>
                       <p className="text-sm text-muted-foreground">{cmt.comment_text}</p>
                       <p className="text-xs text-muted-foreground">
-                        {format(new Date(cmt.created_at), 'MMM dd, yyyy HH:mm')}
+                        {formatDateTime(cmt.created_at)}
                       </p>
                     </div>
                   ))

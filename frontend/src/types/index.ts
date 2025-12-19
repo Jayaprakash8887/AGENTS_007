@@ -72,6 +72,8 @@ export interface Claim {
   submittedAt?: Date;
   submissionDate?: Date;
   claimDate?: Date;
+  createdAt?: Date;
+  updatedAt?: Date;  // Latest modified time
   employeeId?: string;
   employeeName?: string;
   department?: string;

@@ -31,6 +31,7 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { allowancePolicies } from '@/data/mockAllowances';
 import { AllowanceType } from '@/types/allowance';
+import { useFormatting } from '@/hooks/useFormatting';
 
 const typeIcons: Record<AllowanceType, React.ElementType> = {
   on_call: Phone,
@@ -64,6 +65,8 @@ export default function NewAllowance() {
     projectCode: '',
   });
   const [aiScore, setAiScore] = useState(0);
+  
+  const { formatCurrency, getCurrencySymbol, formatDate } = useFormatting();
 
   const selectedPolicy = selectedType
     ? allowancePolicies.find((p) => p.type === selectedType)
@@ -211,7 +214,7 @@ export default function NewAllowance() {
               <CardContent className="space-y-6">
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
-                    <Label htmlFor="amount">Amount (₹)</Label>
+                    <Label htmlFor="amount">Amount ({getCurrencySymbol()})</Label>
                     <Input
                       id="amount"
                       type="number"
@@ -222,7 +225,7 @@ export default function NewAllowance() {
                       }
                     />
                     <p className="text-xs text-muted-foreground">
-                      Maximum: ₹{selectedPolicy.maxAmount.toLocaleString()}
+                      Maximum: {formatCurrency(selectedPolicy.maxAmount)}
                     </p>
                   </div>
                   <div className="space-y-2">
@@ -362,13 +365,13 @@ export default function NewAllowance() {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Amount</span>
-                      <span className="font-medium">₹{Number(formData.amount).toLocaleString()}</span>
+                      <span className="font-medium">{formatCurrency(Number(formData.amount))}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Period</span>
                       <span className="font-medium">
-                        {format(new Date(formData.periodStart), 'MMM dd')} -{' '}
-                        {format(new Date(formData.periodEnd), 'MMM dd, yyyy')}
+                        {formatDate(formData.periodStart)} -{' '}
+                        {formatDate(formData.periodEnd)}
                       </span>
                     </div>
                     <div className="flex justify-between">
@@ -378,7 +381,7 @@ export default function NewAllowance() {
                     <Separator />
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Payroll Month</span>
-                      <span className="font-medium">{format(new Date(), 'MMMM yyyy')}</span>
+                      <span className="font-medium">{formatDate(new Date())}</span>
                     </div>
                   </div>
                 </div>
@@ -470,7 +473,7 @@ export default function NewAllowance() {
                 <CardContent className="space-y-3">
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Maximum Amount</span>
-                    <span className="font-medium">₹{selectedPolicy.maxAmount.toLocaleString()}</span>
+                    <span className="font-medium">{formatCurrency(selectedPolicy.maxAmount)}</span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Cut-off Date</span>

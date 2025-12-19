@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { format } from 'date-fns';
 import {
   ArrowLeft,
   FileText,
@@ -52,6 +51,7 @@ import { useClaim } from '@/hooks/useClaims';
 import { useDocuments, getDocumentViewUrl, getDocumentDownloadUrl, useDocumentSignedUrl } from '@/hooks/useDocuments';
 import { useComments, useCreateComment } from '@/hooks/useComments';
 import { useAuth } from '@/contexts/AuthContext';
+import { useFormatting } from '@/hooks/useFormatting';
 import { toast } from '@/hooks/use-toast';
 import { DataSource, Claim, ClaimDocument } from '@/types';
 import { formatCategory } from '@/lib/categoryUtils';
@@ -60,6 +60,7 @@ export default function ClaimDetails() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { formatDate, formatDateTime, formatCurrency, getCurrencySymbol } = useFormatting();
   const [comment, setComment] = useState('');
   const [activeTab, setActiveTab] = useState('details');
   const [viewingDocument, setViewingDocument] = useState<ClaimDocument | null>(null);
@@ -471,7 +472,7 @@ export default function ClaimDetails() {
                             "flex items-center gap-2 w-full",
                             hrEditedFields.has('amount') && "bg-purple-50 dark:bg-purple-900/20 rounded-md p-1 -m-1"
                           )}>
-                            <span className="text-lg font-semibold">₹</span>
+                            <span className="text-lg font-semibold">{getCurrencySymbol()}</span>
                             <Input
                               type="number"
                               value={editedFields.amount || ''}
@@ -483,7 +484,7 @@ export default function ClaimDetails() {
                         ) : (
                           <>
                             <p className="text-lg font-semibold">
-                              ₹{claim.amount.toLocaleString()}
+                              {formatCurrency(claim.amount)}
                             </p>
                             {getDataSourceBadge(claim.dataSource?.amount || 'manual')}
                           </>
@@ -497,7 +498,7 @@ export default function ClaimDetails() {
                       </p>
                       <div className="flex items-center gap-2 mt-1">
                         <p className="font-medium">
-                          {format(claim.claimDate || claim.submissionDate || new Date(), 'MMMM dd, yyyy')}
+                          {formatDate(claim.claimDate || claim.submissionDate)}
                         </p>
                         {getDataSourceBadge(claim.dataSource?.date || 'manual')}
                       </div>
@@ -820,7 +821,7 @@ export default function ClaimDetails() {
                           <div className="flex items-center justify-between">
                             <p className="font-medium capitalize">{item.action}</p>
                             <p className="text-sm text-muted-foreground">
-                              {format(item.timestamp, 'MMM dd, yyyy HH:mm')}
+                              {formatDateTime(item.timestamp)}
                             </p>
                           </div>
                           <p className="text-sm text-muted-foreground">
@@ -1050,7 +1051,7 @@ export default function ClaimDetails() {
               </div>
               <Separator className="my-4" />
               <p className="text-sm text-muted-foreground">
-                Submitted on {claim.submittedAt ? format(claim.submittedAt, 'MMM dd, yyyy') : (claim.submissionDate ? format(new Date(claim.submissionDate), 'MMM dd, yyyy') : 'N/A')}
+                Submitted on {formatDate(claim.submittedAt || claim.submissionDate)}
               </p>
             </CardContent>
           </Card>
@@ -1086,7 +1087,7 @@ export default function ClaimDetails() {
                   </div>
                   <p className="text-sm text-muted-foreground">{cmt.comment_text}</p>
                   <p className="text-xs text-muted-foreground">
-                    {format(new Date(cmt.created_at), 'MMM dd, yyyy HH:mm')}
+                    {formatDateTime(cmt.created_at)}
                   </p>
                 </div>
               ))}

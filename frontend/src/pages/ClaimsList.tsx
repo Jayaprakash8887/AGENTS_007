@@ -1,6 +1,5 @@
 import { useState, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { format } from 'date-fns';
 import {
   Plus,
   Search,
@@ -48,6 +47,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ClaimStatusBadge } from '@/components/claims/ClaimStatusBadge';
 import { AIConfidenceBadge } from '@/components/claims/AIConfidenceBadge';
 import { useClaims, useDeleteClaim } from '@/hooks/useClaims';
+import { useFormatting } from '@/hooks/useFormatting';
 import { toast } from '@/hooks/use-toast';
 import { ClaimStatus } from '@/types';
 import { useAuth } from '@/contexts/AuthContext';
@@ -80,6 +80,7 @@ export default function ClaimsList() {
   const tenantId = user?.tenantId;
   const { data: claims = [], isLoading, error, refetch } = useClaims(tenantId);
   const deleteClaim = useDeleteClaim();
+  const { formatDate, formatCurrency } = useFormatting();
 
   const handleDeleteClaim = async (claimId: string, claimNumber: string) => {
     if (!confirm(`Are you sure you want to delete claim ${claimNumber}?`)) {
@@ -123,10 +124,10 @@ export default function ClaimsList() {
       result = result.filter((claim) => claim.status === statusFilter);
     }
 
-    // Sort
+    // Sort by updatedAt (latest modified first by default)
     result.sort((a, b) => {
-      const aDate = a.claimDate || a.submissionDate || new Date();
-      const bDate = b.claimDate || b.submissionDate || new Date();
+      const aDate = a.updatedAt || a.submissionDate || new Date();
+      const bDate = b.updatedAt || b.submissionDate || new Date();
       const aVal = sortField === 'date' ? aDate.getTime() : a.amount;
       const bVal = sortField === 'date' ? bDate.getTime() : b.amount;
       return sortOrder === 'asc' ? aVal - bVal : bVal - aVal;
@@ -352,10 +353,10 @@ export default function ClaimsList() {
                       <Badge variant="outline">{formatCategory(claim.category || 'Other')}</Badge>
                     </TableCell>
                     <TableCell className="font-medium">
-                      ₹{claim.amount.toLocaleString()}
+                      {formatCurrency(claim.amount)}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
-                      {format(claim.claimDate || claim.submissionDate || new Date(), 'MMM dd, yyyy')}
+                      {formatDate(claim.claimDate || claim.submissionDate)}
                     </TableCell>
                     <TableCell>
                       <ClaimStatusBadge status={claim.status} size="sm" />

@@ -187,16 +187,50 @@ Fixed-amount claims that don't require receipts.
 
 ### 5.3 Auto-Approval
 
-**Criteria:**
-- Confidence score ≥ 95%
-- All rules passed
-- Auto-approval enabled
-- Within amount limits
+**Admin Control:**
+- **Enable Auto-Approval (Admin Setting)**: Master switch to enable/disable all auto-approval functionality
+- When disabled, all claims go through manual approval workflow regardless of confidence
+
+**Initial Auto-Approval Criteria:**
+- Auto-approval enabled by admin
+- Confidence score ≥ configured threshold (default 95%)
+- Claim amount ≤ max auto-approval amount
+- AI recommendation is APPROVE or AUTO_APPROVE
+- All policy rules passed
+
+**Auto-Skip After Manager Approval:**
+When enabled, claims that meet the following criteria will skip HR and Finance review after manager approval:
+- Confidence score ≥ auto-approval threshold
+- No policy exceptions (failed rules)
+- Claim amount within limits
+
+**Routing Logic:**
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    INTELLIGENT CLAIM ROUTING                                 │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  confidence ≥ 95% + amount ≤ max + APPROVE ──▶ FINANCE_APPROVED (auto)     │
+│                                                                              │
+│  policy exceptions exist ──▶ PENDING_HR                                     │
+│                                                                              │
+│  confidence ≥ policy_threshold ──▶ PENDING_MANAGER                          │
+│                                                                              │
+│  confidence < 60% ──▶ REJECTED                                              │
+│                                                                              │
+│  After Manager Approval (if auto-skip enabled):                             │
+│    high confidence + no exceptions ──▶ FINANCE_APPROVED                     │
+│    policy exceptions ──▶ PENDING_HR                                         │
+│    default ──▶ PENDING_FINANCE                                              │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
 
 **Benefits:**
-- Instant processing (<1 minute)
+- Instant processing (<1 minute) for high-confidence claims
 - Reduced manager workload
 - Faster reimbursements
+- Configurable thresholds per tenant
 
 ---
 
@@ -484,9 +518,139 @@ FINANCE_APPROVED ──▶ Process Payment ──▶ Enter Reference ──▶ S
 
 ---
 
-## 15. Audit & Compliance
+## 15. System Settings (Admin)
 
-### 15.1 Audit Trail
+### 15.1 General Settings
+
+Admin users can configure tenant-wide settings:
+
+| Setting | Description | Options |
+|---------|-------------|---------|
+| AI Processing | Enable AI for OCR and validation | On/Off |
+| Auto-Approval | Automatically approve high-confidence claims | On/Off |
+| **Enable Auto-Approval (Admin)** | Master switch to enable/disable all auto-approval | On/Off |
+| **Auto-Skip After Manager** | Skip HR/Finance after manager approval if thresholds met | On/Off |
+| AI Confidence Threshold | Minimum AI confidence for auto-approval | 50% - 100% |
+| Max Auto-Approval Amount | Maximum claim amount for auto-approval | Currency amount |
+| Policy Compliance Threshold | Minimum AI confidence for policy compliance | 50% - 100% |
+| Default Currency | Default currency for claims | USD, EUR, GBP, INR, AED, SGD, JPY |
+| Fiscal Year Start | When fiscal year begins | January, April, July, October |
+
+**Enable Auto-Approval (Admin):**
+Master control for the auto-approval feature:
+- **Enabled (default)**: Claims meeting criteria are auto-approved
+- **Disabled**: All claims require manual approval workflow
+- Affects initial routing and post-manager approval behavior
+
+**Auto-Skip After Manager Approval:**
+When enabled and thresholds are met after manager approval:
+- High confidence + no policy exceptions → Skip directly to FINANCE_APPROVED
+- Policy exceptions exist → Route to HR
+- Otherwise → Route to Finance
+
+**Policy Compliance Threshold:**
+This setting controls when claims are flagged for review vs considered compliant:
+- **Above threshold**: Claim is considered policy-compliant
+- **Below threshold**: Claim is flagged for manual policy review
+- **Default**: 80%
+- **Use case**: Lower thresholds (e.g., 60%) allow more claims to pass; higher thresholds (e.g., 90%) require stricter compliance
+
+### 15.2 Regional Settings
+
+Each tenant can configure regional preferences:
+
+**Timezone Configuration:**
+| Code | Timezone | UTC Offset |
+|------|----------|------------|
+| IST | India Standard Time | UTC+5:30 |
+| UTC | Coordinated Universal Time | UTC+0:00 |
+| EST | Eastern Standard Time | UTC-5:00 |
+| PST | Pacific Standard Time | UTC-8:00 |
+| GMT | Greenwich Mean Time | UTC+0:00 |
+| CET | Central European Time | UTC+1:00 |
+| JST | Japan Standard Time | UTC+9:00 |
+| AEST | Australian Eastern Standard Time | UTC+10:00 |
+| SGT | Singapore Time | UTC+8:00 |
+| GST | Gulf Standard Time | UTC+4:00 |
+
+**Date Format Options:**
+| Format | Example | Common Usage |
+|--------|---------|--------------|
+| DD/MM/YYYY | 19/12/2025 | India, UK, Europe |
+| MM/DD/YYYY | 12/19/2025 | USA |
+| YYYY-MM-DD | 2025-12-19 | ISO/International |
+| DD-MM-YYYY | 19-12-2025 | Alternative |
+| DD.MM.YYYY | 19.12.2025 | Germany |
+
+**Number Format Options:**
+| Locale | Example | Description |
+|--------|---------|-------------|
+| en-IN | 1,00,000.00 | Indian format |
+| en-US | 100,000.00 | US/UK format |
+| de-DE | 100.000,00 | German format |
+| fr-FR | 100 000,00 | French format |
+| es-ES | 100.000,00 | Spanish format |
+
+**Impact of Regional Settings:**
+- All claim timestamps displayed in tenant timezone
+- Dashboard "this month" calculations use tenant timezone
+- Report date ranges respect tenant timezone
+- Notifications show times in tenant timezone
+- Currency amounts formatted per locale
+
+### 15.3 Working Days Configuration
+
+Configure work week preferences:
+
+**Working Days Options:**
+| Option | Days | Common Usage |
+|--------|------|--------------|
+| Monday - Friday | Mon-Fri | Standard Western |
+| Monday - Saturday | Mon-Sat | Many Asian countries |
+| Sunday - Thursday | Sun-Thu | Middle East |
+| Saturday - Wednesday | Sat-Wed | Alternative Middle East |
+
+**Week Start Day:**
+| Option | Common Usage |
+|--------|--------------|
+| Sunday | USA, Israel |
+| Monday | Europe, India |
+| Saturday | Middle East |
+
+### 15.4 Security Settings
+
+Configure session and security preferences:
+
+**Session Timeout Options:**
+| Duration | Use Case |
+|----------|----------|
+| 30 minutes | High security environments |
+| 1 hour | Standard security |
+| 2 hours | Moderate use |
+| 4 hours | Extended sessions |
+| 8 hours | Full workday (default) |
+| 24 hours | Low security / demo |
+
+### 15.5 Notification Settings
+
+Manage notification preferences:
+- Email notifications enable/disable
+- System notification email address
+- Reminder frequency
+- Integration webhooks (Slack, etc.)
+
+### 15.6 Branding Settings
+
+Customize the application appearance:
+- Company logo
+- Primary/secondary colors
+- Email templates
+
+---
+
+## 16. Audit & Compliance
+
+### 16.1 Audit Trail
 
 All actions are logged:
 - Who performed the action
@@ -494,7 +658,7 @@ All actions are logged:
 - What was changed
 - IP address and device
 
-### 15.2 Compliance Features
+### 16.2 Compliance Features
 
 - Data retention policies
 - GDPR data export
@@ -503,4 +667,4 @@ All actions are logged:
 
 ---
 
-*Document Version: 1.0 | Last Updated: December 2024*
+*Document Version: 1.1 | Last Updated: December 2025*

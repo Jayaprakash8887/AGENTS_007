@@ -138,7 +138,8 @@ export function useDashboardSummary(employeeId?: string, tenantId?: string) {
     queryKey: ['dashboard-summary', effectiveEmployeeId, effectiveTenantId],
     queryFn: () => fetchDashboardSummary(effectiveEmployeeId, effectiveTenantId),
     enabled: !!effectiveTenantId,
-    refetchInterval: 30000, // Refetch every 30 seconds
+    refetchInterval: 180000, // Refetch every 3 minutes
+    staleTime: 120000, // Consider data stale after 2 minutes
   });
 }
 
@@ -151,7 +152,8 @@ export function useClaimsByStatus(employeeId?: string, tenantId?: string) {
     queryKey: ['claims-by-status', effectiveEmployeeId, effectiveTenantId],
     queryFn: () => fetchClaimsByStatus(effectiveEmployeeId, effectiveTenantId),
     enabled: !!effectiveTenantId,
-    refetchInterval: 30000,
+    refetchInterval: 180000, // Refetch every 3 minutes
+    staleTime: 120000,
   });
 }
 
@@ -164,7 +166,8 @@ export function useClaimsByCategory(employeeId?: string, tenantId?: string) {
     queryKey: ['claims-by-category', effectiveEmployeeId, effectiveTenantId],
     queryFn: () => fetchClaimsByCategory(effectiveEmployeeId, effectiveTenantId),
     enabled: !!effectiveTenantId,
-    refetchInterval: 30000,
+    refetchInterval: 180000, // Refetch every 3 minutes
+    staleTime: 120000,
   });
 }
 
@@ -177,7 +180,8 @@ export function useRecentActivity(limit: number = 10, employeeId?: string, tenan
     queryKey: ['recent-activity', limit, effectiveEmployeeId, effectiveTenantId],
     queryFn: () => fetchRecentActivity(limit, effectiveEmployeeId, effectiveTenantId),
     enabled: !!effectiveTenantId,
-    refetchInterval: 15000, // Refetch every 15 seconds for more real-time data
+    refetchInterval: 120000, // Refetch every 2 minutes
+    staleTime: 60000,
   });
 }
 
@@ -189,7 +193,8 @@ export function useAIMetrics(tenantId?: string) {
     queryKey: ['ai-metrics', effectiveTenantId],
     queryFn: () => fetchAIMetrics(effectiveTenantId),
     enabled: !!effectiveTenantId,
-    refetchInterval: 60000, // Refetch every minute
+    refetchInterval: 300000, // Refetch every 5 minutes
+    staleTime: 180000,
   });
 }
 
@@ -201,7 +206,8 @@ export function usePendingApprovals(tenantId?: string) {
     queryKey: ['pending-approvals', effectiveTenantId],
     queryFn: () => fetchPendingApprovals(effectiveTenantId),
     enabled: !!effectiveTenantId,
-    refetchInterval: 30000,
+    refetchInterval: 180000, // Refetch every 3 minutes
+    staleTime: 120000,
   });
 }
 
@@ -231,7 +237,8 @@ export function useHRMetrics(tenantId?: string) {
     queryKey: ['hr-metrics', effectiveTenantId],
     queryFn: () => fetchHRMetrics(effectiveTenantId),
     enabled: !!effectiveTenantId,
-    refetchInterval: 30000,
+    refetchInterval: 180000, // Refetch every 3 minutes
+    staleTime: 120000,
   });
 }
 
@@ -254,7 +261,8 @@ export function useDraftClaims(employeeId?: string, limit: number = 5, tenantId?
     queryKey: ['draft-claims', effectiveEmployeeId, limit, effectiveTenantId],
     queryFn: () => fetchDraftClaims(effectiveEmployeeId, limit, effectiveTenantId),
     enabled: !!effectiveTenantId,
-    refetchInterval: 15000,
+    refetchInterval: 120000, // Refetch every 2 minutes
+    staleTime: 60000,
   });
 }
 
@@ -285,7 +293,8 @@ export function useAllowanceSummary(employeeId?: string, tenantId?: string) {
     queryKey: ['allowance-summary', effectiveEmployeeId, effectiveTenantId],
     queryFn: () => fetchAllowanceSummary(effectiveEmployeeId, effectiveTenantId),
     enabled: !!effectiveTenantId,
-    refetchInterval: 30000,
+    refetchInterval: 180000, // Refetch every 3 minutes
+    staleTime: 120000,
   });
 }
 
@@ -314,6 +323,7 @@ export function useAdminStats(tenantId?: string) {
     queryKey: ['admin-stats', effectiveTenantId],
     queryFn: () => fetchAdminStats(effectiveTenantId),
     enabled: !!effectiveTenantId,
-    refetchInterval: 30000,
+    refetchInterval: 180000, // Refetch every 3 minutes
+    staleTime: 120000,
   });
 }

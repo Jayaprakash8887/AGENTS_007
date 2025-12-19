@@ -19,8 +19,8 @@ import { useProjects } from '@/hooks/useProjects';
 import { useAuth } from '@/contexts/AuthContext';
 import { EmployeeForm } from '@/components/forms/EmployeeForm';
 import { EmployeeFormData } from '@/lib/validations';
-import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { useFormatting } from '@/hooks/useFormatting';
 
 const statusStyles = {
   active: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
@@ -51,6 +51,7 @@ export default function EmployeeDetails() {
   
   const { user } = useAuth();
   const tenantId = user?.tenantId;
+  const { formatDate, formatCurrency } = useFormatting();
 
   const { data: employee, isLoading: employeeLoading } = useEmployee(id || '');
   const { data: allEmployees } = useEmployees(tenantId);
@@ -285,7 +286,7 @@ export default function EmployeeDetails() {
                 <div>
                   <p className="text-sm font-medium">Join Date</p>
                   <p className="text-sm text-muted-foreground">
-                    {employee.joinDate ? format(new Date(employee.joinDate), 'PPP') : 'N/A'}
+                    {employee.joinDate ? formatDate(employee.joinDate) : 'N/A'}
                   </p>
                 </div>
               </div>
@@ -324,7 +325,7 @@ export default function EmployeeDetails() {
               <div>
                 <p className="text-sm text-muted-foreground">Total Amount Claimed</p>
                 <p className="text-2xl font-bold">
-                  ${employeeClaims.reduce((sum, claim) => sum + claim.amount, 0).toLocaleString()}
+                  {formatCurrency(employeeClaims.reduce((sum, claim) => sum + claim.amount, 0))}
                 </p>
               </div>
             </CardContent>
@@ -383,11 +384,11 @@ export default function EmployeeDetails() {
                   <div className="space-y-1">
                     <p className="font-medium">{claim.category}</p>
                     <p className="text-sm text-muted-foreground">
-                      {format(new Date(claim.submittedDate), 'PPP')}
+                      {formatDate(claim.submittedDate)}
                     </p>
                   </div>
                   <div className="flex items-center gap-3">
-                    <p className="font-semibold">${claim.amount.toLocaleString()}</p>
+                    <p className="font-semibold">{formatCurrency(claim.amount)}</p>
                     <Badge variant="secondary" className={claimStatusColors[claim.status]}>
                       {claim.status}
                     </Badge>

@@ -4,7 +4,13 @@
 
 ### 1. Overview
 
-The Approval Agent determines the appropriate routing for claims based on validation confidence and organizational hierarchy. It implements intelligent auto-approval for high-confidence claims while ensuring proper oversight for edge cases.
+The Approval Agent determines the appropriate routing for claims based on validation confidence, organizational hierarchy, and **tenant-configurable settings**. It implements intelligent auto-approval for high-confidence claims while ensuring proper oversight for edge cases.
+
+**Key Features:**
+- Tenant-configurable auto-approval thresholds
+- Admin toggle to enable/disable auto-approval
+- Auto-skip HR/Finance after Manager approval (configurable)
+- Policy compliance threshold enforcement
 
 ---
 
@@ -12,81 +18,126 @@ The Approval Agent determines the appropriate routing for claims based on valida
 
 | Responsibility | Description |
 |----------------|-------------|
-| **Routing Decision** | Determine next approval stage |
+| **Routing Decision** | Determine next approval stage based on tenant settings |
 | **Auto-Approval** | Process high-confidence claims automatically |
+| **Auto-Skip Logic** | Skip HR/Finance after Manager approval if thresholds met |
 | **Status Updates** | Update claim workflow status |
 | **Approval Records** | Create audit trail entries |
 | **Notifications** | Trigger stakeholder alerts |
 
 ---
 
-## 3. Routing Logic
+## 3. Tenant-Configurable Settings
 
-### 3.1 Decision Flow
+The approval agent reads tenant-specific settings from the database:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `enable_auto_approval` | true | Master switch to enable/disable auto-approval |
+| `auto_skip_after_manager` | true | Auto-skip HR/Finance after Manager approval |
+| `auto_approval_threshold` | 95% | AI confidence threshold for auto-approval |
+| `policy_compliance_threshold` | 80% | AI confidence threshold for policy compliance |
+| `max_auto_approval_amount` | 5000 | Maximum claim amount for auto-approval |
+
+---
+
+## 4. Routing Logic
+
+### 4.1 Decision Flow
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                         APPROVAL ROUTING LOGIC                               │
+│                   INTELLIGENT APPROVAL ROUTING (Tenant-Configurable)         │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
-│                     ┌─────────────────────────┐                             │
-│                     │  Validation Results     │                             │
-│                     │  - Confidence: 0.92     │                             │
-│                     │  - Recommendation: X    │                             │
-│                     │  - Failed Rules: [...]  │                             │
-│                     └───────────┬─────────────┘                             │
-│                                 │                                            │
-│                                 ▼                                            │
-│              ┌──────────────────────────────────────┐                       │
-│              │  Auto-Approval Enabled?              │                       │
-│              │  Confidence >= 0.95?                 │                       │
-│              │  Recommendation = AUTO_APPROVE?      │                       │
-│              └────────────────┬─────────────────────┘                       │
-│                               │                                              │
-│               ┌───────YES─────┴───────NO────────┐                           │
-│               │                                 │                           │
-│               ▼                                 ▼                           │
-│   ┌───────────────────────┐     ┌─────────────────────────────────────┐    │
-│   │  FINANCE_APPROVED     │     │  Check for Policy Exceptions        │    │
-│   │  (Auto-Approved)      │     │  (Failed Rules?)                    │    │
-│   │                       │     └───────────────┬─────────────────────┘    │
-│   │  → Ready for         │                     │                           │
-│   │    Settlement        │     ┌───────YES─────┴───────NO────────┐         │
-│   └───────────────────────┘    │                                 │         │
-│                                ▼                                 ▼         │
-│                   ┌─────────────────────┐     ┌─────────────────────┐      │
-│                   │    PENDING_HR       │     │  Check Confidence   │      │
-│                   │    (Policy Review)  │     │  Level              │      │
-│                   └─────────────────────┘     └──────────┬──────────┘      │
-│                                                          │                  │
-│                              ┌────────────────────────────┼────────┐        │
-│                              │                            │        │        │
-│                          >= 0.80                      0.60-0.79  < 0.60    │
-│                              │                            │        │        │
-│                              ▼                            ▼        ▼        │
-│                   ┌─────────────────┐       ┌───────────────┐ ┌────────┐   │
-│                   │ PENDING_MANAGER │       │  PENDING_HR   │ │REJECTED│   │
-│                   │ (Normal Review) │       │  (HR Review)  │ │        │   │
-│                   └─────────────────┘       └───────────────┘ └────────┘   │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │                    INITIAL ROUTING (After AI Processing)             │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                                                                              │
+│  enable_auto_approval = TRUE?                                               │
+│       │                                                                     │
+│       ├── NO ──▶ All claims go to PENDING_MANAGER                          │
+│       │                                                                     │
+│       └── YES                                                              │
+│             │                                                               │
+│             ▼                                                               │
+│  confidence >= auto_approval_threshold (95%)?                              │
+│  amount <= max_auto_approval_amount?                                       │
+│  recommendation = APPROVE?                                                  │
+│       │                                                                     │
+│       ├── ALL YES ──▶ FINANCE_APPROVED (Auto-Approved)                     │
+│       │                                                                     │
+│       └── NO                                                               │
+│             │                                                               │
+│             ▼                                                               │
+│  Policy exceptions (failed rules)?                                         │
+│       │                                                                     │
+│       ├── YES ──▶ PENDING_HR                                               │
+│       │                                                                     │
+│       └── NO                                                               │
+│             │                                                               │
+│             ▼                                                               │
+│  confidence >= policy_compliance_threshold (80%)?                          │
+│       │                                                                     │
+│       ├── YES ──▶ PENDING_MANAGER                                          │
+│       │                                                                     │
+│       └── NO                                                               │
+│             │                                                               │
+│             ▼                                                               │
+│  confidence < 60%? ──▶ REJECTED                                            │
+│             │                                                               │
+│             └── NO ──▶ PENDING_MANAGER (default)                           │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    AFTER MANAGER APPROVAL (auto_skip_after_manager)          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  Manager APPROVED the claim                                                  │
+│       │                                                                     │
+│       ▼                                                                     │
+│  auto_skip_after_manager = TRUE?                                           │
+│  enable_auto_approval = TRUE?                                              │
+│       │                                                                     │
+│       ├── NO ──▶ Policy exceptions? → PENDING_HR : PENDING_FINANCE         │
+│       │                                                                     │
+│       └── YES                                                              │
+│             │                                                               │
+│             ▼                                                               │
+│  confidence >= auto_approval_threshold?                                    │
+│  amount <= max_auto_approval_amount?                                       │
+│  No policy exceptions?                                                     │
+│       │                                                                     │
+│       ├── ALL YES ──▶ FINANCE_APPROVED (Skip HR/Finance)                   │
+│       │                                                                     │
+│       └── NO ──▶ Policy exceptions? → PENDING_HR : PENDING_FINANCE         │
 │                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 3.2 Routing Rules
+### 4.2 Routing Rules
 
 | Condition | New Status | Routed To |
 |-----------|------------|-----------|
-| Auto-approval enabled & confidence >= 0.95 | `FINANCE_APPROVED` | Auto |
+| Auto-approval enabled & confidence >= threshold & amount <= max & APPROVE | `FINANCE_APPROVED` | Auto |
 | Has policy exceptions (failed rules) | `PENDING_HR` | HR |
-| Confidence >= 0.80 | `PENDING_MANAGER` | Manager |
-| Confidence 0.60 - 0.79 | `PENDING_HR` | HR |
-| Confidence < 0.60 | `REJECTED` | System |
+| Confidence >= policy_compliance_threshold | `PENDING_MANAGER` | Manager |
+| Confidence < 60% | `REJECTED` | System |
+| Default | `PENDING_MANAGER` | Manager |
+
+**Post-Manager Approval (when auto-skip enabled):**
+| Condition | New Status | Routed To |
+|-----------|------------|-----------|
+| High confidence + no exceptions + within limits | `FINANCE_APPROVED` | Auto |
+| Policy exceptions exist | `PENDING_HR` | HR |
+| Default | `PENDING_FINANCE` | Finance |
 
 ---
 
-## 4. Implementation
+## 5. Implementation
 
-### 4.1 ApprovalAgent Class
+### 5.1 ApprovalAgent Class
 
 ```python
 class ApprovalAgent(BaseAgent):
@@ -95,9 +146,15 @@ class ApprovalAgent(BaseAgent):
     def __init__(self):
         super().__init__("approval_agent", "1.0")
     
+    def _get_tenant_settings(self, tenant_id) -> Dict[str, Any]:
+        """Fetch tenant-specific settings from database"""
+        # Returns: enable_auto_approval, auto_skip_after_manager,
+        #          auto_approval_threshold, policy_compliance_threshold,
+        #          max_auto_approval_amount
+    
     async def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Route claim based on validation results
+        Route claim based on validation results and tenant settings
         
         Context should contain:
         - claim_id: UUID of the claim

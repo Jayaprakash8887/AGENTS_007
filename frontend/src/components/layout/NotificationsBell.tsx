@@ -312,8 +312,8 @@ export function NotificationsBell() {
   useEffect(() => {
     fetchLocalNotifications();
 
-    // Refresh notifications every 60 seconds
-    const interval = setInterval(fetchLocalNotifications, 60000);
+    // Refresh notifications every 3 minutes
+    const interval = setInterval(fetchLocalNotifications, 180000);
     return () => clearInterval(interval);
   }, [fetchLocalNotifications]);
 

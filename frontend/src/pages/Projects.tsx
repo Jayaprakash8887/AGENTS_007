@@ -22,12 +22,12 @@ import {
 import { useProjects, useProjectStats, useCreateProject, useUpdateProject, useAllProjectMembers } from '@/hooks/useProjects';
 import { useEmployees, useAllocateEmployeeToProject } from '@/hooks/useEmployees';
 import { useAuth } from '@/contexts/AuthContext';
+import { useFormatting } from '@/hooks/useFormatting';
 import { ProjectForm } from '@/components/forms/ProjectForm';
 import { CardSkeleton } from '@/components/ui/loading-skeleton';
 import { exportToCSV, formatCurrency, formatDate } from '@/lib/export-utils';
 import { ProjectFormData } from '@/lib/validations';
 import { Project } from '@/types';
-import { format } from 'date-fns';
 import { toast } from 'sonner';
 
 const statusStyles = {
@@ -39,11 +39,15 @@ const statusStyles = {
 function ProjectCard({ 
   project, 
   employees,
-  onEdit 
+  onEdit,
+  formatProjectDate,
+  formatProjectCurrency
 }: { 
   project: Project; 
   employees?: { id: string; name: string }[]; 
   onEdit: (project: Project) => void;
+  formatProjectDate: (date: Date | string) => string;
+  formatProjectCurrency: (amount: number) => string;
 }) {
   const budgetUsed = (project.spent / project.budget) * 100;
   const manager = employees?.find((e) => e.id === project.managerId);
@@ -89,7 +93,7 @@ function ProjectCard({
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">Budget Used</span>
             <span className={isOverBudget ? 'text-destructive font-medium' : ''}>
-              ${project.spent.toLocaleString()} / ${project.budget.toLocaleString()}
+              {formatProjectCurrency(project.spent)} / {formatProjectCurrency(project.budget)}
             </span>
           </div>
           <Progress
@@ -109,7 +113,7 @@ function ProjectCard({
           </div>
           <div className="flex items-center gap-2 text-sm">
             <Calendar className="h-4 w-4 text-muted-foreground" />
-            <span>{format(project.startDate, 'MMM yyyy')}</span>
+            <span>{formatProjectDate(project.startDate)}</span>
           </div>
         </div>
 
@@ -135,6 +139,7 @@ export default function Projects() {
   const { user } = useAuth();
   const tenantId = user?.tenantId;
   
+  const { formatDate: formatTenantDate, formatCurrency: formatTenantCurrency } = useFormatting();
   const { data: projects, isLoading, error } = useProjects(tenantId);
   const { data: stats } = useProjectStats(tenantId);
   const { data: employees } = useEmployees(tenantId);
@@ -391,7 +396,7 @@ export default function Projects() {
               <div>
                 <p className="text-sm text-muted-foreground">Total Budget</p>
                 <p className="text-2xl font-bold">
-                  {stats ? `$${stats.totalBudget.toLocaleString()}` : '-'}
+                  {stats ? formatTenantCurrency(stats.totalBudget) : '-'}
                 </p>
               </div>
             </div>
@@ -406,7 +411,7 @@ export default function Projects() {
               <div>
                 <p className="text-sm text-muted-foreground">Total Spent</p>
                 <p className="text-2xl font-bold">
-                  {stats ? `$${stats.totalSpent.toLocaleString()}` : '-'}
+                  {stats ? formatTenantCurrency(stats.totalSpent) : '-'}
                 </p>
               </div>
             </div>
@@ -458,6 +463,8 @@ export default function Projects() {
                 project={project} 
                 employees={employeeMap}
                 onEdit={handleEditClick}
+                formatProjectDate={formatTenantDate}
+                formatProjectCurrency={formatTenantCurrency}
               />
             ))}
           </div>

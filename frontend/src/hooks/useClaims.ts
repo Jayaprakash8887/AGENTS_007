@@ -37,6 +37,8 @@ async function fetchClaims(tenantId?: string): Promise<Claim[]> {
       status: mapBackendStatus(claim.status),
       submissionDate: claim.submission_date ? new Date(claim.submission_date) : new Date(),
       claimDate: claim.claim_date ? new Date(claim.claim_date) : new Date(),
+      createdAt: claim.created_at ? new Date(claim.created_at) : new Date(),
+      updatedAt: claim.updated_at ? new Date(claim.updated_at) : (claim.created_at ? new Date(claim.created_at) : new Date()),
       description: claim.description || '',
       projectCode: payload.project_code || '',
       projectName: claim.project_name || payload.project_name || '',  // Use project_name from API

@@ -108,8 +108,8 @@ export function useNotifications(userId?: string, tenantId?: string) {
     queryKey: ['notifications', userId, tenantId],
     queryFn: () => fetchNotifications(userId!, tenantId),
     enabled: !!userId,
-    refetchInterval: 60000, // Refetch every 60 seconds
-    staleTime: 30000, // Consider data stale after 30 seconds
+    refetchInterval: 180000, // Refetch every 3 minutes
+    staleTime: 120000, // Consider data stale after 2 minutes
   });
 }
 
@@ -118,8 +118,8 @@ export function useNotificationSummary(userId?: string, tenantId?: string) {
     queryKey: ['notifications-summary', userId, tenantId],
     queryFn: () => fetchNotificationSummary(userId!, tenantId),
     enabled: !!userId,
-    refetchInterval: 30000, // Refetch every 30 seconds for badge count
-    staleTime: 15000,
+    refetchInterval: 120000, // Refetch every 2 minutes
+    staleTime: 60000,
   });
 }
 

@@ -16,6 +16,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useCreateBatchClaimsWithDocument, BatchClaimItem } from "@/hooks/useClaims";
 import { UploadedFile } from "./DocumentUpload";
 import { useAllowancesByRegion, ExtractedClaimCategory } from "@/hooks/usePolicies";
+import { useFormatting } from "@/hooks/useFormatting";
 
 const claimSchema = z.object({
   category: z.string().optional(),
@@ -90,6 +91,8 @@ export function ClaimSubmissionForm({ onClose }: ClaimSubmissionFormProps) {
   
   // Fetch allowances filtered by user's region
   const { data: allowancePolicies = [], isLoading: isLoadingAllowances } = useAllowancesByRegion(user?.region);
+  
+  const { formatCurrency, getCurrencySymbol, formatDate } = useFormatting();
   
   const [allowanceData, setAllowanceData] = useState({
     amount: '',
@@ -251,7 +254,7 @@ export function ClaimSubmissionForm({ onClose }: ClaimSubmissionFormProps) {
         
         toast({
           title: `${response.total_claims} Claims Submitted Successfully! 🎉`,
-          description: `Your ${response.total_claims} reimbursement claims totaling ₹${response.total_amount.toFixed(2)} have been sent for approval.${documentFile ? ' Document attached.' : ''} Claim IDs: ${response.claim_numbers.join(', ')}`,
+          description: `Your ${response.total_claims} reimbursement claims totaling ${formatCurrency(response.total_amount)} have been sent for approval.${documentFile ? ' Document attached.' : ''} Claim IDs: ${response.claim_numbers.join(', ')}`,
         });
       } else {
         // Single claim from form data - use actual field sources from state
@@ -521,7 +524,7 @@ export function ClaimSubmissionForm({ onClose }: ClaimSubmissionFormProps) {
                         </p>
                         {policy.max_amount && (
                           <p className="text-xs text-muted-foreground mb-2">
-                            Max Amount: ₹{policy.max_amount.toLocaleString()}
+                            Max Amount: {formatCurrency(policy.max_amount)}
                           </p>
                         )}
                         {eligibilityRules.length > 0 && (
@@ -558,7 +561,7 @@ export function ClaimSubmissionForm({ onClose }: ClaimSubmissionFormProps) {
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Amount *</label>
                   <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">₹</span>
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">{getCurrencySymbol()}</span>
                     <input
                       type="number"
                       className="w-full pl-8 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary"
@@ -570,7 +573,7 @@ export function ClaimSubmissionForm({ onClose }: ClaimSubmissionFormProps) {
                   </div>
                   {selectedPolicy.max_amount && (
                     <p className="text-xs text-muted-foreground">
-                      Maximum allowed: ₹{selectedPolicy.max_amount.toLocaleString()}
+                      Maximum allowed: {formatCurrency(selectedPolicy.max_amount)}
                     </p>
                   )}
                 </div>
@@ -662,12 +665,12 @@ export function ClaimSubmissionForm({ onClose }: ClaimSubmissionFormProps) {
                   </div>
                   <div className="flex justify-between py-2 border-b">
                     <span className="text-sm font-medium">Amount:</span>
-                    <span className="text-sm font-semibold">₹{parseFloat(allowanceData.amount || '0').toLocaleString()}</span>
+                    <span className="text-sm font-semibold">{formatCurrency(parseFloat(allowanceData.amount || '0'))}</span>
                   </div>
                   <div className="flex justify-between py-2 border-b">
                     <span className="text-sm font-medium">Period:</span>
                     <span className="text-sm">
-                      {format(new Date(allowanceData.periodStart), 'MMM dd, yyyy')} - {format(new Date(allowanceData.periodEnd), 'MMM dd, yyyy')}
+                      {formatDate(allowanceData.periodStart)} - {formatDate(allowanceData.periodEnd)}
                     </span>
                   </div>
                   {allowanceData.description && (

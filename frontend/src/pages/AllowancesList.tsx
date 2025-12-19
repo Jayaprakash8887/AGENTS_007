@@ -1,6 +1,5 @@
 import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { format } from 'date-fns';
 import {
   Plus,
   Search,
@@ -47,6 +46,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { AIConfidenceBadge } from '@/components/claims/AIConfidenceBadge';
 import { mockAllowances } from '@/data/mockAllowances';
 import { AllowanceStatus, AllowanceType } from '@/types/allowance';
+import { useFormatting } from '@/hooks/useFormatting';
 
 const typeIcons: Record<AllowanceType, React.ElementType> = {
   on_call: Phone,
@@ -86,6 +86,8 @@ export default function AllowancesList() {
   const [statusFilter, setStatusFilter] = useState<AllowanceStatus | 'all'>('all');
   const [selectedAllowances, setSelectedAllowances] = useState<string[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
+  
+  const { formatCurrency, formatDate } = useFormatting();
 
   const filteredAllowances = useMemo(() => {
     let result = [...mockAllowances];
@@ -287,11 +289,11 @@ export default function AllowancesList() {
                         </div>
                       </TableCell>
                       <TableCell className="text-muted-foreground">
-                        {format(allowance.period.startDate, 'MMM dd')} -{' '}
-                        {format(allowance.period.endDate, 'MMM dd, yyyy')}
+                        {formatDate(allowance.period.startDate)} -{' '}
+                        {formatDate(allowance.period.endDate)}
                       </TableCell>
                       <TableCell className="font-medium">
-                        ₹{allowance.amount.toLocaleString()}
+                        {formatCurrency(allowance.amount)}
                       </TableCell>
                       <TableCell>{allowance.payrollMonth}</TableCell>
                       <TableCell>

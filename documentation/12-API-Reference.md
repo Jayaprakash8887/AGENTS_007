@@ -440,9 +440,139 @@ Authorization: Bearer {token}
 
 ---
 
-## 10. Error Responses
+## 10. Settings API
 
-### 10.1 Error Format
+### 10.1 Get General Settings
+
+```http
+GET /api/v1/settings/general?tenant_id={tenant_id}
+Authorization: Bearer {token}
+```
+
+**Response:**
+```json
+{
+    "ai_processing": true,
+    "auto_approval": true,
+    "enable_auto_approval": true,
+    "auto_skip_after_manager": true,
+    "auto_approval_threshold": 95,
+    "max_auto_approval_amount": 5000,
+    "policy_compliance_threshold": 80,
+    "default_currency": "inr",
+    "fiscal_year_start": "apr",
+    "email_notifications": true,
+    "notification_email": "",
+    "timezone": "IST",
+    "date_format": "DD/MM/YYYY",
+    "number_format": "en-IN",
+    "working_days": "mon-fri",
+    "week_start": "monday",
+    "session_timeout": "480"
+}
+```
+
+**Setting Descriptions:**
+| Field | Type | Description |
+|-------|------|-------------|
+| `enable_auto_approval` | boolean | Master switch to enable/disable auto-approval feature |
+| `auto_skip_after_manager` | boolean | Auto-skip HR/Finance after manager approval if thresholds met |
+| `auto_approval_threshold` | integer | AI confidence threshold (50-100%) for auto-approval |
+| `policy_compliance_threshold` | integer | AI confidence threshold (50-100%) for policy compliance |
+
+### 10.2 Update General Settings
+
+```http
+PUT /api/v1/settings/general?tenant_id={tenant_id}
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+    "timezone": "UTC",
+    "date_format": "YYYY-MM-DD",
+    "number_format": "en-US",
+    "enable_auto_approval": true,
+    "auto_skip_after_manager": true,
+    "auto_approval_threshold": 90,
+    "max_auto_approval_amount": 10000
+}
+```
+
+### 10.3 Get All Setting Options
+
+```http
+GET /api/v1/settings/options/all
+Authorization: Bearer {token}
+```
+
+**Response:**
+```json
+{
+    "timezones": {
+        "options": [
+            {"code": "IST", "name": "Asia/Kolkata", "label": "IST (Asia/Kolkata)"},
+            {"code": "UTC", "name": "UTC", "label": "UTC (UTC)"}
+        ],
+        "default": "IST"
+    },
+    "date_formats": {
+        "options": [
+            {"code": "DD/MM/YYYY", "format": "%d/%m/%Y", "label": "DD/MM/YYYY", "example": "19/12/2025"},
+            {"code": "MM/DD/YYYY", "format": "%m/%d/%Y", "label": "MM/DD/YYYY", "example": "12/19/2025"},
+            {"code": "YYYY-MM-DD", "format": "%Y-%m-%d", "label": "YYYY-MM-DD", "example": "2025-12-19"}
+        ],
+        "default": "DD/MM/YYYY"
+    },
+    "number_formats": {
+        "options": [
+            {"code": "en-IN", "decimal": ".", "thousands": ",", "label": "Indian (1,00,000.00)"},
+            {"code": "en-US", "decimal": ".", "thousands": ",", "label": "US/UK (100,000.00)"},
+            {"code": "de-DE", "decimal": ",", "thousands": ".", "label": "German (100.000,00)"}
+        ],
+        "default": "en-IN"
+    },
+    "working_days": {
+        "options": [
+            {"code": "mon-fri", "days": [0,1,2,3,4], "label": "Monday - Friday"},
+            {"code": "mon-sat", "days": [0,1,2,3,4,5], "label": "Monday - Saturday"},
+            {"code": "sun-thu", "days": [6,0,1,2,3], "label": "Sunday - Thursday"}
+        ],
+        "default": "mon-fri"
+    },
+    "week_start": {
+        "options": [
+            {"code": "sunday", "day": 6, "label": "Sunday"},
+            {"code": "monday", "day": 0, "label": "Monday"}
+        ],
+        "default": "monday"
+    },
+    "session_timeouts": {
+        "options": [
+            {"code": "30", "minutes": 30, "label": "30 minutes"},
+            {"code": "60", "minutes": 60, "label": "1 hour"},
+            {"code": "480", "minutes": 480, "label": "8 hours"}
+        ],
+        "default": "480"
+    }
+}
+```
+
+### 10.4 Individual Setting Endpoints
+
+```http
+GET /api/v1/settings/timezones/available
+GET /api/v1/settings/date-formats/available
+GET /api/v1/settings/number-formats/available
+GET /api/v1/settings/working-days/available
+GET /api/v1/settings/week-start/available
+GET /api/v1/settings/session-timeout/available
+```
+
+---
+
+## 11. Error Responses
+
+### 11.1 Error Format
 
 ```json
 {
@@ -452,7 +582,7 @@ Authorization: Bearer {token}
 }
 ```
 
-### 10.2 Common Error Codes
+### 11.2 Common Error Codes
 
 | Code | Status | Description |
 |------|--------|-------------|
@@ -467,7 +597,7 @@ Authorization: Bearer {token}
 
 ---
 
-## 11. Rate Limits
+## 12. Rate Limits
 
 | Endpoint | Limit | Window |
 |----------|-------|--------|
@@ -478,9 +608,9 @@ Authorization: Bearer {token}
 
 ---
 
-## 12. Webhooks (Optional)
+## 13. Webhooks (Optional)
 
-### 12.1 Webhook Events
+### 13.1 Webhook Events
 
 | Event | Description |
 |-------|-------------|
@@ -489,7 +619,7 @@ Authorization: Bearer {token}
 | `claim.rejected` | Claim rejected |
 | `claim.settled` | Payment processed |
 
-### 12.2 Webhook Payload
+### 13.2 Webhook Payload
 
 ```json
 {

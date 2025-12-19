@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { UseFormReturn } from "react-hook-form";
 import { Calendar, CheckCircle2, Circle, FileText, Sparkles, Trash2, Loader2, Zap, Pencil } from "lucide-react";
-import { format, parse } from "date-fns";
+import { parse } from "date-fns";
 import { cn } from "@/lib/utils";
 import { SmartFormField } from "./SmartFormField";
 import { ComplianceScore } from "./ComplianceScore";
@@ -25,6 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useAuth } from "@/contexts/AuthContext";
+import { useFormatting } from "@/hooks/useFormatting";
 import { useEmployeeProjectHistory } from "@/hooks/useEmployees";
 import { useReimbursementsByRegion, ExtractedClaimCategory } from "@/hooks/usePolicies";
 
@@ -99,6 +100,9 @@ export function SmartClaimForm({
 
   // Get current user and their employee data for project filtering
   const { user } = useAuth();
+  
+  // Get formatting functions based on tenant settings
+  const { formatCurrency, formatDate, getCurrencySymbol, getDateFnsFormat } = useFormatting();
 
   // Fetch reimbursement categories filtered by user's region
   const { data: reimbursementCategories = [], isLoading: isLoadingCategories } = useReimbursementsByRegion(user?.region);
@@ -654,7 +658,7 @@ export function SmartClaimForm({
     if (result.vendor) {
       result.title = `${categoryTitle} - ${result.vendor}`;
     } else if (result.amount) {
-      result.title = `${categoryTitle} Expense - ₹${result.amount}`;
+      result.title = `${categoryTitle} Expense - ${result.amount}`;
     } else {
       // Use category as title
       result.title = `${categoryTitle} Expense`;
@@ -1256,17 +1260,17 @@ export function SmartClaimForm({
     if (maxAmount && claimAmount > maxAmount) {
       return {
         status: 'fail' as const,
-        message: `Amount ₹${claimAmount.toLocaleString()} exceeds policy limit of ₹${maxAmount.toLocaleString()}`
+        message: `Amount ${formatCurrency(claimAmount)} exceeds policy limit of ${formatCurrency(maxAmount)}`
       };
     }
 
     return {
       status: 'pass' as const,
       message: maxAmount
-        ? `Amount ₹${claimAmount.toLocaleString()} within policy limit of ₹${maxAmount.toLocaleString()}`
+        ? `Amount ${formatCurrency(claimAmount)} within policy limit of ${formatCurrency(maxAmount)}`
         : "Amount verified - no policy limit defined"
     };
-  }, [watchedFields.amount, watchedFields.category, selectedCategoryPolicy]);
+  }, [watchedFields.amount, watchedFields.category, selectedCategoryPolicy, formatCurrency]);
 
   const dateValidation = useMemo(() => {
     if (watchedFields.category === 'other' || !selectedCategoryPolicy) {
@@ -1355,7 +1359,7 @@ export function SmartClaimForm({
         : duplicateCheckResult.isDuplicate
           ? `${duplicateCheckResult.matchType === 'exact' ? 'Exact' : 'Potential'} duplicate found: ${duplicateCheckResult.duplicateClaims[0]?.claim_number || 'existing claim'}`
           : (watchedFields.amount && watchedFields.date
-            ? `No duplicates found for ₹${watchedFields.amount} on ${watchedFields.date instanceof Date ? watchedFields.date.toLocaleDateString() : watchedFields.date}`
+            ? `No duplicates found for ${formatCurrency(parseFloat(watchedFields.amount))} on ${formatDate(watchedFields.date)}`
             : "Enter amount and date to check"),
     },
   ];
@@ -1382,13 +1386,13 @@ export function SmartClaimForm({
     if (amount > 0) {
       if (receiptCategoryPolicy?.max_amount && amount > receiptCategoryPolicy.max_amount) {
         amountStatus = 'fail';
-        amountMessage = `Amount ₹${amount} exceeds limit of ₹${receiptCategoryPolicy.max_amount.toLocaleString('en-IN')}`;
+        amountMessage = `Amount ${formatCurrency(amount)} exceeds limit of ${formatCurrency(receiptCategoryPolicy.max_amount)}`;
       } else if (receiptCategoryPolicy?.max_amount) {
         amountStatus = 'pass';
-        amountMessage = `Amount ₹${amount} within policy limit of ₹${receiptCategoryPolicy.max_amount.toLocaleString('en-IN')}`;
+        amountMessage = `Amount ${formatCurrency(amount)} within policy limit of ${formatCurrency(receiptCategoryPolicy.max_amount)}`;
       } else {
         amountStatus = 'pass';
-        amountMessage = `Amount ₹${amount} (no specific limit)`;
+        amountMessage = `Amount ${formatCurrency(amount)} (no specific limit)`;
       }
     }
 
@@ -1447,7 +1451,7 @@ export function SmartClaimForm({
           : duplicateCheck.isDuplicate
             ? `${duplicateCheck.matchType === 'exact' ? 'Exact' : 'Potential'} duplicate found`
             : (claim.amount && claim.date
-              ? `No duplicates found for ₹${claim.amount}`
+              ? `No duplicates found for ${formatCurrency(parseFloat(claim.amount || '0'))}`
               : 'Enter amount and date to check'),
       },
     ];
@@ -1527,13 +1531,13 @@ export function SmartClaimForm({
               </div>
               <div className="text-center">
                 <p className="text-2xl font-bold text-foreground">
-                  ₹{extractedClaims.reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  {formatCurrency(extractedClaims.reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0))}
                 </p>
                 <p className="text-xs text-muted-foreground">Total Amount</p>
               </div>
               <div className="text-center">
                 <p className="text-2xl font-bold text-green-600">
-                  ₹{extractedClaims.filter(c => c.selected).reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  {formatCurrency(extractedClaims.filter(c => c.selected).reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0))}
                 </p>
                 <p className="text-xs text-muted-foreground">Selected Amount</p>
               </div>
@@ -1688,7 +1692,7 @@ export function SmartClaimForm({
                         </div>
                         <div className="space-y-1.5">
                           <Label className="text-xs text-muted-foreground flex items-center gap-1.5">
-                            Amount (₹)
+                            Amount ({getCurrencySymbol()})
                             {claim.fieldSources?.amount === 'auto' && (
                               <span className="inline-flex items-center gap-0.5 rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
                                 <Sparkles className="h-2.5 w-2.5" /> Auto
@@ -1735,7 +1739,7 @@ export function SmartClaimForm({
                                 )}
                               >
                                 <Calendar className="mr-2 h-4 w-4" />
-                                {claim.date ? format(claim.date, 'PPP') : 'Select date'}
+                                {claim.date ? formatDate(claim.date) : 'Select date'}
                               </Button>
                             </PopoverTrigger>
                             <PopoverContent className="w-auto p-0" align="start">
@@ -1812,10 +1816,9 @@ export function SmartClaimForm({
                 {extractedClaims.filter(c => c.selected).length} of {extractedClaims.length} receipts selected
               </p>
               <Badge variant="outline" className="text-accent">
-                Total: ₹{extractedClaims
+                Total: {formatCurrency(extractedClaims
                   .filter(c => c.selected)
-                  .reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0)
-                  .toFixed(2)}
+                  .reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0))}
               </Badge>
             </div>
           </div>
@@ -1920,7 +1923,7 @@ export function SmartClaimForm({
               />
 
               <SmartFormField
-                label="Amount (₹)"
+                label={`Amount (${getCurrencySymbol()})`}
                 placeholder="0.00"
                 type="number"
                 step="0.01"
@@ -1956,7 +1959,7 @@ export function SmartClaimForm({
                       )}
                     >
                       <Calendar className="mr-2 h-4 w-4" />
-                      {watchedFields.date ? format(watchedFields.date, "PPP") : "Select date"}
+                      {watchedFields.date ? formatDate(watchedFields.date) : "Select date"}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">

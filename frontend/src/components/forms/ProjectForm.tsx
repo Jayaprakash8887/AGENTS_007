@@ -1,6 +1,5 @@
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { format } from 'date-fns';
 import { CalendarIcon, Loader2, X, Check, ChevronsUpDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -37,6 +36,7 @@ import {
 import { projectSchema, ProjectFormData } from '@/lib/validations';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { useFormatting } from '@/hooks/useFormatting';
 
 interface ProjectFormProps {
   managers: { id: string; name: string }[];
@@ -55,6 +55,7 @@ export function ProjectForm({
   isLoading = false,
   defaultValues,
 }: ProjectFormProps) {
+  const { formatDate } = useFormatting();
   const form = useForm<ProjectFormData>({
     resolver: zodResolver(projectSchema),
     defaultValues: {
@@ -187,7 +188,7 @@ export function ProjectForm({
                         )}
                       >
                         {field.value ? (
-                          format(field.value, 'PPP')
+                          formatDate(field.value)
                         ) : (
                           <span>Pick a date</span>
                         )}
@@ -226,7 +227,7 @@ export function ProjectForm({
                         )}
                       >
                         {field.value ? (
-                          format(field.value, 'PPP')
+                          formatDate(field.value)
                         ) : (
                           <span>Pick a date</span>
                         )}

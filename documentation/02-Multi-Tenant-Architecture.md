@@ -266,6 +266,13 @@ Each tenant can define their own designations that map to application roles:
 ```json
 {
   "tenant_settings": {
+    // General Settings
+    "general": {
+      "company_name": "Acme Corporation",
+      "timezone": "IST",  // Tenant-specific timezone (IST, UTC, EST, PST, GMT, CET, JST, AEST, SGT, GST)
+      "date_format": "DD/MM/YYYY"
+    },
+    
     // Branding
     "branding": {
       "logo_url": "https://storage.example.com/acme/logo.png",

@@ -1,11 +1,18 @@
 """
 Approval Agent - Routes claims and manages approval lifecycle
 """
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from datetime import datetime
 from agents.base_agent import BaseAgent
 from celery_app import celery_app
 from config import settings
+from utils.timezone import (
+    DEFAULT_AUTO_APPROVAL_THRESHOLD,
+    DEFAULT_POLICY_COMPLIANCE_THRESHOLD,
+    DEFAULT_ENABLE_AUTO_APPROVAL,
+    DEFAULT_AUTO_SKIP_AFTER_MANAGER,
+    DEFAULT_MAX_AUTO_APPROVAL_AMOUNT,
+)
 import logging
 
 logger = logging.getLogger(__name__)
@@ -16,6 +23,60 @@ class ApprovalAgent(BaseAgent):
     
     def __init__(self):
         super().__init__("approval_agent", "1.0")
+    
+    def _get_tenant_settings(self, tenant_id) -> Dict[str, Any]:
+        """
+        Fetch tenant-specific settings from database.
+        Returns default values if settings not found.
+        """
+        from database import get_sync_db
+        from models import SystemSettings
+        from sqlalchemy import and_
+        
+        defaults = {
+            "enable_auto_approval": DEFAULT_ENABLE_AUTO_APPROVAL,
+            "auto_skip_after_manager": DEFAULT_AUTO_SKIP_AFTER_MANAGER,
+            "auto_approval_threshold": DEFAULT_AUTO_APPROVAL_THRESHOLD,
+            "policy_compliance_threshold": DEFAULT_POLICY_COMPLIANCE_THRESHOLD,
+            "max_auto_approval_amount": DEFAULT_MAX_AUTO_APPROVAL_AMOUNT,
+        }
+        
+        try:
+            db = next(get_sync_db())
+            
+            # Fetch relevant settings
+            settings_to_fetch = [
+                "enable_auto_approval", 
+                "auto_skip_after_manager",
+                "auto_approval_threshold", 
+                "policy_compliance_threshold",
+                "max_auto_approval_amount"
+            ]
+            
+            for key in settings_to_fetch:
+                setting = db.query(SystemSettings).filter(
+                    and_(
+                        SystemSettings.setting_key == key,
+                        SystemSettings.tenant_id == tenant_id
+                    )
+                ).first()
+                
+                if setting:
+                    value = setting.setting_value
+                    # Convert to appropriate type
+                    if key in ["enable_auto_approval", "auto_skip_after_manager"]:
+                        defaults[key] = value.lower() in ("true", "1", "yes", "on")
+                    elif key in ["auto_approval_threshold", "policy_compliance_threshold"]:
+                        defaults[key] = int(value)
+                    elif key == "max_auto_approval_amount":
+                        defaults[key] = float(value)
+            
+            self.logger.info(f"Tenant settings loaded: {defaults}")
+            return defaults
+            
+        except Exception as e:
+            self.logger.warning(f"Failed to fetch tenant settings, using defaults: {e}")
+            return defaults
     
     async def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -35,16 +96,24 @@ class ApprovalAgent(BaseAgent):
             # Get claim with validation results
             claim = self._get_claim(claim_id)
             
+            # Get tenant-specific settings
+            tenant_settings = self._get_tenant_settings(claim.tenant_id)
+            
             # Get validation results
             validation = claim.claim_payload.get("validation", {})
             confidence = validation.get("confidence", 0.0)
             recommendation = validation.get("recommendation", "REVIEW")
             
-            # Determine routing
+            # Get claim amount for threshold check
+            claim_amount = claim.amount or 0.0
+            
+            # Determine routing using tenant settings
             new_status = self._determine_routing(
                 confidence, 
                 recommendation,
-                claim
+                claim,
+                claim_amount,
+                tenant_settings
             )
             
             # Update claim status
@@ -65,7 +134,8 @@ class ApprovalAgent(BaseAgent):
                 result_data={
                     "new_status": new_status,
                     "confidence": confidence,
-                    "auto_approved": new_status == "FINANCE_APPROVED"
+                    "auto_approved": new_status == "FINANCE_APPROVED",
+                    "tenant_settings_used": tenant_settings
                 },
                 execution_time_ms=int(execution_time)
             )
@@ -93,16 +163,40 @@ class ApprovalAgent(BaseAgent):
         self, 
         confidence: float,
         recommendation: str,
-        claim: Any
+        claim: Any,
+        claim_amount: float,
+        tenant_settings: Dict[str, Any]
     ) -> str:
-        """Determine next status based on confidence and recommendation"""
+        """
+        Determine next status based on confidence, recommendation, and tenant settings.
         
-        # Auto-approve if high confidence and enabled
-        if settings.ENABLE_AUTO_APPROVAL:
-            if confidence >= settings.AUTO_APPROVAL_CONFIDENCE_THRESHOLD:
-                if recommendation == "AUTO_APPROVE" or recommendation == "APPROVE":
-                    self.logger.info(f"Auto-approving claim {claim.id}")
-                    return "FINANCE_APPROVED"  # Skip to finance for settlement
+        Routing Logic:
+        1. If auto-approval enabled + confidence >= threshold + amount <= max + APPROVE recommendation → FINANCE_APPROVED
+        2. If policy exceptions exist → PENDING_HR
+        3. If confidence >= policy_compliance_threshold → PENDING_MANAGER
+        4. If confidence < 60% → REJECTED
+        5. Default → PENDING_MANAGER
+        """
+        
+        enable_auto_approval = tenant_settings.get("enable_auto_approval", DEFAULT_ENABLE_AUTO_APPROVAL)
+        auto_approval_threshold = tenant_settings.get("auto_approval_threshold", DEFAULT_AUTO_APPROVAL_THRESHOLD) / 100.0
+        max_auto_approval_amount = tenant_settings.get("max_auto_approval_amount", DEFAULT_MAX_AUTO_APPROVAL_AMOUNT)
+        policy_compliance_threshold = tenant_settings.get("policy_compliance_threshold", DEFAULT_POLICY_COMPLIANCE_THRESHOLD) / 100.0
+        
+        self.logger.info(f"Routing claim {claim.id} - confidence: {confidence}, amount: {claim_amount}")
+        self.logger.info(f"Settings - auto_approval: {enable_auto_approval}, threshold: {auto_approval_threshold}, max_amount: {max_auto_approval_amount}")
+        
+        # Auto-approve if enabled and all conditions met
+        if enable_auto_approval:
+            if confidence >= auto_approval_threshold:
+                if claim_amount <= max_auto_approval_amount:
+                    if recommendation in ("AUTO_APPROVE", "APPROVE"):
+                        self.logger.info(f"Auto-approving claim {claim.id} - high confidence ({confidence*100:.1f}%) and amount (${claim_amount}) within limits")
+                        return "FINANCE_APPROVED"  # Skip to finance for settlement
+                    else:
+                        self.logger.info(f"High confidence but recommendation is {recommendation}, routing to manager")
+                else:
+                    self.logger.info(f"Amount ${claim_amount} exceeds max auto-approval ${max_auto_approval_amount}, routing to manager")
         
         # Check for policy exceptions
         validation = claim.claim_payload.get("validation", {})
@@ -110,19 +204,95 @@ class ApprovalAgent(BaseAgent):
                        if r.get("result") == "fail"]
         
         if failed_rules:
-            # Has policy exceptions - route to HR
+            self.logger.info(f"Claim {claim.id} has {len(failed_rules)} failed policy rules, routing to HR")
             return "PENDING_HR"
         
-        # Medium confidence - manager review
-        if confidence >= 0.80:
+        # Medium-high confidence - manager review
+        if confidence >= policy_compliance_threshold:
+            self.logger.info(f"Claim {claim.id} has good confidence ({confidence*100:.1f}%), routing to manager")
             return "PENDING_MANAGER"
         
-        # Low confidence - reject or HR review
+        # Low confidence - reject
         if confidence < 0.60:
+            self.logger.info(f"Claim {claim.id} has low confidence ({confidence*100:.1f}%), rejecting")
             return "REJECTED"
         
         # Default - manager review
+        self.logger.info(f"Default routing claim {claim.id} to manager")
         return "PENDING_MANAGER"
+    
+    def process_manager_approval(self, claim_id: str, approved: bool) -> str:
+        """
+        Process manager approval and determine next routing.
+        If auto_skip_after_manager is enabled and thresholds are met, skip HR/Finance.
+        
+        Returns the new status after manager action.
+        """
+        claim = self._get_claim(claim_id)
+        tenant_settings = self._get_tenant_settings(claim.tenant_id)
+        
+        if not approved:
+            return "REJECTED"
+        
+        # Check if auto-skip is enabled
+        auto_skip = tenant_settings.get("auto_skip_after_manager", DEFAULT_AUTO_SKIP_AFTER_MANAGER)
+        enable_auto_approval = tenant_settings.get("enable_auto_approval", DEFAULT_ENABLE_AUTO_APPROVAL)
+        auto_approval_threshold = tenant_settings.get("auto_approval_threshold", DEFAULT_AUTO_APPROVAL_THRESHOLD) / 100.0
+        max_auto_approval_amount = tenant_settings.get("max_auto_approval_amount", DEFAULT_MAX_AUTO_APPROVAL_AMOUNT)
+        
+        validation = claim.claim_payload.get("validation", {})
+        confidence = validation.get("confidence", 0.0)
+        claim_amount = claim.amount or 0.0
+        
+        # Check for policy exceptions
+        failed_rules = [r for r in validation.get("rules_checked", []) 
+                       if r.get("result") == "fail"]
+        
+        if auto_skip and enable_auto_approval:
+            # If confidence is high enough and no policy violations
+            if confidence >= auto_approval_threshold and not failed_rules:
+                if claim_amount <= max_auto_approval_amount:
+                    self.logger.info(f"Auto-skipping HR/Finance for claim {claim_id} after manager approval")
+                    return "FINANCE_APPROVED"
+        
+        # If there were policy exceptions, must go to HR
+        if failed_rules:
+            self.logger.info(f"Claim {claim_id} has policy exceptions, routing to HR after manager approval")
+            return "PENDING_HR"
+        
+        # Standard flow - route to finance after manager
+        return "PENDING_FINANCE"
+    
+    def process_hr_approval(self, claim_id: str, approved: bool) -> str:
+        """
+        Process HR approval and determine next routing.
+        If auto_skip_after_manager is enabled and thresholds are met, skip Finance.
+        
+        Returns the new status after HR action.
+        """
+        if not approved:
+            return "REJECTED"
+        
+        claim = self._get_claim(claim_id)
+        tenant_settings = self._get_tenant_settings(claim.tenant_id)
+        
+        auto_skip = tenant_settings.get("auto_skip_after_manager", DEFAULT_AUTO_SKIP_AFTER_MANAGER)
+        enable_auto_approval = tenant_settings.get("enable_auto_approval", DEFAULT_ENABLE_AUTO_APPROVAL)
+        auto_approval_threshold = tenant_settings.get("auto_approval_threshold", DEFAULT_AUTO_APPROVAL_THRESHOLD) / 100.0
+        max_auto_approval_amount = tenant_settings.get("max_auto_approval_amount", DEFAULT_MAX_AUTO_APPROVAL_AMOUNT)
+        
+        validation = claim.claim_payload.get("validation", {})
+        confidence = validation.get("confidence", 0.0)
+        claim_amount = claim.amount or 0.0
+        
+        if auto_skip and enable_auto_approval:
+            # If confidence is high and amount is within limits, skip finance
+            if confidence >= auto_approval_threshold and claim_amount <= max_auto_approval_amount:
+                self.logger.info(f"Auto-skipping Finance for claim {claim_id} after HR approval")
+                return "FINANCE_APPROVED"
+        
+        # Standard flow - route to finance
+        return "PENDING_FINANCE"
     
     def _get_approver_role(self, status: str) -> str:
         """Get approver role for status"""

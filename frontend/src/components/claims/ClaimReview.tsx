@@ -1,4 +1,3 @@
-import { format } from "date-fns";
 import { 
   CheckCircle2, 
   FileText, 
@@ -16,6 +15,7 @@ import { ComplianceScore } from "./ComplianceScore";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { formatCategory } from "@/lib/categoryUtils";
+import { useFormatting } from "@/hooks/useFormatting";
 
 interface ClaimFormData {
   category?: string;
@@ -56,6 +56,8 @@ const getCategoryLabel = (category: string | undefined): string => {
 };
 
 export function ClaimReview({ formData, files, multipleClaims }: ClaimReviewProps) {
+  const { formatCurrency, formatDate } = useFormatting();
+  
   // Calculate compliance score dynamically based on form completion
   const calculateComplianceScore = () => {
     let score = 0;
@@ -90,16 +92,16 @@ export function ClaimReview({ formData, files, multipleClaims }: ClaimReviewProp
   const reviewItems = [
     { icon: Tag, label: "Category", value: categoryLabel },
     { icon: FileText, label: "Title", value: formData.title },
-    { icon: DollarSign, label: "Amount", value: `₹${formData.amount}` },
-    { icon: Calendar, label: "Date", value: formData.date ? format(formData.date, "PPP") : "Not set" },
+    { icon: DollarSign, label: "Amount", value: formatCurrency(parseFloat(formData.amount || '0')) },
+    { icon: Calendar, label: "Date", value: formData.date ? formatDate(formData.date) : "Not set" },
     { icon: Building2, label: "Vendor", value: formData.vendor },
     { icon: Hash, label: "Transaction Ref", value: formData.transactionRef || "Not available" },
     { icon: FolderKanban, label: "Project", value: formData.projectCode || "Not selected" },
   ];
 
   const aiSummary = hasMultipleClaims
-    ? `You are submitting ${selectedClaims.length} expenses totaling ₹${totalAmount.toFixed(2)}. All claims have been analyzed and meet company policy requirements. Each claim will be routed to your direct manager for approval based on the amount threshold.`
-    : `This ${categoryLabel.toLowerCase()} expense of ₹${formData.amount} from ${formData.vendor || "vendor"} on ${formData.date ? format(formData.date, "MMM d, yyyy") : "the specified date"} has been analyzed and meets company policy requirements. The claim will be routed to your direct manager for approval based on the amount threshold.`;
+    ? `You are submitting ${selectedClaims.length} expenses totaling ${formatCurrency(totalAmount)}. All claims have been analyzed and meet company policy requirements. Each claim will be routed to your direct manager for approval based on the amount threshold.`
+    : `This ${categoryLabel.toLowerCase()} expense of ${formatCurrency(parseFloat(formData.amount || '0'))} from ${formData.vendor || "vendor"} on ${formData.date ? formatDate(formData.date) : "the specified date"} has been analyzed and meets company policy requirements. The claim will be routed to your direct manager for approval based on the amount threshold.`;
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
@@ -113,7 +115,7 @@ export function ClaimReview({ formData, files, multipleClaims }: ClaimReviewProp
         </h2>
         <p className="mt-2 text-muted-foreground">
           {hasMultipleClaims 
-            ? `Total amount: ₹${totalAmount.toFixed(2)}`
+            ? `Total amount: ${formatCurrency(totalAmount)}`
             : 'Please verify all details before submitting'}
         </p>
       </div>
@@ -158,7 +160,7 @@ export function ClaimReview({ formData, files, multipleClaims }: ClaimReviewProp
                       </Badge>
                       <span className="font-medium text-foreground">{claim.title || 'Untitled Expense'}</span>
                     </div>
-                    <span className="text-lg font-bold text-primary">₹{parseFloat(claim.amount).toFixed(2)}</span>
+                    <span className="text-lg font-bold text-primary">{formatCurrency(parseFloat(claim.amount))}</span>
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-sm">
                     <div>
@@ -167,7 +169,7 @@ export function ClaimReview({ formData, files, multipleClaims }: ClaimReviewProp
                     </div>
                     <div>
                       <span className="text-muted-foreground">Date: </span>
-                      <span className="text-foreground">{claim.date ? format(claim.date, "MMM d, yyyy") : "—"}</span>
+                      <span className="text-foreground">{claim.date ? formatDate(claim.date) : "—"}</span>
                     </div>
                     <div>
                       <span className="text-muted-foreground">Vendor: </span>

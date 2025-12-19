@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from uuid import UUID
 from datetime import datetime
 import json
@@ -14,10 +14,32 @@ import logging
 from database import get_sync_db
 from models import SystemSettings
 from api.v1.auth import require_tenant_id
+from utils.timezone import (
+    TIMEZONE_CHOICES, DEFAULT_TIMEZONE,
+    DATE_FORMAT_CHOICES, DEFAULT_DATE_FORMAT,
+    NUMBER_FORMAT_CHOICES, DEFAULT_NUMBER_FORMAT,
+    WORKING_DAYS_CHOICES, DEFAULT_WORKING_DAYS,
+    WEEK_START_CHOICES, DEFAULT_WEEK_START,
+    SESSION_TIMEOUT_CHOICES, DEFAULT_SESSION_TIMEOUT,
+    DEFAULT_AUTO_APPROVAL_THRESHOLD, DEFAULT_MAX_AUTO_APPROVAL_AMOUNT,
+    DEFAULT_POLICY_COMPLIANCE_THRESHOLD,
+    DEFAULT_ENABLE_AUTO_APPROVAL, DEFAULT_AUTO_SKIP_AFTER_MANAGER,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def get_tenant_timezone(db: Session, tenant_id: UUID) -> str:
+    """Get the timezone setting for a tenant. Returns default if not set."""
+    setting = db.query(SystemSettings).filter(
+        and_(
+            SystemSettings.setting_key == "timezone",
+            SystemSettings.tenant_id == tenant_id
+        )
+    ).first()
+    return setting.setting_value if setting else DEFAULT_TIMEZONE
 
 
 # Pydantic models
@@ -33,10 +55,21 @@ class GeneralSettingsUpdate(BaseModel):
     """Model for updating general settings"""
     ai_processing: Optional[bool] = None
     auto_approval: Optional[bool] = None
+    enable_auto_approval: Optional[bool] = None  # Admin toggle to enable/disable auto-approval
+    auto_skip_after_manager: Optional[bool] = None  # Auto-skip HR/Finance after Manager approval
+    auto_approval_threshold: Optional[int] = Field(None, ge=50, le=100)  # 50-100%
+    max_auto_approval_amount: Optional[float] = Field(None, ge=0)  # Max amount for auto-approval
+    policy_compliance_threshold: Optional[int] = Field(None, ge=50, le=100)  # 50-100%
     default_currency: Optional[str] = None
     fiscal_year_start: Optional[str] = None
     email_notifications: Optional[bool] = None
     notification_email: Optional[str] = None
+    timezone: Optional[str] = None  # Timezone code (IST, UTC, EST, PST, etc.)
+    date_format: Optional[str] = None  # Date format (DD/MM/YYYY, MM/DD/YYYY, YYYY-MM-DD)
+    number_format: Optional[str] = None  # Number format locale (en-IN, en-US, de-DE)
+    working_days: Optional[str] = None  # Working days (mon-fri, mon-sat, sun-thu)
+    week_start: Optional[str] = None  # Week start day (sunday, monday, saturday)
+    session_timeout: Optional[str] = None  # Session timeout in minutes
     
     class Config:
         from_attributes = True
@@ -46,10 +79,21 @@ class GeneralSettingsResponse(BaseModel):
     """Response model for general settings"""
     ai_processing: bool = True
     auto_approval: bool = True
+    enable_auto_approval: bool = DEFAULT_ENABLE_AUTO_APPROVAL  # Admin toggle
+    auto_skip_after_manager: bool = DEFAULT_AUTO_SKIP_AFTER_MANAGER  # Auto-skip after Manager approval
+    auto_approval_threshold: int = DEFAULT_AUTO_APPROVAL_THRESHOLD  # 95%
+    max_auto_approval_amount: float = DEFAULT_MAX_AUTO_APPROVAL_AMOUNT  # 5000
+    policy_compliance_threshold: int = DEFAULT_POLICY_COMPLIANCE_THRESHOLD  # 80%
     default_currency: str = "inr"
     fiscal_year_start: str = "apr"
     email_notifications: bool = True
     notification_email: str = ""
+    timezone: str = DEFAULT_TIMEZONE
+    date_format: str = DEFAULT_DATE_FORMAT
+    number_format: str = DEFAULT_NUMBER_FORMAT
+    working_days: str = DEFAULT_WORKING_DAYS
+    week_start: str = DEFAULT_WEEK_START
+    session_timeout: str = DEFAULT_SESSION_TIMEOUT
     
     class Config:
         from_attributes = True
@@ -58,11 +102,22 @@ class GeneralSettingsResponse(BaseModel):
 # Default settings
 DEFAULT_SETTINGS = {
     "ai_processing": {"value": "true", "type": "boolean", "description": "Enable AI for OCR and validation", "category": "general"},
-    "auto_approval": {"value": "true", "type": "boolean", "description": "Auto-approve high confidence claims (≥95%)", "category": "general"},
+    "auto_approval": {"value": "true", "type": "boolean", "description": "Auto-approve high confidence claims", "category": "general"},
+    "enable_auto_approval": {"value": str(DEFAULT_ENABLE_AUTO_APPROVAL).lower(), "type": "boolean", "description": "Enable/disable auto-approval feature (Admin setting)", "category": "general"},
+    "auto_skip_after_manager": {"value": str(DEFAULT_AUTO_SKIP_AFTER_MANAGER).lower(), "type": "boolean", "description": "Auto-skip HR/Finance after Manager approval if thresholds met", "category": "general"},
+    "auto_approval_threshold": {"value": str(DEFAULT_AUTO_APPROVAL_THRESHOLD), "type": "number", "description": "AI confidence threshold for auto-approval (%)", "category": "general"},
+    "max_auto_approval_amount": {"value": str(DEFAULT_MAX_AUTO_APPROVAL_AMOUNT), "type": "number", "description": "Maximum amount for auto-approval", "category": "general"},
+    "policy_compliance_threshold": {"value": str(DEFAULT_POLICY_COMPLIANCE_THRESHOLD), "type": "number", "description": "AI confidence threshold for policy compliance (%)", "category": "general"},
     "default_currency": {"value": "inr", "type": "string", "description": "Default currency for expenses", "category": "general"},
     "fiscal_year_start": {"value": "apr", "type": "string", "description": "Fiscal year start month", "category": "general"},
     "email_notifications": {"value": "true", "type": "boolean", "description": "Send email notifications for claim updates", "category": "notifications"},
     "notification_email": {"value": "", "type": "string", "description": "System notification email address", "category": "notifications"},
+    "timezone": {"value": DEFAULT_TIMEZONE, "type": "string", "description": "Default timezone for dates and times", "category": "regional"},
+    "date_format": {"value": DEFAULT_DATE_FORMAT, "type": "string", "description": "Date display format", "category": "regional"},
+    "number_format": {"value": DEFAULT_NUMBER_FORMAT, "type": "string", "description": "Number/currency display format", "category": "regional"},
+    "working_days": {"value": DEFAULT_WORKING_DAYS, "type": "string", "description": "Working days of the week", "category": "regional"},
+    "week_start": {"value": DEFAULT_WEEK_START, "type": "string", "description": "First day of the week", "category": "regional"},
+    "session_timeout": {"value": DEFAULT_SESSION_TIMEOUT, "type": "string", "description": "Session timeout duration", "category": "security"},
 }
 
 
@@ -304,3 +359,134 @@ def get_all_settings(
             result[setting.setting_key] = setting.setting_value
     
     return result
+
+
+@router.get("/timezones/available")
+def get_available_timezones():
+    """Get list of available timezone options"""
+    return {
+        "timezones": [
+            {"code": code, "name": name, "label": f"{code} ({name})"}
+            for code, name in TIMEZONE_CHOICES.items()
+        ],
+        "default": DEFAULT_TIMEZONE
+    }
+
+
+@router.get("/date-formats/available")
+def get_available_date_formats():
+    """Get list of available date format options"""
+    return {
+        "date_formats": [
+            {"code": code, "format": fmt, "label": code, "example": datetime.now().strftime(fmt)}
+            for code, fmt in DATE_FORMAT_CHOICES.items()
+        ],
+        "default": DEFAULT_DATE_FORMAT
+    }
+
+
+@router.get("/number-formats/available")
+def get_available_number_formats():
+    """Get list of available number/currency format options"""
+    return {
+        "number_formats": [
+            {
+                "code": code, 
+                "decimal": info["decimal"], 
+                "thousands": info["thousands"],
+                "label": info["label"]
+            }
+            for code, info in NUMBER_FORMAT_CHOICES.items()
+        ],
+        "default": DEFAULT_NUMBER_FORMAT
+    }
+
+
+@router.get("/working-days/available")
+def get_available_working_days():
+    """Get list of available working days options"""
+    return {
+        "working_days": [
+            {"code": code, "days": info["days"], "label": info["label"]}
+            for code, info in WORKING_DAYS_CHOICES.items()
+        ],
+        "default": DEFAULT_WORKING_DAYS
+    }
+
+
+@router.get("/week-start/available")
+def get_available_week_start():
+    """Get list of available week start day options"""
+    return {
+        "week_start": [
+            {"code": code, "day": info["day"], "label": info["label"]}
+            for code, info in WEEK_START_CHOICES.items()
+        ],
+        "default": DEFAULT_WEEK_START
+    }
+
+
+@router.get("/session-timeout/available")
+def get_available_session_timeouts():
+    """Get list of available session timeout options"""
+    return {
+        "session_timeouts": [
+            {"code": code, "minutes": info["minutes"], "label": info["label"]}
+            for code, info in SESSION_TIMEOUT_CHOICES.items()
+        ],
+        "default": DEFAULT_SESSION_TIMEOUT
+    }
+
+
+@router.get("/options/all")
+def get_all_settings_options():
+    """Get all available setting options in a single call"""
+    return {
+        "timezones": {
+            "options": [
+                {"code": code, "name": name, "label": f"{code} ({name})"}
+                for code, name in TIMEZONE_CHOICES.items()
+            ],
+            "default": DEFAULT_TIMEZONE
+        },
+        "date_formats": {
+            "options": [
+                {"code": code, "format": fmt, "label": code, "example": datetime.now().strftime(fmt)}
+                for code, fmt in DATE_FORMAT_CHOICES.items()
+            ],
+            "default": DEFAULT_DATE_FORMAT
+        },
+        "number_formats": {
+            "options": [
+                {
+                    "code": code, 
+                    "decimal": info["decimal"], 
+                    "thousands": info["thousands"],
+                    "label": info["label"]
+                }
+                for code, info in NUMBER_FORMAT_CHOICES.items()
+            ],
+            "default": DEFAULT_NUMBER_FORMAT
+        },
+        "working_days": {
+            "options": [
+                {"code": code, "days": info["days"], "label": info["label"]}
+                for code, info in WORKING_DAYS_CHOICES.items()
+            ],
+            "default": DEFAULT_WORKING_DAYS
+        },
+        "week_start": {
+            "options": [
+                {"code": code, "day": info["day"], "label": info["label"]}
+                for code, info in WEEK_START_CHOICES.items()
+            ],
+            "default": DEFAULT_WEEK_START
+        },
+        "session_timeouts": {
+            "options": [
+                {"code": code, "minutes": info["minutes"], "label": info["label"]}
+                for code, info in SESSION_TIMEOUT_CHOICES.items()
+            ],
+            "default": DEFAULT_SESSION_TIMEOUT
+        }
+    }

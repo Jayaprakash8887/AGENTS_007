@@ -28,7 +28,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { format } from 'date-fns';
+import { useFormatting } from '@/hooks/useFormatting';
 
 interface Settlement {
   id: string;
@@ -98,6 +98,8 @@ export default function Settlements() {
   const [isSettleDialogOpen, setIsSettleDialogOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('');
   const [paymentReference, setPaymentReference] = useState('');
+  
+  const { formatCurrency, formatDate } = useFormatting();
 
   const filteredSettlements = mockSettlements.filter((settlement) => {
     const matchesSearch =
@@ -192,7 +194,7 @@ export default function Settlements() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Amount Pending</p>
-                <p className="text-2xl font-bold">${totalPending.toLocaleString()}</p>
+                <p className="text-2xl font-bold">{formatCurrency(totalPending)}</p>
               </div>
             </div>
           </CardContent>
@@ -205,7 +207,7 @@ export default function Settlements() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Total Settled</p>
-                <p className="text-2xl font-bold">${totalSettled.toLocaleString()}</p>
+                <p className="text-2xl font-bold">{formatCurrency(totalSettled)}</p>
               </div>
             </div>
           </CardContent>
@@ -289,10 +291,10 @@ export default function Settlements() {
                   </TableCell>
                   <TableCell>{settlement.category}</TableCell>
                   <TableCell className="font-semibold">
-                    ${settlement.amount.toLocaleString()}
+                    {formatCurrency(settlement.amount)}
                   </TableCell>
                   <TableCell>
-                    {format(settlement.approvedDate, 'MMM d, yyyy')}
+                    {formatDate(settlement.approvedDate)}
                   </TableCell>
                   <TableCell>
                     <Badge
