@@ -9,7 +9,7 @@ from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 
 from database import get_sync_db as get_db
-from models import User
+from models import User, Tenant
 from services.keycloak_service import get_keycloak_service, KeycloakService
 from services.role_service import get_user_roles
 from services.security import audit_logger, get_client_ip
@@ -191,6 +191,24 @@ async def login(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials"
         )
+    
+    # Check if user's tenant is active (skip for system admin users)
+    if user.tenant_id:
+        tenant = db.query(Tenant).filter(Tenant.id == user.tenant_id).first()
+        if tenant and not tenant.is_active:
+            # Log failed login due to inactive tenant
+            audit_logger.log_auth_event(
+                event_type=audit_logger.AUTH_FAILED,
+                user_email=login_request.email,
+                success=False,
+                ip_address=client_ip,
+                user_agent=user_agent,
+                error_message=f"Tenant '{tenant.name}' is inactive"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Your organization's access has been suspended. Please contact your administrator."
+            )
     
     # Authenticate with Keycloak
     tokens = await keycloak.authenticate(login_request.email, login_request.password)

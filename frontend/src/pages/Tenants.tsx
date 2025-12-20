@@ -949,7 +949,7 @@ export default function Tenants() {
                     <div className="flex items-center justify-between">
                         <CardTitle>Organizations</CardTitle>
                         <div className="flex items-center gap-2">
-                            <Label htmlFor="showInactive" className="text-sm">Show inactive</Label>
+                            <Label htmlFor="showInactive" className="text-sm">Show inactive tenants</Label>
                             <input
                                 id="showInactive"
                                 type="checkbox"

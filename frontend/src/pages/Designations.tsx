@@ -336,14 +336,14 @@ export default function Designations() {
                                 checked={showInactive}
                                 onCheckedChange={(checked) => setShowInactive(!!checked)}
                             />
-                            <Label htmlFor="showInactive" className="text-sm">Show inactive</Label>
+                            <Label htmlFor="showInactive" className="text-sm">Show inactive designations</Label>
                         </div>
                     </div>
                 </CardContent>
             </Card>
 
             {/* Stats */}
-            <div className="grid gap-4 md:grid-cols-4">
+            <div className="grid gap-4 md:grid-cols-5">
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Total Designations</CardTitle>
@@ -351,6 +351,17 @@ export default function Designations() {
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold">{designations?.length || 0}</div>
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">With Admin Role</CardTitle>
+                        <Shield className="h-4 w-4 text-amber-500" />
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold text-amber-600">
+                            {designations?.filter(d => d.roles.includes('ADMIN')).length || 0}
+                        </div>
                     </CardContent>
                 </Card>
                 <Card>
