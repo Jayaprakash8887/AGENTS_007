@@ -995,31 +995,56 @@ async def return_to_employee(
         "action": "returned",
         "from_status": previous_status,
         "comment": return_data.return_reason,
+        "approver_id": str(return_data.approver_id) if return_data.approver_id else None,
+        "approver_name": return_data.approver_name,
+        "approver_role": return_data.approver_role,
         "timestamp": datetime.utcnow().isoformat()
     })
     # Flag claim_payload as modified for SQLAlchemy to detect JSONB changes
     flag_modified(claim, "claim_payload")
     
-    # Create a Comment record for visibility in Edit Claim page
-    # Find a user with MANAGER role to attribute the comment to (TODO: use actual auth user)
-    approver_user = await db.execute(
-        select(User).where(User.roles.contains(["MANAGER"])).limit(1)
-    )
-    approver = approver_user.scalar_one_or_none()
+    # Determine role for comment based on previous status
+    role_map = {
+        "PENDING_MANAGER": "MANAGER",
+        "PENDING_HR": "HR",
+        "PENDING_FINANCE": "FINANCE"
+    }
+    comment_role = return_data.approver_role or role_map.get(previous_status, "APPROVER")
     
-    if approver:
+    # Create a Comment record for visibility in Edit Claim page
+    if return_data.approver_id and return_data.approver_name:
         comment = Comment(
             id=uuid4(),
             tenant_id=claim.tenant_id,
             claim_id=claim.id,
-            comment_text=return_data.return_reason,
+            comment_text=f"[RETURNED] {return_data.return_reason}",
             comment_type="RETURN",
-            user_id=approver.id,
-            user_name=approver.full_name or approver.username,
-            user_role="MANAGER",
+            user_id=return_data.approver_id,
+            user_name=return_data.approver_name,
+            user_role=comment_role,
             visible_to_employee=True
         )
         db.add(comment)
+    else:
+        # Fallback: find a user with appropriate role
+        role_to_find = role_map.get(previous_status, "MANAGER")
+        approver_user = await db.execute(
+            select(User).where(User.roles.contains([role_to_find])).limit(1)
+        )
+        approver = approver_user.scalar_one_or_none()
+        if approver:
+            comment = Comment(
+                id=uuid4(),
+                tenant_id=claim.tenant_id,
+                claim_id=claim.id,
+                comment_text=f"[RETURNED] {return_data.return_reason}",
+                comment_type="RETURN",
+                user_id=approver.id,
+                user_name=approver.full_name or approver.username,
+                user_role=comment_role,
+                visible_to_employee=True
+            )
+            db.add(comment)
     
     await db.commit()
     await db.refresh(claim)
@@ -1090,7 +1115,7 @@ async def approve_claim(
     
     claim.can_edit = False
     
-    # Store approval comment in payload
+    # Store approval comment in payload and create Comment record
     if approve_data and approve_data.comment:
         if not claim.claim_payload:
             claim.claim_payload = {}
@@ -1098,27 +1123,74 @@ async def approve_claim(
             claim.claim_payload["approval_history"] = []
         claim.claim_payload["approval_history"].append({
             "action": "approved",
-            "from_status": claim.status,
-            "to_status": next_status,
+            "from_status": previous_status,
+            "to_status": claim.status,
             "comment": approve_data.comment,
+            "approver_id": str(approve_data.approver_id) if approve_data.approver_id else None,
+            "approver_name": approve_data.approver_name,
+            "approver_role": approve_data.approver_role,
             "timestamp": datetime.utcnow().isoformat()
         })
         # Flag claim_payload as modified for SQLAlchemy to detect JSONB changes
         flag_modified(claim, "claim_payload")
+        
+        # Create a Comment record for visibility
+        # Determine role for comment based on previous status
+        role_map = {
+            "PENDING_MANAGER": "MANAGER",
+            "PENDING_HR": "HR",
+            "PENDING_FINANCE": "FINANCE"
+        }
+        comment_role = approve_data.approver_role or role_map.get(previous_status, "APPROVER")
+        
+        # Use provided approver info or find a fallback user
+        if approve_data.approver_id and approve_data.approver_name:
+            comment = Comment(
+                id=uuid4(),
+                tenant_id=claim.tenant_id,
+                claim_id=claim.id,
+                comment_text=f"[APPROVED] {approve_data.comment}",
+                comment_type="APPROVAL",
+                user_id=approve_data.approver_id,
+                user_name=approve_data.approver_name,
+                user_role=comment_role,
+                visible_to_employee=True
+            )
+            db.add(comment)
+        else:
+            # Fallback: find a user with appropriate role
+            role_to_find = role_map.get(previous_status, "MANAGER")
+            approver_user = await db.execute(
+                select(User).where(User.roles.contains([role_to_find])).limit(1)
+            )
+            approver = approver_user.scalar_one_or_none()
+            if approver:
+                comment = Comment(
+                    id=uuid4(),
+                    tenant_id=claim.tenant_id,
+                    claim_id=claim.id,
+                    comment_text=f"[APPROVED] {approve_data.comment}",
+                    comment_type="APPROVAL",
+                    user_id=approver.id,
+                    user_name=approver.full_name or approver.username,
+                    user_role=comment_role,
+                    visible_to_employee=True
+                )
+                db.add(comment)
     
     await db.commit()
     await db.refresh(claim)
     
     # Audit log for claim approval
     audit_logger.log_claim_action(
-        user_id=str(approve_data.approver_id) if approve_data and approve_data.approver_id else "system",
+        user_id="system",  # Approver ID not passed in current request body
         tenant_id=str(claim.tenant_id),
         claim_id=str(claim_id),
         action="approve",
         details={
             "previous_status": previous_status,
             "new_status": claim.status,
-            "amount": float(claim.claimed_amount) if claim.claimed_amount else None,
+            "amount": float(claim.amount) if claim.amount else None,
             "comment": approve_data.comment if approve_data else None
         },
         ip_address=get_client_ip(request)
@@ -1167,44 +1239,69 @@ async def reject_claim(
             "action": "rejected",
             "from_status": previous_status,
             "comment": reject_data.comment,
+            "approver_id": str(reject_data.approver_id) if reject_data.approver_id else None,
+            "approver_name": reject_data.approver_name,
+            "approver_role": reject_data.approver_role,
             "timestamp": datetime.utcnow().isoformat()
         })
         # Flag claim_payload as modified for SQLAlchemy to detect JSONB changes
         flag_modified(claim, "claim_payload")
         
-        # Create a Comment record for visibility
-        # Find a user with appropriate role to attribute the comment to (TODO: use actual auth user)
-        approver_user = await db.execute(
-            select(User).where(User.roles.contains(["MANAGER"])).limit(1)
-        )
-        approver = approver_user.scalar_one_or_none()
+        # Determine role for comment based on previous status
+        role_map = {
+            "PENDING_MANAGER": "MANAGER",
+            "PENDING_HR": "HR",
+            "PENDING_FINANCE": "FINANCE"
+        }
+        comment_role = reject_data.approver_role or role_map.get(previous_status, "APPROVER")
         
-        if approver:
+        # Create a Comment record for visibility
+        if reject_data.approver_id and reject_data.approver_name:
             comment = Comment(
                 id=uuid4(),
                 tenant_id=claim.tenant_id,
                 claim_id=claim.id,
-                comment_text=reject_data.comment,
+                comment_text=f"[REJECTED] {reject_data.comment}",
                 comment_type="REJECTION",
-                user_id=approver.id,
-                user_name=approver.full_name or approver.username,
-                user_role="APPROVER",
+                user_id=reject_data.approver_id,
+                user_name=reject_data.approver_name,
+                user_role=comment_role,
                 visible_to_employee=True
             )
             db.add(comment)
+        else:
+            # Fallback: find a user with appropriate role
+            role_to_find = role_map.get(previous_status, "MANAGER")
+            approver_user = await db.execute(
+                select(User).where(User.roles.contains([role_to_find])).limit(1)
+            )
+            approver = approver_user.scalar_one_or_none()
+            if approver:
+                comment = Comment(
+                    id=uuid4(),
+                    tenant_id=claim.tenant_id,
+                    claim_id=claim.id,
+                    comment_text=f"[REJECTED] {reject_data.comment}",
+                    comment_type="REJECTION",
+                    user_id=approver.id,
+                    user_name=approver.full_name or approver.username,
+                    user_role=comment_role,
+                    visible_to_employee=True
+                )
+                db.add(comment)
     
     await db.commit()
     await db.refresh(claim)
     
     # Audit log for claim rejection
     audit_logger.log_claim_action(
-        user_id=str(reject_data.approver_id) if reject_data and reject_data.approver_id else "system",
+        user_id="system",  # Approver ID not passed in current request body
         tenant_id=str(claim.tenant_id),
         claim_id=str(claim_id),
         action="reject",
         details={
             "previous_status": previous_status,
-            "amount": float(claim.claimed_amount) if claim.claimed_amount else None,
+            "amount": float(claim.amount) if claim.amount else None,
             "comment": reject_data.comment if reject_data else None
         },
         ip_address=get_client_ip(request)
@@ -1297,7 +1394,7 @@ async def settle_claim(
             "payment_reference": settlement_data.payment_reference,
             "payment_method": settlement_data.payment_method,
             "amount_paid": float(settlement_data.amount_paid),
-            "claimed_amount": float(claim.claimed_amount) if claim.claimed_amount else None
+            "claimed_amount": float(claim.amount) if claim.amount else None
         },
         ip_address=get_client_ip(request)
     )

@@ -192,7 +192,8 @@ export function useClaims() {
     queryKey: ['claims', user?.tenantId, user?.id, user?.role],
     queryFn: () => fetchClaims(user?.tenantId, user?.id, user?.role),
     enabled: !!user?.tenantId,
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 30 * 1000, // 30 seconds - reduced for fresher approval data
+    refetchOnWindowFocus: true, // Refetch when user returns to the tab
   });
 }
 
@@ -202,7 +203,8 @@ export function useClaim(id: string) {
     queryKey: ['claims', id, user?.tenantId],
     queryFn: () => user?.tenantId ? fetchClaimById(id, user.tenantId) : undefined,
     enabled: !!id && !!user?.tenantId,
-    staleTime: 5 * 60 * 1000,
+    staleTime: 10 * 1000, // 10 seconds - ensure claim details are fresh
+    refetchOnWindowFocus: true, // Refetch when user returns to the tab
   });
 }
 

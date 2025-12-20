@@ -476,11 +476,17 @@ class ProjectResponse(ProjectBase):
 # Return to Employee Schema
 class ReturnToEmployee(BaseModel):
     return_reason: str = Field(..., min_length=10)
+    approver_id: Optional[UUID] = None
+    approver_name: Optional[str] = None
+    approver_role: Optional[str] = None
 
 
 # Approve/Reject Claim Schema
 class ApproveRejectClaim(BaseModel):
     comment: Optional[str] = None
+    approver_id: Optional[UUID] = None
+    approver_name: Optional[str] = None
+    approver_role: Optional[str] = None
 
 
 # Settlement Schema

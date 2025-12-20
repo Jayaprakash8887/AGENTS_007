@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   ChevronLeft,
   ChevronRight,
@@ -66,6 +67,7 @@ export default function ApprovalQueue() {
   const [actionComment, setActionComment] = useState('');
 
   const tenantId = user?.tenantId;
+  const queryClient = useQueryClient();
   const { data: allClaims = [], isLoading, error, refetch } = useClaims();
   const { formatDate, formatDateTime, formatCurrency } = useFormatting();
 
@@ -109,17 +111,29 @@ export default function ApprovalQueue() {
 
     try {
       let endpoint = '';
-      let body: Record<string, string> = {};
+      let body: Record<string, any> = {};
+
+      // Include approver info for all actions
+      const approverInfo = {
+        approver_id: user?.id,
+        approver_name: user?.name || user?.username,
+        approver_role: user?.role?.toUpperCase()
+      };
 
       if (action === 'approve') {
         endpoint = `${API_BASE_URL}/claims/${currentClaim.id}/approve?tenant_id=${tenantId || ''}`;
-        if (actionComment) body = { comment: actionComment };
+        body = { ...approverInfo };
+        if (actionComment) body.comment = actionComment;
       } else if (action === 'reject') {
         endpoint = `${API_BASE_URL}/claims/${currentClaim.id}/reject?tenant_id=${tenantId || ''}`;
-        if (actionComment) body = { comment: actionComment };
+        body = { ...approverInfo };
+        if (actionComment) body.comment = actionComment;
       } else if (action === 'return') {
         endpoint = `${API_BASE_URL}/claims/${currentClaim.id}/return?tenant_id=${tenantId || ''}`;
-        body = { return_reason: actionComment || 'Please review and correct the claim' };
+        body = { 
+          ...approverInfo,
+          return_reason: actionComment || 'Please review and correct the claim' 
+        };
       }
 
       const response = await fetch(endpoint, {
@@ -140,8 +154,9 @@ export default function ApprovalQueue() {
       };
       toast({ title: messages[action!] });
 
-      // Refresh claims list
+      // Refresh claims list and sidebar approval count
       await refetch();
+      queryClient.invalidateQueries({ queryKey: ['pending-approvals'] });
 
       // Move to next claim or reset index
       if (pendingClaims.length <= 1) {

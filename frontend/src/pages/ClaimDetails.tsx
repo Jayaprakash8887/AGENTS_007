@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft,
   FileText,
@@ -59,6 +60,7 @@ import { formatCategory } from '@/lib/categoryUtils';
 export default function ClaimDetails() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { user } = useAuth();
   const { formatDate, formatDateTime, formatCurrency, getCurrencySymbol } = useFormatting();
   const [comment, setComment] = useState('');
@@ -81,6 +83,15 @@ export default function ClaimDetails() {
   const { data: documents = [], isLoading: documentsLoading } = useDocuments(id || '');
   const { data: comments = [], isLoading: commentsLoading } = useComments(id || '');
   const createCommentMutation = useCreateComment();
+
+  // Refetch claim data on window focus to ensure fresh status
+  useEffect(() => {
+    const handleFocus = () => {
+      refetch();
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [refetch]);
 
   // Get signed URL for the currently viewed document
   const { data: signedUrl, isLoading: signedUrlLoading } = useDocumentSignedUrl(viewingDocument?.id || null);
@@ -151,17 +162,29 @@ export default function ClaimDetails() {
 
     try {
       let endpoint = '';
-      let body: Record<string, string> = {};
+      let body: Record<string, any> = {};
+
+      // Include approver info for all actions
+      const approverInfo = {
+        approver_id: user?.id,
+        approver_name: user?.name || user?.username,
+        approver_role: user?.role?.toUpperCase()
+      };
 
       if (action === 'approve') {
         endpoint = `${API_BASE_URL}/claims/${id}/approve?tenant_id=${user?.tenantId || ''}`;
-        if (actionComment) body = { comment: actionComment };
+        body = { ...approverInfo };
+        if (actionComment) body.comment = actionComment;
       } else if (action === 'reject') {
         endpoint = `${API_BASE_URL}/claims/${id}/reject?tenant_id=${user?.tenantId || ''}`;
-        if (actionComment) body = { comment: actionComment };
+        body = { ...approverInfo };
+        if (actionComment) body.comment = actionComment;
       } else if (action === 'return') {
         endpoint = `${API_BASE_URL}/claims/${id}/return?tenant_id=${user?.tenantId || ''}`;
-        body = { return_reason: actionComment || 'Please review and correct the claim details' };
+        body = { 
+          ...approverInfo,
+          return_reason: actionComment || 'Please review and correct the claim details' 
+        };
       }
 
       const response = await fetch(endpoint, {
@@ -184,6 +207,9 @@ export default function ClaimDetails() {
 
       setActionDialog({ open: false, action: null });
       setActionComment('');
+
+      // Invalidate pending-approvals query to update sidebar count
+      queryClient.invalidateQueries({ queryKey: ['pending-approvals'] });
 
       // Refresh the page to show updated status
       window.location.reload();
