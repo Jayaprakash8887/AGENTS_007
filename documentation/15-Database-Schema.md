@@ -469,6 +469,260 @@ CREATE INDEX idx_audit_entity ON audit_logs(entity_type, entity_id);
 CREATE INDEX idx_audit_created ON audit_logs(created_at DESC);
 ```
 
+### 3.10 Integration API Keys
+
+Stores API keys for external system integrations.
+
+```sql
+CREATE TABLE integration_api_keys (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    key_prefix VARCHAR(20) NOT NULL,
+    key_hash VARCHAR(255) NOT NULL,
+    
+    permissions VARCHAR[] DEFAULT ARRAY['read'],
+    rate_limit INTEGER DEFAULT 1000,
+    is_active BOOLEAN DEFAULT true,
+    
+    expires_at TIMESTAMP WITH TIME ZONE,
+    last_used_at TIMESTAMP WITH TIME ZONE,
+    usage_count INTEGER DEFAULT 0,
+    
+    created_by UUID REFERENCES users(id),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX idx_api_keys_tenant ON integration_api_keys(tenant_id);
+CREATE INDEX idx_api_keys_prefix ON integration_api_keys(key_prefix);
+CREATE INDEX idx_api_keys_active ON integration_api_keys(tenant_id) WHERE is_active = true;
+```
+
+### 3.11 Integration Webhooks
+
+Stores webhook configurations for external notifications.
+
+```sql
+CREATE TABLE integration_webhooks (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    url VARCHAR(2048) NOT NULL,
+    secret VARCHAR(255),
+    
+    auth_type VARCHAR(50) DEFAULT 'none',
+    auth_config JSONB DEFAULT '{}',
+    events VARCHAR[] DEFAULT ARRAY[]::VARCHAR[],
+    
+    retry_count INTEGER DEFAULT 3,
+    retry_delay_seconds INTEGER DEFAULT 60,
+    is_active BOOLEAN DEFAULT true,
+    
+    last_triggered_at TIMESTAMP WITH TIME ZONE,
+    last_success_at TIMESTAMP WITH TIME ZONE,
+    last_failure_at TIMESTAMP WITH TIME ZONE,
+    failure_count INTEGER DEFAULT 0,
+    success_count INTEGER DEFAULT 0,
+    
+    created_by UUID REFERENCES users(id),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX idx_webhooks_tenant ON integration_webhooks(tenant_id);
+CREATE INDEX idx_webhooks_active ON integration_webhooks(tenant_id) WHERE is_active = true;
+```
+
+### 3.12 Integration SSO Config
+
+Stores SSO/SAML configuration for single sign-on.
+
+```sql
+CREATE TABLE integration_sso_configs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    
+    provider VARCHAR(50) NOT NULL,
+    client_id VARCHAR(255),
+    client_secret VARCHAR(255),
+    
+    issuer_url VARCHAR(2048),
+    authorization_url VARCHAR(2048),
+    token_url VARCHAR(2048),
+    userinfo_url VARCHAR(2048),
+    jwks_url VARCHAR(2048),
+    
+    saml_metadata_url VARCHAR(2048),
+    saml_entity_id VARCHAR(255),
+    saml_certificate TEXT,
+    
+    attribute_mapping JSONB DEFAULT '{}',
+    auto_provision_users BOOLEAN DEFAULT false,
+    sync_user_attributes BOOLEAN DEFAULT false,
+    is_active BOOLEAN DEFAULT true,
+    
+    created_by UUID REFERENCES users(id),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    
+    UNIQUE(tenant_id)
+);
+```
+
+### 3.13 Integration HRMS
+
+Stores HRMS system integration configuration.
+
+```sql
+CREATE TABLE integration_hrms (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    
+    provider VARCHAR(50) NOT NULL,
+    api_url VARCHAR(2048),
+    api_key VARCHAR(255),
+    api_secret VARCHAR(255),
+    
+    oauth_client_id VARCHAR(255),
+    oauth_client_secret VARCHAR(255),
+    oauth_token_url VARCHAR(2048),
+    oauth_scope VARCHAR(255),
+    
+    sync_enabled BOOLEAN DEFAULT false,
+    sync_frequency VARCHAR(50) DEFAULT 'daily',
+    last_sync_at TIMESTAMP WITH TIME ZONE,
+    last_sync_status VARCHAR(50),
+    last_sync_error TEXT,
+    
+    field_mapping JSONB DEFAULT '{}',
+    sync_employees BOOLEAN DEFAULT true,
+    sync_departments BOOLEAN DEFAULT true,
+    sync_managers BOOLEAN DEFAULT true,
+    is_active BOOLEAN DEFAULT true,
+    
+    created_by UUID REFERENCES users(id),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    
+    UNIQUE(tenant_id)
+);
+```
+
+### 3.14 Integration ERP
+
+Stores ERP system integration configuration.
+
+```sql
+CREATE TABLE integration_erp (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    
+    provider VARCHAR(50) NOT NULL,
+    api_url VARCHAR(2048),
+    api_key VARCHAR(255),
+    api_secret VARCHAR(255),
+    
+    oauth_client_id VARCHAR(255),
+    oauth_client_secret VARCHAR(255),
+    oauth_token_url VARCHAR(2048),
+    oauth_scope VARCHAR(255),
+    
+    company_code VARCHAR(50),
+    cost_center VARCHAR(50),
+    gl_account_mapping JSONB DEFAULT '{}',
+    
+    export_enabled BOOLEAN DEFAULT false,
+    export_frequency VARCHAR(50) DEFAULT 'daily',
+    export_format VARCHAR(50) DEFAULT 'json',
+    auto_export_on_settlement BOOLEAN DEFAULT false,
+    
+    last_export_at TIMESTAMP WITH TIME ZONE,
+    last_export_status VARCHAR(50),
+    last_export_error TEXT,
+    is_active BOOLEAN DEFAULT true,
+    
+    created_by UUID REFERENCES users(id),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    
+    UNIQUE(tenant_id)
+);
+```
+
+### 3.15 Integration Communication
+
+Stores Slack/Teams notification configuration.
+
+```sql
+CREATE TABLE integration_communication (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    
+    provider VARCHAR(50) NOT NULL,
+    
+    -- Slack
+    slack_workspace_id VARCHAR(255),
+    slack_bot_token VARCHAR(255),
+    slack_channel_id VARCHAR(255),
+    
+    -- Microsoft Teams
+    teams_tenant_id VARCHAR(255),
+    teams_webhook_url VARCHAR(2048),
+    teams_channel_id VARCHAR(255),
+    
+    -- Notification Settings
+    notify_on_claim_submitted BOOLEAN DEFAULT true,
+    notify_on_claim_approved BOOLEAN DEFAULT true,
+    notify_on_claim_rejected BOOLEAN DEFAULT true,
+    notify_on_claim_settled BOOLEAN DEFAULT true,
+    notify_managers BOOLEAN DEFAULT false,
+    notify_finance BOOLEAN DEFAULT false,
+    is_active BOOLEAN DEFAULT true,
+    
+    created_by UUID REFERENCES users(id),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    
+    UNIQUE(tenant_id, provider)
+);
+
+CREATE INDEX idx_communication_tenant ON integration_communication(tenant_id);
+CREATE INDEX idx_communication_active ON integration_communication(tenant_id) WHERE is_active = true;
+```
+
+### 3.16 Webhook Delivery Logs
+
+Tracks webhook delivery attempts and status.
+
+```sql
+CREATE TABLE webhook_delivery_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    webhook_id UUID NOT NULL REFERENCES integration_webhooks(id) ON DELETE CASCADE,
+    
+    event_type VARCHAR(100) NOT NULL,
+    payload JSONB NOT NULL,
+    
+    status VARCHAR(50) NOT NULL,
+    status_code INTEGER,
+    response_body TEXT,
+    error_message TEXT,
+    
+    attempt_number INTEGER DEFAULT 1,
+    duration_ms INTEGER,
+    
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX idx_webhook_logs_webhook ON webhook_delivery_logs(webhook_id);
+CREATE INDEX idx_webhook_logs_created ON webhook_delivery_logs(created_at DESC);
+CREATE INDEX idx_webhook_logs_status ON webhook_delivery_logs(status);
+```
+
 ---
 
 ## 4. Performance Indexes

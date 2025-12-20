@@ -672,4 +672,312 @@ Authorization: Bearer {token}
 
 ---
 
-*Document Version: 1.1 | Last Updated: December 2025*
+## 15. Integrations API
+
+The Integrations API provides endpoints for managing third-party integrations including API keys, webhooks, SSO, HRMS, ERP, and communication platforms.
+
+### 15.1 Integrations Overview
+
+Get a summary of all configured integrations for a tenant.
+
+```http
+GET /api/v1/integrations/overview?tenant_id={tenant_id}
+Authorization: Bearer {token}
+```
+
+**Response:**
+```json
+{
+    "api_keys": {
+        "active_count": 2,
+        "configured": true
+    },
+    "webhooks": {
+        "active_count": 1,
+        "configured": true
+    },
+    "sso": {
+        "configured": true,
+        "provider": "azure_ad",
+        "is_active": true
+    },
+    "hrms": {
+        "configured": true,
+        "provider": "workday",
+        "is_active": true,
+        "last_sync": "2025-12-20T10:00:00Z"
+    },
+    "erp": {
+        "configured": false,
+        "provider": null,
+        "is_active": false,
+        "last_export": null
+    },
+    "communication": {
+        "configured_providers": ["slack"],
+        "active_count": 1
+    }
+}
+```
+
+### 15.2 API Keys
+
+#### List API Keys
+
+```http
+GET /api/v1/integrations/api-keys?tenant_id={tenant_id}
+Authorization: Bearer {token}
+```
+
+#### Create API Key
+
+```http
+POST /api/v1/integrations/api-keys?tenant_id={tenant_id}
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+    "name": "External System Integration",
+    "description": "API key for external HR system",
+    "permissions": ["read", "write"],
+    "rate_limit": 1000,
+    "expires_at": "2026-12-31T23:59:59Z"
+}
+```
+
+**Response:**
+```json
+{
+    "id": "uuid",
+    "name": "External System Integration",
+    "description": "API key for external HR system",
+    "key_prefix": "AzGBtWwW",
+    "permissions": ["read", "write"],
+    "rate_limit": 1000,
+    "is_active": true,
+    "expires_at": "2026-12-31T23:59:59Z",
+    "created_at": "2025-12-20T15:40:10Z",
+    "api_key": "AzGBtWwW2iaoFN47jcnGyMUu0nzNycz-QUeoi7zRlbo"
+}
+```
+
+> **Note:** The full `api_key` is only returned at creation time. Store it securely.
+
+#### Regenerate API Key
+
+```http
+POST /api/v1/integrations/api-keys/{key_id}/regenerate?tenant_id={tenant_id}
+Authorization: Bearer {token}
+```
+
+#### Delete API Key
+
+```http
+DELETE /api/v1/integrations/api-keys/{key_id}?tenant_id={tenant_id}
+Authorization: Bearer {token}
+```
+
+### 15.3 Webhooks
+
+#### List Webhooks
+
+```http
+GET /api/v1/integrations/webhooks?tenant_id={tenant_id}
+Authorization: Bearer {token}
+```
+
+#### Create Webhook
+
+```http
+POST /api/v1/integrations/webhooks?tenant_id={tenant_id}
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+    "name": "Claim Notification Webhook",
+    "url": "https://external-system.com/webhook",
+    "events": ["claim.created", "claim.approved", "claim.rejected", "claim.settled"],
+    "auth_type": "bearer",
+    "auth_config": {
+        "token": "secret-token"
+    },
+    "retry_count": 3,
+    "retry_delay_seconds": 60
+}
+```
+
+#### Test Webhook
+
+```http
+POST /api/v1/integrations/webhooks/{webhook_id}/test?tenant_id={tenant_id}
+Authorization: Bearer {token}
+```
+
+**Response:**
+```json
+{
+    "success": true,
+    "status_code": 200,
+    "duration_ms": 245
+}
+```
+
+### 15.4 SSO Configuration
+
+#### Get SSO Config
+
+```http
+GET /api/v1/integrations/sso?tenant_id={tenant_id}
+Authorization: Bearer {token}
+```
+
+#### Create/Update SSO Config
+
+```http
+POST /api/v1/integrations/sso?tenant_id={tenant_id}
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+    "provider": "azure_ad",
+    "client_id": "your-client-id",
+    "client_secret": "your-client-secret",
+    "issuer_url": "https://login.microsoftonline.com/{tenant}/v2.0",
+    "auto_provision_users": true,
+    "sync_user_attributes": true,
+    "is_active": true
+}
+```
+
+### 15.5 HRMS Integration
+
+#### Get HRMS Config
+
+```http
+GET /api/v1/integrations/hrms?tenant_id={tenant_id}
+Authorization: Bearer {token}
+```
+
+#### Create HRMS Config
+
+```http
+POST /api/v1/integrations/hrms?tenant_id={tenant_id}
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+    "provider": "workday",
+    "api_url": "https://wd3-services.workday.com/api/v1",
+    "api_key": "your-api-key",
+    "sync_enabled": true,
+    "sync_frequency": "daily",
+    "sync_employees": true,
+    "sync_departments": true,
+    "sync_managers": true,
+    "is_active": true
+}
+```
+
+#### Trigger HRMS Sync
+
+```http
+POST /api/v1/integrations/hrms/sync?tenant_id={tenant_id}
+Authorization: Bearer {token}
+```
+
+### 15.6 ERP Integration
+
+#### Get ERP Config
+
+```http
+GET /api/v1/integrations/erp?tenant_id={tenant_id}
+Authorization: Bearer {token}
+```
+
+#### Create ERP Config
+
+```http
+POST /api/v1/integrations/erp?tenant_id={tenant_id}
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+    "provider": "sap",
+    "api_url": "https://sap-server.example.com/api",
+    "api_key": "your-api-key",
+    "company_code": "1000",
+    "cost_center": "CC001",
+    "export_enabled": true,
+    "export_frequency": "daily",
+    "export_format": "json",
+    "auto_export_on_settlement": true,
+    "is_active": true
+}
+```
+
+#### Trigger ERP Export
+
+```http
+POST /api/v1/integrations/erp/export?tenant_id={tenant_id}
+Authorization: Bearer {token}
+```
+
+### 15.7 Communication Integration (Slack/Teams)
+
+#### List Communication Configs
+
+```http
+GET /api/v1/integrations/communication?tenant_id={tenant_id}
+Authorization: Bearer {token}
+```
+
+#### Create Slack Config
+
+```http
+POST /api/v1/integrations/communication?tenant_id={tenant_id}
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+    "provider": "slack",
+    "slack_workspace_id": "T0123456789",
+    "slack_bot_token": "xoxb-your-bot-token",
+    "slack_channel_id": "C0123456789",
+    "notify_on_claim_submitted": true,
+    "notify_on_claim_approved": true,
+    "notify_on_claim_rejected": true,
+    "notify_on_claim_settled": true,
+    "notify_managers": true,
+    "notify_finance": true,
+    "is_active": true
+}
+```
+
+#### Create Teams Config
+
+```http
+POST /api/v1/integrations/communication?tenant_id={tenant_id}
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+    "provider": "teams",
+    "teams_tenant_id": "your-teams-tenant-id",
+    "teams_webhook_url": "https://outlook.office.com/webhook/...",
+    "teams_channel_id": "19:abc123@thread.tacv2",
+    "notify_on_claim_submitted": true,
+    "notify_on_claim_approved": true,
+    "is_active": true
+}
+```
+
+#### Test Communication
+
+```http
+POST /api/v1/integrations/communication/{provider}/test?tenant_id={tenant_id}
+Authorization: Bearer {token}
+```
+
+---
+
+*Document Version: 1.2 | Last Updated: December 2025*

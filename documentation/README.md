@@ -72,6 +72,7 @@ Welcome to the Easy Qlaim documentation. This folder contains comprehensive docu
 | Version | Date | Description |
 |---------|------|-------------|
 | 1.0 | December 2025 | Initial comprehensive documentation |
+| 1.1 | December 2025 | Added Integrations API documentation (API keys, webhooks, SSO, HRMS, ERP, Slack/Teams) |
 
 ---
 
