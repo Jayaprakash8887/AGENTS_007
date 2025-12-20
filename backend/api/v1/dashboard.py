@@ -101,7 +101,7 @@ async def get_claims_by_status(
     tenant_id: Optional[UUID] = None,
     db: Session = Depends(get_sync_db)
 ):
-    """Get claim counts grouped by status with caching"""
+    """Get claim counts and amounts grouped by status with caching"""
     
     # Build cache key
     cache_key_parts = ["dashboard", "claims_by_status"]
@@ -118,7 +118,8 @@ async def get_claims_by_status(
     
     query = db.query(
         Claim.status,
-        func.count(Claim.id).label('count')
+        func.count(Claim.id).label('count'),
+        func.coalesce(func.sum(Claim.amount), 0).label('amount')
     )
     
     if tenant_id:
@@ -129,7 +130,7 @@ async def get_claims_by_status(
     
     results = query.group_by(Claim.status).all()
     
-    result = [{"status": status, "count": count} for status, count in results]
+    result = [{"status": status, "count": count, "amount": float(amount)} for status, count, amount in results]
     
     # Cache result
     await redis_cache.set_async(cache_key, result, DASHBOARD_CACHE_TTL)

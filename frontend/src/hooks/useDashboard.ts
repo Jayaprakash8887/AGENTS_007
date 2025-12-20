@@ -14,6 +14,7 @@ interface DashboardSummary {
 interface ClaimByStatus {
   status: string;
   count: number;
+  amount: number;
 }
 
 interface ClaimByCategory {

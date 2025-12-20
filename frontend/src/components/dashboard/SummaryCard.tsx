@@ -1,4 +1,5 @@
 import { LucideIcon } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 
 interface SummaryCardProps {
@@ -11,6 +12,7 @@ interface SummaryCardProps {
   };
   variant?: "default" | "pending" | "approved" | "rejected" | "total";
   delay?: number;
+  href?: string;
 }
 
 const variantStyles = {
@@ -36,14 +38,28 @@ export function SummaryCard({
   trend,
   variant = "default",
   delay = 0,
+  href,
 }: SummaryCardProps) {
+  const navigate = useNavigate();
+
+  const handleClick = () => {
+    if (href) {
+      navigate(href);
+    }
+  };
+
   return (
     <div
       className={cn(
         "rounded-xl p-6 shadow-card transition-all duration-300 hover:shadow-lg hover:-translate-y-1 opacity-0 animate-fade-in",
-        variantStyles[variant]
+        variantStyles[variant],
+        href && "cursor-pointer"
       )}
       style={{ animationDelay: `${delay}ms` }}
+      onClick={handleClick}
+      role={href ? "button" : undefined}
+      tabIndex={href ? 0 : undefined}
+      onKeyDown={href ? (e) => { if (e.key === 'Enter' || e.key === ' ') handleClick(); } : undefined}
     >
       <div className="flex items-start justify-between">
         <div className="space-y-2">

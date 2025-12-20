@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Clock, CheckCircle, XCircle, Wallet, Users, TrendingUp, AlertCircle, DollarSign, FileText, Building2, Settings, Shield, Activity, Server } from 'lucide-react';
+import { Clock, CheckCircle, XCircle, Wallet, Users, TrendingUp, AlertCircle, DollarSign, FileText, Building2, Settings, Shield, Activity, Server, RotateCcw, Banknote } from 'lucide-react';
 import { SummaryCard } from '@/components/dashboard/SummaryCard';
 import { QuickActions } from '@/components/dashboard/QuickActions';
 import { RecentActivity } from '@/components/dashboard/RecentActivity';
@@ -16,8 +16,8 @@ function EmployeeDashboard({ userName, employeeId, tenantId }: { userName: strin
   const { data: summary, isLoading: summaryLoading } = useDashboardSummary(employeeId, tenantId);
   const { data: claimsByStatus, isLoading: statusLoading } = useClaimsByStatus(employeeId, tenantId);
 
-  // Pending = any claim that is NOT Approved, Rejected, or Settled
-  const excludedFromPending = ['FINANCE_APPROVED', 'REJECTED', 'SETTLED'];
+  // Pending = any claim that is NOT Approved, Rejected, Settled, or Returned
+  const excludedFromPending = ['FINANCE_APPROVED', 'REJECTED', 'SETTLED', 'RETURNED_TO_EMPLOYEE'];
   const pendingCount = claimsByStatus?.filter(c =>
     !excludedFromPending.includes(c.status)
   ).reduce((sum, c) => sum + c.count, 0) || summary?.pending_claims || 0;
@@ -25,6 +25,16 @@ function EmployeeDashboard({ userName, employeeId, tenantId }: { userName: strin
   const approvedCount = claimsByStatus?.find(c => c.status === 'FINANCE_APPROVED')?.count || summary?.approved_this_month || 0;
   const rejectedCount = claimsByStatus?.find(c => c.status === 'REJECTED')?.count || 0;
   const settledCount = claimsByStatus?.find(c => c.status === 'SETTLED')?.count || 0;
+  const returnedCount = claimsByStatus?.find(c => c.status === 'RETURNED_TO_EMPLOYEE')?.count || 0;
+
+  // Calculate amounts
+  const settledAmount = claimsByStatus?.find(c => c.status === 'SETTLED')?.amount || 0;
+  const rejectedAmount = claimsByStatus?.find(c => c.status === 'REJECTED')?.amount || 0;
+  
+  // Total claimed excluding rejected
+  const totalClaimedExcludingRejected = claimsByStatus
+    ?.filter(c => c.status !== 'REJECTED')
+    .reduce((sum, c) => sum + (c.amount || 0), 0) || (summary?.total_amount_claimed || 0);
 
   if (summaryLoading || statusLoading) {
     return (
@@ -37,7 +47,9 @@ function EmployeeDashboard({ userName, employeeId, tenantId }: { userName: strin
             Here's an overview of your expense claims
           </p>
         </div>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+          <CardSkeleton />
+          <CardSkeleton />
           <CardSkeleton />
           <CardSkeleton />
           <CardSkeleton />
@@ -59,38 +71,51 @@ function EmployeeDashboard({ userName, employeeId, tenantId }: { userName: strin
         </p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
         <SummaryCard
           title="Pending Claims"
           value={pendingCount}
-          trend={{ value: 10, isPositive: true }}
           icon={Clock}
           variant="pending"
+          href="/claims?status=pending"
         />
         <SummaryCard
           title="Approved"
           value={approvedCount}
-          trend={{ value: 25, isPositive: true }}
           icon={CheckCircle}
           variant="approved"
+          href="/claims?status=finance_approved"
         />
         <SummaryCard
           title="Settled"
           value={settledCount}
           icon={DollarSign}
           variant="default"
+          href="/claims?status=settled"
+        />
+        <SummaryCard
+          title="Returned"
+          value={returnedCount}
+          icon={RotateCcw}
+          variant="pending"
+          href="/claims?status=returned"
         />
         <SummaryCard
           title="Rejected"
           value={rejectedCount}
-          trend={{ value: 0, isPositive: true }}
           icon={XCircle}
           variant="rejected"
+          href="/claims?status=rejected"
+        />
+        <SummaryCard
+          title="Total Settled"
+          value={formatCurrency(settledAmount)}
+          icon={Banknote}
+          variant="approved"
         />
         <SummaryCard
           title="Total Claimed"
-          value={formatCurrency(summary?.total_amount_claimed || 0)}
-          trend={{ value: 15, isPositive: true }}
+          value={formatCurrency(totalClaimedExcludingRejected)}
           icon={Wallet}
           variant="total"
         />

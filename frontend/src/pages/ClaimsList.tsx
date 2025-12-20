@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   Plus,
@@ -58,8 +58,7 @@ const statusOptions: { value: ClaimStatus | 'all'; label: string }[] = [
   { value: 'pending_manager', label: 'Pending Manager' },
   { value: 'pending_hr', label: 'Pending HR' },
   { value: 'pending_finance', label: 'Pending Finance' },
-  { value: 'finance_approved', label: 'Finance Approved' },
-  { value: 'approved', label: 'Approved' },
+  { value: 'finance_approved', label: 'Approved' },
   { value: 'rejected', label: 'Rejected' },
   { value: 'returned', label: 'Returned' },
   { value: 'settled', label: 'Settled' },
@@ -81,6 +80,19 @@ export default function ClaimsList() {
   const { data: claims = [], isLoading, error, refetch } = useClaims(tenantId);
   const deleteClaim = useDeleteClaim();
   const { formatDate, formatCurrency } = useFormatting();
+
+  // Read status filter from URL params on mount
+  useEffect(() => {
+    const statusParam = searchParams.get('status');
+    if (statusParam) {
+      // Handle 'pending' as a special case - show all pending statuses
+      if (statusParam === 'pending') {
+        setStatusFilter('all'); // We'll filter for pending in useMemo
+      } else {
+        setStatusFilter(statusParam as ClaimStatus);
+      }
+    }
+  }, [searchParams]);
 
   const handleDeleteClaim = async (claimId: string, claimNumber: string) => {
     if (!confirm(`Are you sure you want to delete claim ${claimNumber}?`)) {
@@ -119,8 +131,13 @@ export default function ClaimsList() {
       );
     }
 
-    // Status filter
-    if (statusFilter !== 'all') {
+    // Status filter - handle 'pending' as a special case (show all pending statuses)
+    const urlStatusParam = searchParams.get('status');
+    if (urlStatusParam === 'pending') {
+      // Pending = any claim that is NOT Approved, Rejected, Settled, or Returned
+      const excludedFromPending = ['finance_approved', 'rejected', 'settled', 'returned'];
+      result = result.filter((claim) => !excludedFromPending.includes(claim.status));
+    } else if (statusFilter !== 'all') {
       result = result.filter((claim) => claim.status === statusFilter);
     }
 
@@ -134,7 +151,7 @@ export default function ClaimsList() {
     });
 
     return result;
-  }, [claims, user?.id, searchQuery, statusFilter, sortField, sortOrder]);
+  }, [claims, user?.id, searchQuery, statusFilter, sortField, sortOrder, searchParams]);
 
   const totalPages = Math.ceil(filteredClaims.length / ITEMS_PER_PAGE);
   const paginatedClaims = filteredClaims.slice(

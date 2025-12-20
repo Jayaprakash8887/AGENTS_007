@@ -8,7 +8,7 @@ export interface ExtractedClaimCategory {
   id: string;
   policy_id: string | null;  // null for custom claims
   policy_name: string;
-  policy_region: string | null;
+  policy_region: string | string[] | null;  // Can be a single string or array of regions
   policy_status: string;
   category_code: string;
   category_name: string;
@@ -53,8 +53,21 @@ export function useExtractedClaims() {
   });
 }
 
+// Helper to check if user region matches policy region
+// Both can be string or array
+function regionsMatch(userRegion: string | string[] | undefined, policyRegion: string | string[] | null): boolean {
+  if (!userRegion) return true; // No user region filter, match all
+  if (!policyRegion) return false; // No policy region, don't match
+  
+  const userRegions = Array.isArray(userRegion) ? userRegion : [userRegion];
+  const policyRegions = Array.isArray(policyRegion) ? policyRegion : [policyRegion];
+  
+  // Check if any user region matches any policy region
+  return userRegions.some(ur => policyRegions.includes(ur));
+}
+
 // Hook to get allowances filtered by region
-export function useAllowancesByRegion(region: string | undefined) {
+export function useAllowancesByRegion(region: string | string[] | undefined) {
   const { user } = useAuth();
   return useQuery({
     queryKey: ['extracted-claims', 'allowances', region, user?.tenantId],
@@ -66,7 +79,7 @@ export function useAllowancesByRegion(region: string | undefined) {
         (category) =>
           category.category_type === 'ALLOWANCE' &&
           category.policy_status === 'ACTIVE' &&
-          (!region || category.policy_region === region)
+          regionsMatch(region, category.policy_region)
       );
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
@@ -74,7 +87,7 @@ export function useAllowancesByRegion(region: string | undefined) {
 }
 
 // Hook to get reimbursement categories filtered by region
-export function useReimbursementsByRegion(region: string | undefined) {
+export function useReimbursementsByRegion(region: string | string[] | undefined) {
   const { user } = useAuth();
   return useQuery({
     queryKey: ['extracted-claims', 'reimbursements', region, user?.tenantId],
@@ -86,7 +99,7 @@ export function useReimbursementsByRegion(region: string | undefined) {
         (category) =>
           category.category_type === 'REIMBURSEMENT' &&
           category.policy_status === 'ACTIVE' &&
-          (!region || category.policy_region === region)
+          regionsMatch(region, category.policy_region)
       );
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
