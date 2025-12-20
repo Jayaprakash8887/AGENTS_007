@@ -308,7 +308,7 @@ async def system_info():
 
 
 # API v1 routes
-from api.v1 import claims, employees, projects, approvals, documents, dashboard, comments, settings as settings_api, policies, custom_claims, cache, tenants, designations, auth, notifications, branding, regions, ibus
+from api.v1 import claims, employees, projects, approvals, documents, dashboard, comments, settings as settings_api, policies, custom_claims, cache, tenants, designations, auth, notifications, branding, regions, ibus, integrations
 
 app.include_router(auth.router, prefix="/api/v1", tags=["Authentication"])
 app.include_router(claims.router, prefix="/api/v1/claims", tags=["Claims"])
@@ -330,6 +330,7 @@ app.include_router(tenants.router, prefix="/api/v1/tenants", tags=["Tenants (Sys
 app.include_router(designations.router, prefix="/api/v1/designations", tags=["Designations"])
 app.include_router(notifications.router, prefix="/api/v1/notifications", tags=["Notifications"])
 app.include_router(branding.router, prefix="/api/v1/branding", tags=["Tenant Branding (System Admin)"])
+app.include_router(integrations.router, prefix="/api/v1/integrations", tags=["Integrations (System Admin)"])
 
 
 # Root endpoint

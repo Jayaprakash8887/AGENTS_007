@@ -1087,3 +1087,365 @@ class AuditLog(Base):
     )
 
 
+# ==================== INTEGRATION MODELS ====================
+
+class IntegrationApiKey(Base):
+    """
+    API Keys for external system integrations.
+    Allows third-party systems to access the platform securely.
+    """
+    __tablename__ = "integration_api_keys"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False)
+    
+    # Key identification
+    name = Column(String(100), nullable=False)  # Display name for the key
+    description = Column(Text)  # Description of what this key is used for
+    
+    # The actual key (hashed for security, prefix stored for display)
+    key_prefix = Column(String(10), nullable=False)  # First 8 chars for identification
+    key_hash = Column(String(128), nullable=False)  # SHA-256 hash of the full key
+    
+    # Permissions
+    permissions = Column(ARRAY(String), default=[])  # List of permissions: read_claims, write_claims, etc.
+    
+    # Rate limiting
+    rate_limit = Column(Integer, default=1000)  # Requests per hour
+    
+    # Status
+    is_active = Column(Boolean, default=True)
+    
+    # Expiry
+    expires_at = Column(DateTime(timezone=True))
+    
+    # Tracking
+    last_used_at = Column(DateTime(timezone=True))
+    usage_count = Column(Integer, default=0)
+    
+    # Audit
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    
+    __table_args__ = (
+        Index("idx_api_keys_tenant", "tenant_id"),
+        Index("idx_api_keys_prefix", "key_prefix"),
+        Index("idx_api_keys_active", "is_active"),
+    )
+
+
+class IntegrationWebhook(Base):
+    """
+    Webhook configurations for sending event notifications to external systems.
+    """
+    __tablename__ = "integration_webhooks"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False)
+    
+    # Webhook details
+    name = Column(String(100), nullable=False)
+    description = Column(Text)
+    url = Column(String(500), nullable=False)  # Webhook endpoint URL
+    
+    # Authentication
+    secret = Column(String(128))  # Secret for HMAC signature verification
+    auth_type = Column(String(20), default='hmac')  # hmac, bearer, basic, none
+    auth_config = Column(JSONB, default={})  # Additional auth config (headers, etc.)
+    
+    # Events to trigger webhook
+    events = Column(ARRAY(String), default=[])  # claim_submitted, claim_approved, etc.
+    
+    # Retry configuration
+    retry_count = Column(Integer, default=3)
+    retry_delay_seconds = Column(Integer, default=60)
+    
+    # Status
+    is_active = Column(Boolean, default=True)
+    
+    # Health tracking
+    last_triggered_at = Column(DateTime(timezone=True))
+    last_success_at = Column(DateTime(timezone=True))
+    last_failure_at = Column(DateTime(timezone=True))
+    failure_count = Column(Integer, default=0)
+    success_count = Column(Integer, default=0)
+    
+    # Audit
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    
+    __table_args__ = (
+        Index("idx_webhooks_tenant", "tenant_id"),
+        Index("idx_webhooks_active", "is_active"),
+    )
+
+
+class IntegrationSSOConfig(Base):
+    """
+    Single Sign-On (SSO) configuration for tenant authentication.
+    Supports multiple SSO providers.
+    """
+    __tablename__ = "integration_sso_configs"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False, unique=True)
+    
+    # Provider type
+    provider = Column(String(50), nullable=False)  # azure_ad, okta, google, keycloak, saml
+    
+    # Common OAuth/OIDC settings
+    client_id = Column(String(255))
+    client_secret = Column(String(500))  # Encrypted
+    issuer_url = Column(String(500))
+    authorization_url = Column(String(500))
+    token_url = Column(String(500))
+    userinfo_url = Column(String(500))
+    jwks_url = Column(String(500))
+    
+    # SAML-specific settings
+    saml_metadata_url = Column(String(500))
+    saml_entity_id = Column(String(255))
+    saml_certificate = Column(Text)  # X.509 certificate
+    
+    # Attribute mapping
+    attribute_mapping = Column(JSONB, default={
+        "email": "email",
+        "name": "name",
+        "employee_id": "employee_id"
+    })
+    
+    # Feature flags
+    auto_provision_users = Column(Boolean, default=False)  # Auto-create users on first login
+    sync_user_attributes = Column(Boolean, default=True)  # Update user attributes on login
+    
+    # Status
+    is_active = Column(Boolean, default=True)
+    
+    # Audit
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    
+    __table_args__ = (
+        Index("idx_sso_tenant", "tenant_id"),
+        Index("idx_sso_provider", "provider"),
+        Index("idx_sso_active", "is_active"),
+    )
+
+
+class IntegrationHRMS(Base):
+    """
+    HRMS (Human Resource Management System) integration configuration.
+    For syncing employee data from external HR systems.
+    """
+    __tablename__ = "integration_hrms"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False, unique=True)
+    
+    # Provider type
+    provider = Column(String(50), nullable=False)  # workday, bamboohr, sap_successfactors, oracle_hcm, zoho_people, darwinbox
+    
+    # Connection settings
+    api_url = Column(String(500))
+    api_key = Column(String(500))  # Encrypted
+    api_secret = Column(String(500))  # Encrypted
+    
+    # OAuth settings (for providers that use OAuth)
+    oauth_client_id = Column(String(255))
+    oauth_client_secret = Column(String(500))  # Encrypted
+    oauth_token_url = Column(String(500))
+    oauth_scope = Column(String(255))
+    
+    # Sync configuration
+    sync_enabled = Column(Boolean, default=False)
+    sync_frequency = Column(String(20), default='daily')  # hourly, daily, weekly, manual
+    last_sync_at = Column(DateTime(timezone=True))
+    last_sync_status = Column(String(20))  # success, failed, in_progress
+    last_sync_error = Column(Text)
+    
+    # Field mapping
+    field_mapping = Column(JSONB, default={
+        "employee_id": "employee_id",
+        "email": "email",
+        "name": "full_name",
+        "department": "department",
+        "designation": "job_title",
+        "manager_id": "manager_id",
+        "region": "location"
+    })
+    
+    # Sync options
+    sync_employees = Column(Boolean, default=True)
+    sync_departments = Column(Boolean, default=True)
+    sync_managers = Column(Boolean, default=True)
+    
+    # Status
+    is_active = Column(Boolean, default=False)
+    
+    # Audit
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    
+    __table_args__ = (
+        Index("idx_hrms_tenant", "tenant_id"),
+        Index("idx_hrms_provider", "provider"),
+        Index("idx_hrms_active", "is_active"),
+    )
+
+
+class IntegrationERP(Base):
+    """
+    ERP/Finance system integration configuration.
+    For syncing financial data to external accounting systems.
+    """
+    __tablename__ = "integration_erp"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False, unique=True)
+    
+    # Provider type
+    provider = Column(String(50), nullable=False)  # sap, oracle_financials, dynamics365, netsuite, quickbooks, tally, zoho_books
+    
+    # Connection settings
+    api_url = Column(String(500))
+    api_key = Column(String(500))  # Encrypted
+    api_secret = Column(String(500))  # Encrypted
+    
+    # OAuth settings
+    oauth_client_id = Column(String(255))
+    oauth_client_secret = Column(String(500))  # Encrypted
+    oauth_token_url = Column(String(500))
+    oauth_scope = Column(String(255))
+    
+    # Company/entity settings
+    company_code = Column(String(50))
+    cost_center = Column(String(50))
+    gl_account_mapping = Column(JSONB, default={})  # Map claim categories to GL accounts
+    
+    # Export configuration
+    export_enabled = Column(Boolean, default=False)
+    export_frequency = Column(String(20), default='manual')  # realtime, daily, weekly, manual
+    export_format = Column(String(20), default='json')  # json, xml, csv
+    auto_export_on_settlement = Column(Boolean, default=False)
+    
+    # Last export tracking
+    last_export_at = Column(DateTime(timezone=True))
+    last_export_status = Column(String(20))  # success, failed, in_progress
+    last_export_error = Column(Text)
+    
+    # Status
+    is_active = Column(Boolean, default=False)
+    
+    # Audit
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    
+    __table_args__ = (
+        Index("idx_erp_tenant", "tenant_id"),
+        Index("idx_erp_provider", "provider"),
+        Index("idx_erp_active", "is_active"),
+    )
+
+
+class IntegrationCommunication(Base):
+    """
+    Communication platform integrations (Slack, Microsoft Teams, etc.)
+    For sending notifications to team channels.
+    """
+    __tablename__ = "integration_communication"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False)
+    
+    # Provider type
+    provider = Column(String(50), nullable=False)  # slack, microsoft_teams, google_chat
+    
+    # Slack-specific settings
+    slack_workspace_id = Column(String(50))
+    slack_bot_token = Column(String(255))  # Encrypted
+    slack_channel_id = Column(String(50))
+    
+    # Teams-specific settings
+    teams_tenant_id = Column(String(100))
+    teams_webhook_url = Column(String(500))
+    teams_channel_id = Column(String(100))
+    
+    # Notification preferences
+    notify_on_claim_submitted = Column(Boolean, default=True)
+    notify_on_claim_approved = Column(Boolean, default=True)
+    notify_on_claim_rejected = Column(Boolean, default=True)
+    notify_on_claim_settled = Column(Boolean, default=True)
+    notify_managers = Column(Boolean, default=True)
+    notify_finance = Column(Boolean, default=True)
+    
+    # Status
+    is_active = Column(Boolean, default=False)
+    
+    # Audit
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    
+    __table_args__ = (
+        UniqueConstraint('tenant_id', 'provider', name='uq_communication_tenant_provider'),
+        Index("idx_comm_tenant", "tenant_id"),
+        Index("idx_comm_provider", "provider"),
+        Index("idx_comm_active", "is_active"),
+    )
+
+
+class WebhookDeliveryLog(Base):
+    """
+    Log of webhook delivery attempts for debugging and monitoring.
+    """
+    __tablename__ = "webhook_delivery_logs"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    webhook_id = Column(UUID(as_uuid=True), ForeignKey("integration_webhooks.id"), nullable=False)
+    
+    # Event details
+    event_type = Column(String(50), nullable=False)
+    event_payload = Column(JSONB, default={})
+    
+    # Delivery details
+    attempt_number = Column(Integer, default=1)
+    request_url = Column(String(500))
+    request_headers = Column(JSONB, default={})
+    request_body = Column(Text)
+    
+    # Response details
+    response_status_code = Column(Integer)
+    response_headers = Column(JSONB, default={})
+    response_body = Column(Text)
+    
+    # Status
+    success = Column(Boolean, default=False)
+    error_message = Column(Text)
+    duration_ms = Column(Integer)  # Response time in milliseconds
+    
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    
+    __table_args__ = (
+        Index("idx_webhook_log_webhook", "webhook_id"),
+        Index("idx_webhook_log_event", "event_type"),
+        Index("idx_webhook_log_success", "success"),
+        Index("idx_webhook_log_created", "created_at"),
+    )
