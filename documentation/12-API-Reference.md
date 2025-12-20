@@ -597,7 +597,44 @@ GET /api/v1/settings/session-timeout/available
 
 ---
 
-## 12. Rate Limits
+## 12. System Administration API
+
+### 12.1 Get System Info
+
+Returns system status including database and cache connection information. Available to System Admin only.
+
+```http
+GET /api/v1/system/info
+Authorization: Bearer {token}
+```
+
+**Response:**
+```json
+{
+    "database": {
+        "type": "PostgreSQL 15.13",
+        "host": "localhost",
+        "port": "5432",
+        "name": "reimbursement_db",
+        "connected": true
+    },
+    "cache": {
+        "host": "localhost",
+        "port": "6379",
+        "connected": true,
+        "memory_used": "1.2MB"
+    },
+    "app": {
+        "name": "Easy Qlaim",
+        "environment": "development",
+        "version": "1.0.0"
+    }
+}
+```
+
+---
+
+## 13. Rate Limits
 
 | Endpoint | Limit | Window |
 |----------|-------|--------|
@@ -608,9 +645,9 @@ GET /api/v1/settings/session-timeout/available
 
 ---
 
-## 13. Webhooks (Optional)
+## 14. Webhooks (Optional)
 
-### 13.1 Webhook Events
+### 14.1 Webhook Events
 
 | Event | Description |
 |-------|-------------|
@@ -619,7 +656,7 @@ GET /api/v1/settings/session-timeout/available
 | `claim.rejected` | Claim rejected |
 | `claim.settled` | Payment processed |
 
-### 13.2 Webhook Payload
+### 14.2 Webhook Payload
 
 ```json
 {
@@ -635,4 +672,4 @@ GET /api/v1/settings/session-timeout/available
 
 ---
 
-*Document Version: 1.0 | Last Updated: December 2024*
+*Document Version: 1.1 | Last Updated: December 2025*

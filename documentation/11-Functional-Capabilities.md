@@ -19,6 +19,31 @@ Easy Qlaim provides comprehensive expense reimbursement and allowance management
 | HR | ✅ Own | ✅ All | ✅ All | ✅ Limited | ✅ Policies |
 | Finance | ✅ Own | ✅ Final | ✅ Financial | ❌ | ❌ |
 | Admin | ✅ Own | ✅ All | ✅ All | ✅ Full | ✅ Full |
+| System Admin | ❌ | ❌ | ✅ Platform | ✅ Tenants | ✅ Platform |
+
+### 2.2 System Admin Capabilities
+
+System Admin is a platform-level role with access to:
+
+**Dashboard:**
+- Platform administration overview
+- Tenant organizations list with status
+- System health monitoring (API, Database, Security)
+- Quick actions for tenant and designation management
+
+**Navigation:**
+- Dashboard (Platform overview)
+- Tenants (Manage tenant organizations)
+- Designations (Manage role designations)
+- Settings (Platform-wide configuration)
+
+**Platform Settings:**
+- Maintenance mode with custom message
+- Platform session timeout (maximum for all tenants)
+- Maximum login attempts
+- Email/SMTP configuration
+- Database status monitoring
+- Cache management (platform and tenant-level)
 
 ---
 
@@ -629,7 +654,13 @@ Configure session and security preferences:
 | 2 hours | Moderate use |
 | 4 hours | Extended sessions |
 | 8 hours | Full workday (default) |
-| 24 hours | Low security / demo |
+
+> **Note:** Tenant session timeout is constrained by the Platform Session Timeout set by the System Admin. Tenants can only configure session timeouts that are less than or equal to the platform maximum.
+
+**Platform vs Tenant Session Timeout:**
+- **Platform Level (System Admin):** Sets the maximum allowed session timeout for all tenants
+- **Tenant Level (Admin):** Can set tenant-specific timeout up to the platform maximum
+- Users will be logged out after inactivity based on their tenant's configured timeout
 
 ### 15.5 Notification Settings
 
