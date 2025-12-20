@@ -119,8 +119,12 @@ async function fetchAIMetrics(tenantId?: string): Promise<AIMetrics> {
 }
 
 // Fetch pending approvals
-async function fetchPendingApprovals(tenantId?: string): Promise<PendingApprovals> {
-  const url = buildUrl(`${API_BASE_URL}/dashboard/pending-approvals`, { tenant_id: tenantId });
+async function fetchPendingApprovals(tenantId?: string, userId?: string, role?: string): Promise<PendingApprovals> {
+  const url = buildUrl(`${API_BASE_URL}/dashboard/pending-approvals`, { 
+    tenant_id: tenantId,
+    user_id: userId,
+    role: role
+  });
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error('Failed to fetch pending approvals');
@@ -201,13 +205,15 @@ export function useAIMetrics(tenantId?: string) {
 export function usePendingApprovals(tenantId?: string) {
   const { user } = useAuth();
   const effectiveTenantId = tenantId || user?.tenantId;
+  const userId = user?.id;
+  const role = user?.role;
 
   return useQuery({
-    queryKey: ['pending-approvals', effectiveTenantId],
-    queryFn: () => fetchPendingApprovals(effectiveTenantId),
+    queryKey: ['pending-approvals', effectiveTenantId, userId, role],
+    queryFn: () => fetchPendingApprovals(effectiveTenantId, userId, role),
     enabled: !!effectiveTenantId,
-    refetchInterval: 180000, // Refetch every 3 minutes
-    staleTime: 120000,
+    refetchInterval: 60000, // Refetch every minute for more responsive updates
+    staleTime: 30000, // Consider data stale after 30 seconds
   });
 }
 
