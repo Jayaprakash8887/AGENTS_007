@@ -32,6 +32,7 @@ env/
 agentsenv/
 .agentsenv
 artifacts/sample_reimbursement_bills/
+VM-agent-007_key.pem
 
 # IDEs
 .vscode/
