@@ -41,6 +41,12 @@ EOF
     echo -e "${GREEN}✅ Created .env file with your API key${NC}"
 fi
 
+# Ensure secrets directory exists for Docker volume mount
+if [ ! -d "secrets" ]; then
+    mkdir -p secrets
+    echo -e "${YELLOW}📂 Created secrets/ directory for credential files${NC}"
+fi
+
 echo -e "${BLUE}📦 Building Docker images...${NC}"
 docker-compose build
 
