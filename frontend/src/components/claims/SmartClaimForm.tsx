@@ -1217,16 +1217,12 @@ export function SmartClaimForm({
     processOCR();
   }, [uploadedFiles, setValue]);
 
-  // Simulate AI compliance score calculation
-  // For 'Other' category, AI confidence and policy compliance is 0
+  // Calculate form completeness score based on filled fields
+  // This should work for ALL categories including 'Other'
+  // Note: AI confidence and policy compliance are handled separately in field sources
   useEffect(() => {
-    // If category is 'other', set compliance score to 0
-    if (watchedFields.category === 'other') {
-      setComplianceScore(0);
-      return;
-    }
-
     let score = 0;
+    // Form completeness is based on filled fields - works for all categories
     if (watchedFields.category) score += 15;
     if (watchedFields.title) score += 15;
     if (watchedFields.amount && parseFloat(watchedFields.amount) > 0) score += 15;
