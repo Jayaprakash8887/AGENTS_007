@@ -99,7 +99,7 @@ async def run_startup_cleanup():
 async def lifespan(app: FastAPI):
     """Lifespan events for FastAPI app"""
     # Startup
-    logger.info("Starting Reimbursement Validation System API")
+    logger.info("Starting Easy Qlaim API")
     try:
         await init_db_async()
         logger.info("Database initialized successfully")
@@ -339,7 +339,7 @@ app.include_router(integrations.router, prefix="/api/v1/integrations", tags=["In
 async def root():
     """Root endpoint"""
     return {
-        "message": "Reimbursement Validation System API",
+        "message": "Easy Qlaim API",
         "version": "1.0.0",
         "docs": "/api/docs"
     }

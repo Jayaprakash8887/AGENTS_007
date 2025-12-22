@@ -1,5 +1,5 @@
 """
-Configuration module for the Reimbursement Validation System
+Configuration module for the Easy Qlaim
 """
 from pydantic_settings import BaseSettings
 from typing import List, Optional
@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables"""
     
     # Application
-    APP_NAME: str = "Reimbursement Validation System"
+    APP_NAME: str = "Easy Qlaim"
     APP_ENV: str = "development"
     DEBUG: bool = True
     SECRET_KEY: str
@@ -50,9 +50,9 @@ class Settings(BaseSettings):
     GEMINI_MAX_TOKENS: int = 5000
     
     # Google Cloud Storage
-    GCP_PROJECT_ID: str = "spanish-translation-419206"
-    GCP_BUCKET_NAME: str = "agents007-hackathon-jp-2024"
-    GCP_CREDENTIALS_PATH: Optional[str] = "../spanish-translation-419206-0b4ae2c983f6.json"
+    GCP_PROJECT_ID: str = None
+    GCP_BUCKET_NAME: str = None
+    GCP_CREDENTIALS_PATH: Optional[str] = None
     
     # ===========================================
     # AZURE CONFIGURATION
