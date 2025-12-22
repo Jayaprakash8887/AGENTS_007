@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getAllDepartments } from '@/config/company';
+import { useDepartments } from '@/hooks/useDepartments';
 import { ArrowLeft, Mail, Phone, Calendar, MapPin, Briefcase, Edit2, UserCheck, FolderKanban } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -48,7 +48,7 @@ export default function EmployeeDetails() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  
+
   const { user } = useAuth();
   const tenantId = user?.tenantId;
   const { formatDate, formatCurrency } = useFormatting();
@@ -64,6 +64,16 @@ export default function EmployeeDetails() {
     employee?.projectIds?.includes(project.id) || project.managerId === id
   ) || [];
   const manager = allEmployees?.find((emp) => emp.id === employee?.managerId);
+
+  // Get departments from API
+  const { data: departmentsData } = useDepartments(tenantId);
+  const departments = useMemo(() => {
+    if (!departmentsData || departmentsData.length === 0) {
+      if (!allEmployees) return [];
+      return [...new Set(allEmployees.map((e) => e.department).filter(Boolean))];
+    }
+    return departmentsData.map((d) => d.name);
+  }, [departmentsData, allEmployees]);
 
   const handleUpdateEmployee = async (data: EmployeeFormData) => {
     if (!employee) return;
@@ -134,7 +144,6 @@ export default function EmployeeDetails() {
     );
   }
 
-  const departments = getAllDepartments();
   const managers = allEmployees?.filter((emp) => emp.role === 'manager').map((emp) => ({
     id: emp.id,
     name: emp.name,
