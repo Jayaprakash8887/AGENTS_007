@@ -5,19 +5,16 @@ import {
   Plus,
   CheckCircle,
   XCircle,
-  Clock,
-  AlertCircle,
   ChevronDown,
   ChevronUp,
   Eye,
   Edit,
   Loader2,
-  RefreshCcw,
-  FileCheck,
   Trash2,
   Settings,
   PlusCircle,
   Sparkles,
+  AlertCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -52,364 +49,44 @@ import {
 } from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { format } from 'date-fns';
 import { useAuth } from '@/contexts/AuthContext';
 import { MultiSelect } from '@/components/ui/multi-select';
 import { useRegions } from '@/hooks/useRegions';
 import { useFormatting } from '@/hooks/useFormatting';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
-
-// Types
-interface PolicyCategory {
-  id: string;
-  tenant_id: string;
-  policy_upload_id: string;
-  category_name: string;
-  category_code: string;
-  category_type: 'REIMBURSEMENT' | 'ALLOWANCE';
-  description?: string;
-  max_amount?: number;
-  min_amount?: number;
-  currency: string;
-  frequency_limit?: string;
-  frequency_count?: number;
-  eligibility_criteria: Record<string, unknown>;
-  requires_receipt: boolean;
-  requires_approval_above?: number;
-  allowed_document_types: string[];
-  submission_window_days?: number;
-  is_active: boolean;
-  display_order: number;
-  source_text?: string;
-  ai_confidence?: number;
-  created_at: string;
-  updated_at: string;
-}
-
-interface PolicyUpload {
-  id: string;
-  tenant_id: string;
-  policy_name: string;
-  policy_number: string;
-  description?: string;
-  file_name: string;
-  file_type: string;
-  file_size?: number;
-  storage_path?: string;
-  gcs_uri?: string;
-  storage_type: string;
-  status: string;
-  extracted_text?: string;
-  extraction_error?: string;
-  extracted_at?: string;
-  extracted_data: Record<string, unknown>;
-  version: number;
-  is_active: boolean;
-  effective_from?: string;
-  effective_to?: string;
-  uploaded_by: string;
-  approved_by?: string;
-  approved_at?: string;
-  review_notes?: string;
-  created_at: string;
-  updated_at: string;
-  region?: string[];
-  categories: PolicyCategory[];
-}
-
-interface PolicyUploadListItem {
-  id: string;
-  policy_name: string;
-  policy_number: string;
-  file_name: string;
-  status: string;
-  version: number;
-  is_active: boolean;
-  effective_from?: string;
-  region?: string[];
-  categories_count: number;
-  uploaded_by: string;
-  created_at: string;
-}
-
-// Custom Claim Types
-interface CustomFieldValidation {
-  min_length?: number;
-  max_length?: number;
-  min?: number;
-  max?: number;
-  pattern?: string;
-}
-
-interface CustomFieldDefinition {
-  name: string;
-  label: string;
-  type: 'text' | 'number' | 'date' | 'select' | 'file' | 'boolean' | 'currency';
-  required: boolean;
-  placeholder?: string;
-  options: string[];
-  validation?: CustomFieldValidation;
-  default_value?: unknown;
-}
-
-interface CustomClaim {
-  id: string;
-  tenant_id: string;
-  claim_name: string;
-  claim_code: string;
-  description?: string;
-  category_type: 'REIMBURSEMENT' | 'ALLOWANCE';
-  region?: string[];
-  max_amount?: number;
-  min_amount?: number;
-  default_amount?: number;
-  currency: string;
-  frequency_limit?: string;
-  frequency_count?: number;
-  custom_fields: CustomFieldDefinition[];
-  eligibility_criteria: Record<string, unknown>;
-  requires_receipt: boolean;
-  requires_approval_above?: number;
-  allowed_document_types: string[];
-  submission_window_days?: number;
-  is_active: boolean;
-  display_order: number;
-  created_by: string;
-  updated_by?: string;
-  created_at: string;
-  updated_at: string;
-}
-
-interface CustomClaimListItem {
-  id: string;
-  claim_name: string;
-  claim_code: string;
-  description?: string;
-  category_type: 'REIMBURSEMENT' | 'ALLOWANCE';
-  region?: string[];
-  max_amount?: number;
-  currency: string;
-  requires_receipt: boolean;
-  is_active: boolean;
-  fields_count: number;
-  created_at: string;
-}
-
-// API Functions
-async function fetchPolicies(tenantId?: string, region?: string): Promise<PolicyUploadListItem[]> {
-  const params = new URLSearchParams();
-  if (tenantId) params.append('tenant_id', tenantId);
-  if (region) params.append('region', region);
-
-  const url = `${API_BASE_URL}/policies/${params.toString() ? '?' + params.toString() : ''}`;
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error('Failed to fetch policies');
-  }
-  return response.json();
-}
-
-async function fetchPolicy(id: string, tenantId: string): Promise<PolicyUpload> {
-  const response = await fetch(`${API_BASE_URL}/policies/${id}?tenant_id=${tenantId}`);
-  if (!response.ok) {
-    throw new Error('Failed to fetch policy');
-  }
-  return response.json();
-}
-
-async function uploadPolicy(data: FormData): Promise<PolicyUpload> {
-  const response = await fetch(`${API_BASE_URL}/policies/upload`, {
-    method: 'POST',
-    body: data,
-  });
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.detail || 'Failed to upload policy');
-  }
-  return response.json();
-}
-
-async function approvePolicy(id: string, data: { review_notes?: string; effective_from?: string }, tenantId: string): Promise<PolicyUpload> {
-  const response = await fetch(`${API_BASE_URL}/policies/${id}/approve?tenant_id=${tenantId}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  });
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.detail || 'Failed to approve policy');
-  }
-  return response.json();
-}
-
-async function rejectPolicy(id: string, review_notes: string, tenantId: string): Promise<PolicyUpload> {
-  const response = await fetch(`${API_BASE_URL}/policies/${id}/reject?tenant_id=${tenantId}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ review_notes }),
-  });
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.detail || 'Failed to reject policy');
-  }
-  return response.json();
-}
-
-async function reExtractPolicy(id: string, tenantId: string): Promise<{ message: string }> {
-  const response = await fetch(`${API_BASE_URL}/policies/${id}/reextract?tenant_id=${tenantId}`, {
-    method: 'POST',
-  });
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.detail || 'Failed to re-extract policy');
-  }
-  return response.json();
-}
-
-async function uploadNewVersion(id: string, formData: FormData, tenantId: string): Promise<PolicyUpload> {
-  // Ensure tenant_id is in FormData if it's a form post, or in query
-  if (!formData.has('tenant_id')) {
-    formData.append('tenant_id', tenantId);
-  }
-  const response = await fetch(`${API_BASE_URL}/policies/${id}/new-version`, {
-    method: 'POST',
-    body: formData,
-  });
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.detail || 'Failed to upload new version');
-  }
-  return response.json();
-}
-
-// Custom Claims API Functions
-async function fetchCustomClaims(tenantId: string): Promise<CustomClaimListItem[]> {
-  const response = await fetch(`${API_BASE_URL}/custom-claims/?tenant_id=${tenantId}`);
-  if (!response.ok) {
-    throw new Error('Failed to fetch custom claims');
-  }
-  return response.json();
-}
-
-async function fetchCustomClaim(id: string, tenantId: string): Promise<CustomClaim> {
-  const response = await fetch(`${API_BASE_URL}/custom-claims/${id}?tenant_id=${tenantId}`);
-  if (!response.ok) {
-    throw new Error('Failed to fetch custom claim');
-  }
-  return response.json();
-}
-
-async function createCustomClaim(data: Partial<CustomClaim>, createdBy: string, tenantId: string): Promise<CustomClaim> {
-  const response = await fetch(`${API_BASE_URL}/custom-claims/?created_by=${createdBy}&tenant_id=${tenantId}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  });
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.detail || 'Failed to create custom claim');
-  }
-  return response.json();
-}
-
-async function updateCustomClaim(id: string, data: Partial<CustomClaim>, updatedBy: string, tenantId: string): Promise<CustomClaim> {
-  const response = await fetch(`${API_BASE_URL}/custom-claims/${id}?updated_by=${updatedBy}&tenant_id=${tenantId}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  });
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.detail || 'Failed to update custom claim');
-  }
-  return response.json();
-}
-
-async function deleteCustomClaim(id: string, tenantId: string): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/custom-claims/${id}?tenant_id=${tenantId}`, {
-    method: 'DELETE',
-  });
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.detail || 'Failed to delete custom claim');
-  }
-}
-
-async function toggleCustomClaimStatus(id: string, updatedBy: string, tenantId: string): Promise<CustomClaim> {
-  const response = await fetch(`${API_BASE_URL}/custom-claims/${id}/toggle-status?updated_by=${updatedBy}&tenant_id=${tenantId}`, {
-    method: 'POST',
-  });
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.detail || 'Failed to toggle custom claim status');
-  }
-  return response.json();
-}
-
-function getStatusBadge(status: string) {
-  switch (status) {
-    case 'PENDING':
-      return <Badge variant="outline" className="text-gray-600"><Clock className="h-3 w-3 mr-1" />Pending</Badge>;
-    case 'AI_PROCESSING':
-      return <Badge variant="outline" className="text-blue-600"><Loader2 className="h-3 w-3 mr-1 animate-spin" />Processing</Badge>;
-    case 'EXTRACTED':
-      return <Badge variant="outline" className="text-orange-600"><AlertCircle className="h-3 w-3 mr-1" />Needs Review</Badge>;
-    case 'APPROVED':
-      return <Badge variant="outline" className="text-green-600"><CheckCircle className="h-3 w-3 mr-1" />Approved</Badge>;
-    case 'ACTIVE':
-      return <Badge className="bg-green-100 text-green-700"><FileCheck className="h-3 w-3 mr-1" />Active</Badge>;
-    case 'REJECTED':
-      return <Badge variant="destructive"><XCircle className="h-3 w-3 mr-1" />Rejected</Badge>;
-    default:
-      return <Badge variant="outline">{status}</Badge>;
-  }
-}
-
-function formatFileSize(bytes?: number): string {
-  if (!bytes) return 'Unknown';
-  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-  if (bytes === 0) return '0 Bytes';
-  const i = Math.floor(Math.log(bytes) / Math.log(1024));
-  return parseFloat((bytes / Math.pow(1024, i)).toFixed(2)) + ' ' + sizes[i];
-}
-
-
-
-// Field type options for custom claims
-const FIELD_TYPE_OPTIONS = [
-  { value: 'text', label: 'Text' },
-  { value: 'number', label: 'Number' },
-  { value: 'currency', label: 'Currency' },
-  { value: 'date', label: 'Date' },
-  { value: 'select', label: 'Dropdown Select' },
-  { value: 'boolean', label: 'Yes/No (Checkbox)' },
-  { value: 'file', label: 'File Upload' },
-];
-
-// Frequency limit options
-const FREQUENCY_OPTIONS = [
-  { value: '', label: 'No Limit' },
-  { value: 'ONCE', label: 'Once Only' },
-  { value: 'DAILY', label: 'Daily' },
-  { value: 'WEEKLY', label: 'Weekly' },
-  { value: 'MONTHLY', label: 'Monthly' },
-  { value: 'QUARTERLY', label: 'Quarterly' },
-  { value: 'YEARLY', label: 'Yearly' },
-  { value: 'UNLIMITED', label: 'Unlimited' },
-];
-
-// Default empty custom field
-const getEmptyCustomField = (): CustomFieldDefinition => ({
-  name: '',
-  label: '',
-  type: 'text',
-  required: false,
-  placeholder: '',
-  options: [],
-  validation: undefined,
-  default_value: undefined,
-});
+// Import from extracted modules
+import {
+  // Types
+  type PolicyUpload,
+  type PolicyUploadListItem,
+  type PolicyCategory,
+  type CustomClaim,
+  type CustomClaimListItem,
+  type CustomFieldDefinition,
+  type CustomClaimFormState,
+  // Constants
+  FIELD_TYPE_OPTIONS,
+  FREQUENCY_OPTIONS,
+  DEFAULT_CUSTOM_CLAIM_FORM,
+  getEmptyCustomField,
+  // API functions
+  fetchPolicies,
+  fetchPolicy,
+  uploadPolicy,
+  approvePolicy,
+  rejectPolicy,
+  reExtractPolicy,
+  uploadNewVersion,
+  fetchCustomClaims,
+  fetchCustomClaim,
+  createCustomClaim,
+  updateCustomClaim,
+  deleteCustomClaim,
+  toggleCustomClaimStatus,
+  // Utils
+  getStatusBadge,
+  formatFileSize,
+} from '@/components/policies';
 
 export default function Policies() {
   const queryClient = useQueryClient();
