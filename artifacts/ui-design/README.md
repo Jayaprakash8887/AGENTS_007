@@ -827,7 +827,7 @@ The backend uses **Google Gemini API** with custom AI services:
 #### Agent Types
 
 1. **Document Agent**
-   - OCR processing with PaddleOCR
+   - OCR processing with Tesseract + Google Vision
    - Data extraction and validation
    - Confidence scoring
 
@@ -1133,7 +1133,7 @@ When reporting bugs, please include:
 | **Backend API** | 🚧 Planned | FastAPI + agents (see architecture below) |
 | **Database** | 🚧 Planned | DocumentDB.io integration |
 | **Authentication** | 🚧 Planned | Keycloak SSO |
-| **OCR Processing** | 🚧 Planned | PaddleOCR integration |
+| **OCR Processing** | ✅ Complete | Tesseract + Google Vision |
 | **AI Services** | ✅ Complete | Gemini API + Multi-provider LLM |
 
 ---
@@ -1230,7 +1230,7 @@ The frontend is **fully functional** with mock data and ready for backend integr
                                  │
 ┌────────────────────────────────▼────────────────────────────────┐
 │  External Services & Storage                                     │
-│  • PaddleOCR (Self-hosted OCR)                                   │
+│  • Tesseract + Google Vision (OCR)                               │
 │  • GCP Storage (Documents)                                       │
 │  • SMTP/SendGrid (Notifications)                                 │
 │  • [Future] Kronos API (Timesheet)                               │
@@ -1341,7 +1341,7 @@ Send notification to user
 **Purpose:** Extract and verify claim data from documents
 
 **Key Responsibilities:**
-- Perform OCR using PaddleOCR (self-hosted, 95%+ accuracy)
+- Perform OCR using Tesseract + Google Vision (multi-provider)
 - Extract structured data (amount, date, vendor, category)
 - Generate field-level confidence scores
 - Track data source (OCR/Manual/Edited)
@@ -1367,7 +1367,8 @@ Each field extracted has metadata:
 5. Date validity checks
 
 **Tools Available:**
-- `paddleocr.extract_text()` - PaddleOCR (self-hosted, 95%+ accuracy)
+- `tesseract_ocr.extract_text()` - Tesseract OCR
+- `google_vision.extract_text()` - Google Cloud Vision
 - `gemini.structure_data()` - LLM parsing
 - `detect_manipulation()` - Fraud detection
 - `verify_vendor()` - External validation
@@ -1637,7 +1638,7 @@ Send notification to user
     - Manages workflow state
 
 2. **document_agent_task** (Document Agent)
-    - OCR extraction via PaddleOCR
+    - OCR extraction via Tesseract/Google Vision
     - Field tracking and verification
     - Fraud detection
 
@@ -2973,14 +2974,14 @@ Response: {timesheet_id, created: true}
 - [ ] Set up DocumentDB cluster
 - [ ] Set up Redis cluster
 - [ ] Configure GCP storage
-- [ ] Deploy PaddleOCR service
+- [x] Configure OCR service (Tesseract)
 - [ ] Configure Keycloak authentication
 - [ ] Set up SSL certificates
 
 **Deployment Steps:**
 1. Deploy DocumentDB cluster
 2. Deploy Redis cluster (broker + result backend)
-3. Deploy PaddleOCR service
+3. Configure OCR service (Tesseract + Google Vision)
 4. Deploy FastAPI backend services
 5. Deploy Celery workers (3-5 instances)
 6. Deploy Flower monitoring UI
@@ -2993,7 +2994,7 @@ Response: {timesheet_id, created: true}
 **Post-Deployment:**
 - [ ] Verify all services healthy
 - [ ] Test claim submission
-- [ ] Test OCR extraction (PaddleOCR)
+- [x] Test OCR extraction (Tesseract + Google Vision)
 - [ ] Verify Celery tasks executing
 - [ ] Monitor Flower UI for task status
 - [ ] Test approval workflow

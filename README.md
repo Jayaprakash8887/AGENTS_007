@@ -22,7 +22,7 @@ Built on a modern stack (FastAPI, React, Celery, PostgreSQL) and powered by **Go
 
 ### ✨ Core Capabilities
 - **Auto-Approval**: AI validates and auto-approves high-confidence claims (95%+)
-- **Smart OCR**: PaddleOCR extracts data from receipts, invoices, and certificates
+- **Smart OCR**: Multi-provider OCR (Tesseract, Google Vision) extracts data from receipts, invoices, and certificates
 - **AI Validation**: Gemini 2.0 performs intelligent policy compliance checks
 - **Return Workflow**: Non-destructive claim return for employee corrections
 - **Multi-Role Access**: Employee, Manager, HR, Finance portals
@@ -46,7 +46,7 @@ Built on a modern stack (FastAPI, React, Celery, PostgreSQL) and powered by **Go
 - **Database**: PostgreSQL + DocumentDB.io (MongoDB-compatible API)
 - **Task Queue**: Celery + Redis
 - **AI**: Google Gemini 2.0 Flash
-- **OCR**: PaddleOCR (self-hosted, 95%+ accuracy)
+- **OCR**: Tesseract + Google Vision (multi-provider)
 - **Language**: Python 3.11+
 
 ### Frontend
