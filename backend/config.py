@@ -236,7 +236,7 @@ class Settings(BaseSettings):
     LOG_FILE: str = "/var/log/reimbursement/app.log"
     
     # CORS - Allow all common development ports
-    CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000,http://localhost:8080,http://127.0.0.1:8080,http://localhost:4173,http://localhost:8081,http://127.0.0.1:8081"
+    CORS_ORIGINS: str = "*"
     CORS_ALLOW_CREDENTIALS: bool = True
     
     # Tenant

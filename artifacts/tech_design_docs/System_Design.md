@@ -44,17 +44,17 @@ This system implements a **fully autonomous, multi-agent AI architecture** for r
 
 | Component | Technology | Version | Rationale |
 |-----------|------------|---------|-----------|
-| **Agentic Framework** | Google ADK | Latest | Multi-agent orchestration, native Gemini integration |
 | **LLM** | Google Gemini 2.0 | 2.0 | Advanced reasoning, multimodal support, cost-effective |
-| **Database** | DocumentDB.io | Latest | PostgreSQL-based, MongoDB-compatible API, BSON support |
+| **AI Providers** | OpenAI, Anthropic, Ollama | Latest | Multi-provider flexibility |
+| **Database** | PostgreSQL + MongoDB | Latest | Relational + document storage |
 | **Backend** | Python + FastAPI | 3.11 / 0.104+ | Async performance, modern Python features |
 | **Frontend** | React + TypeScript | 18 / 5.0+ | Component-based, type-safe, production-grade |
-| **Task Queue** | Celery | 5.3+ | Distributed task processing, async agent execution |
+| **Task Queue** | Celery | 5.3+ | Distributed task processing, async execution |
 | **Message Broker & Cache** | Redis | 7.2+ | Task queue broker, result backend, caching |
 | **Task Monitoring** | Flower | 2.0+ | Real-time Celery task monitoring & management |
-| **OCR/Vision** | PaddleOCR | 3.3+ | Open-source OCR, 95%+ accuracy, self-hosted |
-| **Object Storage** | GCP  | Latest | Scalable document storage |
-| **Authentication** |  Keycloak | Latest | SSO, RBAC, enterprise-ready |
+| **OCR/Vision** | Google Vision, Tesseract | Latest | Multi-provider OCR with high accuracy |
+| **Object Storage** | GCP / Azure / S3 | Latest | Scalable document storage |
+| **Authentication** | Keycloak | Latest | SSO, RBAC, enterprise-ready |
 
 ---
 
@@ -99,7 +99,7 @@ This system implements a **fully autonomous, multi-agent AI architecture** for r
      │      ┌────────────────────────────────────────────────┐
      │      │         CELERY WORKERS (3-5 instances)         │
      │      │  ┌──────────────────────────────────────────┐  │
-     │      │  │    AGENTIC AI LAYER (Google ADK)         │  │
+     │      │  │    AI SERVICES LAYER (Gemini API)        │  │
      │      │  │                                          │  │
      │      │  │  ┌────────────────────────────────────┐ │  │
      │      │  │  │  ORCHESTRATOR AGENT                │ │  │
@@ -1801,7 +1801,6 @@ Response: {timesheet_id, created: true}
 
 ## Glossary
 
-**ADK** - Agent Development Kit (Google's framework)
 **Allowance** - Fixed amount claim without supporting documents
 **BSON** - Binary JSON (MongoDB document format)
 **DocumentDB.io** - PostgreSQL-based MongoDB-compatible database

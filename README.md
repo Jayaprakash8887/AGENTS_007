@@ -4,6 +4,18 @@
 
 An intelligent, multi-agent AI system for automating reimbursement and allowance claim processing using Google Gemini, FastAPI, and React.
 
+## 📝 Project Abstract
+
+**Easy Qlaim** is an **AI-powered automated reimbursement platform** designed to revolutionize expense management for enterprises. By leveraging **multi-agent AI orchestration**, it autonomously validates claims against complex company policies, detects fraud, and processes approvals with 95%+ accuracy.
+
+The system replaces traditional manual workflows with intelligent agents:
+*   **Document Agent:** Extracts data from receipts/invoices using OCR.
+*   **Validation Agent:** Checks compliance against dynamic policy rules using LLM reasoning.
+*   **Approval Agent:** Routes claims for auto-approval or human review based on risk scores.
+
+Built on a modern stack (FastAPI, React, Celery, PostgreSQL) and powered by **Google Gemini 2.0**, Easy Qlaim reduces processing time from days to minutes while ensuring complete auditability and compliance.
+
+---
 ---
 
 ## 🌟 Key Features

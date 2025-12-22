@@ -186,9 +186,9 @@ See the [Roadmap](./README.md#roadmap) section in README for planned features.
 ### Planned for 2.0.0
 - Backend API integration with FastAPI
 - Real authentication with Keycloak
-- Database integration with DocumentDB
-- Google ADK multi-agent system
-- PaddleOCR integration
+- Database integration with PostgreSQL/MongoDB
+- Enhanced Gemini AI services
+- Multi-provider OCR integration
 - Real-time WebSocket updates
 - Email notifications
 - Advanced analytics

@@ -69,7 +69,7 @@ services:
 
   # PgBouncer Connection Pooler
   pgbouncer:
-    image: edoburu/pgbouncer:1.21.0
+    image: edoburu/pgbouncer:latest
     container_name: reimbursement_pgbouncer
     environment:
       DATABASE_URL: postgres://reimbursement_user:reimbursement_pass@postgres:5432/reimbursement_db
