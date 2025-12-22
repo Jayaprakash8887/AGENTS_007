@@ -50,8 +50,8 @@ class Settings(BaseSettings):
     GEMINI_MAX_TOKENS: int = 5000
     
     # Google Cloud Storage
-    GCP_PROJECT_ID: str = None
-    GCP_BUCKET_NAME: str = None
+    GCP_PROJECT_ID: Optional[str] = None
+    GCP_BUCKET_NAME: Optional[str] = None
     GCP_CREDENTIALS_PATH: Optional[str] = None
     
     # ===========================================
