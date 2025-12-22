@@ -205,7 +205,8 @@ def generate_policy_checks(
     has_document: bool = False,
     policy_limit: Optional[float] = None,
     submission_window_days: Optional[int] = None,
-    is_potential_duplicate: bool = False
+    is_potential_duplicate: bool = False,
+    policy_effective_from: Optional[date] = None
 ) -> Dict[str, Any]:
     """
     Generate policy compliance checks for a claim.
@@ -264,31 +265,56 @@ def generate_policy_checks(
     elif amount_status == "warning":
         passed_count += 0.5
     
-    # 3. Submission Window Check
+    # Parse claim_date for subsequent checks
     claim_date = claim_data.get("claim_date")
-    window_days = submission_window_days or 15  # Default 15 days
+    parsed_claim_date = None
     if claim_date:
         if isinstance(claim_date, str):
             from datetime import datetime
             try:
-                claim_date = datetime.strptime(claim_date.split('T')[0], "%Y-%m-%d").date()
+                parsed_claim_date = datetime.strptime(claim_date.split('T')[0], "%Y-%m-%d").date()
             except:
-                claim_date = None
-        
-        if claim_date:
-            days_old = (date.today() - claim_date).days
-            if days_old <= window_days:
-                date_status = "pass"
-                date_message = f"Receipt date is {days_old} days old, within {window_days}-day window"
+                parsed_claim_date = None
+        elif isinstance(claim_date, date):
+            parsed_claim_date = claim_date
+    
+    # 3. Policy Effective Date Check (NEW)
+    if policy_effective_from:
+        if parsed_claim_date:
+            if parsed_claim_date >= policy_effective_from:
+                effective_status = "pass"
+                effective_message = f"Claim date {parsed_claim_date} is on/after policy effective date {policy_effective_from}"
             else:
-                date_status = "fail"
-                date_message = f"Receipt date is {days_old} days old, exceeds {window_days}-day submission window"
+                effective_status = "fail"
+                effective_message = f"Claim date {parsed_claim_date} is BEFORE policy effective date {policy_effective_from}. This policy was not active at the time of the expense."
         else:
-            date_status = "warning"
-            date_message = "Could not validate expense date"
+            effective_status = "warning"
+            effective_message = "Could not validate claim date against policy effective date"
+        checks.append({
+            "id": "policy_effective",
+            "label": "Policy was effective",
+            "status": effective_status,
+            "message": effective_message
+        })
+        total_count += 1
+        if effective_status == "pass":
+            passed_count += 1
+        elif effective_status == "warning":
+            passed_count += 0.5
+    
+    # 4. Submission Window Check
+    window_days = submission_window_days or 15  # Default 15 days
+    if parsed_claim_date:
+        days_old = (date.today() - parsed_claim_date).days
+        if days_old <= window_days:
+            date_status = "pass"
+            date_message = f"Receipt date is {days_old} days old, within {window_days}-day window"
+        else:
+            date_status = "fail"
+            date_message = f"Receipt date is {days_old} days old, exceeds {window_days}-day submission window"
     else:
         date_status = "warning"
-        date_message = "No expense date provided"
+        date_message = "No expense date provided" if not claim_date else "Could not validate expense date"
     checks.append({
         "id": "date",
         "label": "Within submission window",
@@ -301,7 +327,7 @@ def generate_policy_checks(
     elif date_status == "warning":
         passed_count += 0.5
     
-    # 4. Document Check
+    # 5. Document Check
     doc_status = "pass" if has_document else "warning"
     doc_message = "Supporting document attached" if has_document else "No supporting document"
     checks.append({
@@ -316,7 +342,7 @@ def generate_policy_checks(
     elif doc_status == "warning":
         passed_count += 0.5
     
-    # 5. Duplicate Check
+    # 6. Duplicate Check
     if is_potential_duplicate:
         dup_status = "warning"
         dup_message = "Potential duplicate detected - similar claim exists with same amount and date"

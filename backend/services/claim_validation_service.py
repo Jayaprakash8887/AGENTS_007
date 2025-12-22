@@ -26,7 +26,9 @@ class ClaimValidationService:
         """
         Validate a claim against policy rules and existing claims.
         """
-        # 1. Get policy category details
+        from models import PolicyUpload
+        
+        # 1. Get policy category details along with its parent policy for effective_from date
         category = self.db.query(PolicyCategory).filter(
             PolicyCategory.tenant_id == request.tenant_id,
             PolicyCategory.category_code == request.category_code
@@ -35,6 +37,16 @@ class ClaimValidationService:
         category_name = category.category_name if category else request.category_code
         policy_limit = float(category.max_amount) if category and category.max_amount else None
         submission_window = category.submission_window_days if category else 15
+        
+        # Get the policy's effective_from date
+        policy_effective_from = None
+        if category and category.policy_upload_id:
+            policy = self.db.query(PolicyUpload).filter(
+                PolicyUpload.id == category.policy_upload_id,
+                PolicyUpload.is_active == True
+            ).first()
+            if policy:
+                policy_effective_from = policy.effective_from
         
         # 2. Check for duplicates
         is_potential_duplicate = False
@@ -65,7 +77,8 @@ class ClaimValidationService:
             has_document=request.has_receipt,
             policy_limit=policy_limit,
             submission_window_days=submission_window,
-            is_potential_duplicate=is_potential_duplicate
+            is_potential_duplicate=is_potential_duplicate,
+            policy_effective_from=policy_effective_from
         )
         
         # 4. Filter and map checks to ValidationCheckResult
