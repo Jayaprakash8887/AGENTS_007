@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -29,6 +29,8 @@ import {
   Minimize2,
   Save,
   UserCog,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -48,7 +50,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { ClaimStatusBadge } from '@/components/claims/ClaimStatusBadge';
-import { useClaim } from '@/hooks/useClaims';
+import { useClaim, useClaims } from '@/hooks/useClaims';
 import { useDocuments, getDocumentViewUrl, getDocumentDownloadUrl, useDocumentSignedUrl } from '@/hooks/useDocuments';
 import { useComments, useCreateComment } from '@/hooks/useComments';
 import { useAuth } from '@/contexts/AuthContext';
@@ -83,6 +85,44 @@ export default function ClaimDetails() {
   const { data: documents = [], isLoading: documentsLoading } = useDocuments(id || '');
   const { data: comments = [], isLoading: commentsLoading } = useComments(id || '');
   const createCommentMutation = useCreateComment();
+
+  // Fetch all claims for navigation (only for approvers)
+  const { data: allClaims = [] } = useClaims();
+
+  // Calculate pending claims queue for approvers
+  const pendingClaimsQueue = useMemo(() => {
+    // Get pending status based on role
+    const roleStatusMap: Record<string, string[]> = {
+      'manager': ['pending_manager'],
+      'hr': ['pending_hr'],
+      'finance': ['pending_finance'],
+      'admin': ['pending_manager', 'pending_hr', 'pending_finance'],
+    };
+    const pendingStatuses = roleStatusMap[user?.role || ''] || [];
+    if (pendingStatuses.length === 0) return [];
+
+    return allClaims
+      .filter(c => pendingStatuses.includes(c.status))
+      .sort((a, b) => {
+        const aDate = a.submissionDate || new Date();
+        const bDate = b.submissionDate || new Date();
+        return bDate.getTime() - aDate.getTime(); // Most recent first
+      });
+  }, [allClaims, user?.role]);
+
+  // Find current claim position in queue
+  const currentQueueIndex = useMemo(() => {
+    return pendingClaimsQueue.findIndex(c => c.id === id);
+  }, [pendingClaimsQueue, id]);
+
+  const navigateToClaim = (direction: 'prev' | 'next') => {
+    const newIndex = direction === 'prev' ? currentQueueIndex - 1 : currentQueueIndex + 1;
+    if (newIndex >= 0 && newIndex < pendingClaimsQueue.length) {
+      navigate(`/claims/${pendingClaimsQueue[newIndex].id}`);
+    }
+  };
+
+  const showNavigation = currentQueueIndex >= 0 && pendingClaimsQueue.length > 0;
 
   // Refetch claim data on window focus to ensure fresh status
   useEffect(() => {
@@ -181,9 +221,9 @@ export default function ClaimDetails() {
         if (actionComment) body.comment = actionComment;
       } else if (action === 'return') {
         endpoint = `${API_BASE_URL}/claims/${id}/return?tenant_id=${user?.tenantId || ''}`;
-        body = { 
+        body = {
           ...approverInfo,
-          return_reason: actionComment || 'Please review and correct the claim details' 
+          return_reason: actionComment || 'Please review and correct the claim details'
         };
       }
 
@@ -380,6 +420,33 @@ export default function ClaimDetails() {
             <p className="text-muted-foreground">{claim.title}</p>
           </div>
         </div>
+
+        {/* Queue Navigation (for approvers) */}
+        {showNavigation && (
+          <div className="flex items-center gap-2 border rounded-lg px-2 py-1 bg-muted/30">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => navigateToClaim('prev')}
+              disabled={currentQueueIndex === 0}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <span className="text-sm text-muted-foreground px-2 min-w-[50px] text-center">
+              {currentQueueIndex + 1} / {pendingClaimsQueue.length}
+            </span>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => navigateToClaim('next')}
+              disabled={currentQueueIndex === pendingClaimsQueue.length - 1}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
 
         {/* Actions */}
         {canApprove && (
