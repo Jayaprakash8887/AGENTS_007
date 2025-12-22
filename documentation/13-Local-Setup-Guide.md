@@ -52,6 +52,7 @@ docker-compose logs -f
 - Backend API: http://localhost:8000
 - API Docs: http://localhost:8000/api/docs
 - PostgreSQL: localhost:5432
+- PgBouncer (connection pooler): localhost:6432
 - Redis: localhost:6379
 - Keycloak (optional): http://localhost:8180
 

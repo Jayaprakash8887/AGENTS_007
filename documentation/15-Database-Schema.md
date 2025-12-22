@@ -150,7 +150,35 @@ CREATE UNIQUE INDEX idx_drm_unique
 - `HR` - HR access
 - `ADMIN` - Tenant admin
 
-### 3.4 User
+### 3.4 Department
+
+Stores tenant-specific department information.
+
+```sql
+CREATE TABLE departments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id),
+    code VARCHAR(50) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    head_id UUID REFERENCES users(id),
+    is_active BOOLEAN DEFAULT true,
+    display_order INTEGER DEFAULT 0,
+    extra_data JSONB DEFAULT '{}',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX idx_departments_tenant ON departments(tenant_id);
+CREATE UNIQUE INDEX idx_departments_tenant_code 
+    ON departments(tenant_id, code);
+CREATE UNIQUE INDEX idx_departments_tenant_name 
+    ON departments(tenant_id, name);
+```
+
+**Note:** Departments are now tenant-specific and managed via the Departments API. The static department list has been removed from the frontend configuration.
+
+### 3.5 User
 
 Stores user account information.
 

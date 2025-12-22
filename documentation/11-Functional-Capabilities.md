@@ -398,7 +398,33 @@ Each tenant can define their own designation-to-role mappings:
 - Claims auto-route to assigned manager
 - Bulk reassignment supported
 
----
+### 8.4 Department Management
+
+Departments are now tenant-specific and managed via API. Admins can:
+
+**CRUD Operations:**
+- Create new departments with code, name, description
+- Update department details
+- Activate/deactivate departments
+- Delete departments (only if no employees assigned)
+
+**Department Properties:**
+| Field | Description |
+|-------|-------------|
+| Code | Unique short code (e.g., ENG, HR, FIN) |
+| Name | Full department name |
+| Description | Optional description |
+| Head | Optional department head (employee) |
+| Display Order | Ordering for dropdowns |
+| Active Status | Enable/disable without deleting |
+
+**Access Control:**
+- Only Admin users can access Department Management
+- Departments are isolated per tenant
+- Employee counts shown for each department
+
+**Navigation:**
+Admin sidebar → Departments
 
 ## 9. Notifications
 

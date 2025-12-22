@@ -14,9 +14,11 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./keycloak/init-keycloak-db.sql:/docker-entrypoint-initdb.d/init-keycloak-db.sql
+      - ./keycloak/init-keycloak-db.sql:/docker-entrypoint-initdb.d/01_init-keycloak-db.sql
+      - ./backend/migrations/001_create_audit_logs_table.sql:/docker-entrypoint-initdb.d/02_create_audit_logs_table.sql
+      - ./backend/migrations/002_add_composite_indexes.sql:/docker-entrypoint-initdb.d/03_add_composite_indexes.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U reimbursement_user -d reimbursement_db"]
+      test: [ "CMD-SHELL", "pg_isready -U reimbursement_user -d reimbursement_db" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -45,7 +47,7 @@ services:
         condition: service_healthy
     command: start-dev
     healthcheck:
-      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080 && echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q '200 OK'"]
+      test: [ "CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080 && echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q '200 OK'" ]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -60,7 +62,27 @@ services:
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # PgBouncer Connection Pooler
+  pgbouncer:
+    image: edoburu/pgbouncer:1.21.0
+    container_name: reimbursement_pgbouncer
+    environment:
+      DATABASE_URL: postgres://reimbursement_user:reimbursement_pass@postgres:5432/reimbursement_db
+    ports:
+      - "6432:6432"
+    volumes:
+      - ./pgbouncer/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
+      - ./pgbouncer/userlist.txt:/etc/pgbouncer/userlist.txt:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -h localhost -p 6432 -U reimbursement_user -d reimbursement_db || exit 1" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -74,8 +96,11 @@ services:
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: postgresql://reimbursement_user:reimbursement_pass@postgres:5432/reimbursement_db
-      MONGODB_URI: postgresql://reimbursement_user:reimbursement_pass@postgres:5432/reimbursement_db
+      # Use PgBouncer for connection pooling (port 6432)
+      DATABASE_URL: postgresql://reimbursement_user:reimbursement_pass@pgbouncer:6432/reimbursement_db
+      # Direct PostgreSQL connection (fallback, port 5432)
+      # DATABASE_URL: postgresql://reimbursement_user:reimbursement_pass@postgres:5432/reimbursement_db
+      MONGODB_URI: postgresql://reimbursement_user:reimbursement_pass@pgbouncer:6432/reimbursement_db
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
@@ -86,7 +111,7 @@ services:
       DEBUG: "True"
       CORS_ORIGINS: http://localhost:5173,http://localhost:3000
     depends_on:
-      postgres:
+      pgbouncer:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -102,8 +127,9 @@ services:
       dockerfile: Dockerfile
     container_name: reimbursement_celery_worker
     environment:
-      DATABASE_URL: postgresql://reimbursement_user:reimbursement_pass@postgres:5432/reimbursement_db
-      MONGODB_URI: postgresql://reimbursement_user:reimbursement_pass@postgres:5432/reimbursement_db
+      # Use PgBouncer for connection pooling
+      DATABASE_URL: postgresql://reimbursement_user:reimbursement_pass@pgbouncer:6432/reimbursement_db
+      MONGODB_URI: postgresql://reimbursement_user:reimbursement_pass@pgbouncer:6432/reimbursement_db
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
@@ -112,7 +138,7 @@ services:
       GOOGLE_API_KEY: ${GOOGLE_API_KEY}
       APP_ENV: development
     depends_on:
-      postgres:
+      pgbouncer:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -127,8 +153,9 @@ services:
       dockerfile: Dockerfile
     container_name: reimbursement_celery_beat
     environment:
-      DATABASE_URL: postgresql://reimbursement_user:reimbursement_pass@postgres:5432/reimbursement_db
-      MONGODB_URI: postgresql://reimbursement_user:reimbursement_pass@postgres:5432/reimbursement_db
+      # Use PgBouncer for connection pooling
+      DATABASE_URL: postgresql://reimbursement_user:reimbursement_pass@pgbouncer:6432/reimbursement_db
+      MONGODB_URI: postgresql://reimbursement_user:reimbursement_pass@pgbouncer:6432/reimbursement_db
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
@@ -136,7 +163,7 @@ services:
       GOOGLE_API_KEY: ${GOOGLE_API_KEY}
       APP_ENV: development
     depends_on:
-      postgres:
+      pgbouncer:
         condition: service_healthy
       redis:
         condition: service_healthy

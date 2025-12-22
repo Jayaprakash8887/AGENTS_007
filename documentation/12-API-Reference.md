@@ -354,7 +354,86 @@ Authorization: Bearer {token}
 
 ---
 
-## 7. Dashboard API
+## 7. Departments API
+
+Departments are tenant-specific and managed dynamically via API.
+
+### 7.1 List Departments
+
+```http
+GET /api/v1/departments?tenant_id={tenant_id}&include_inactive=false&include_employee_counts=true
+Authorization: Bearer {token}
+```
+
+**Response:**
+```json
+[
+    {
+        "id": "uuid",
+        "tenant_id": "uuid",
+        "code": "ENG",
+        "name": "Engineering",
+        "description": "Software engineering team",
+        "head_id": "uuid",
+        "head_name": "John Doe",
+        "is_active": true,
+        "display_order": 1,
+        "employee_count": 25,
+        "created_at": "2024-12-01T10:00:00Z",
+        "updated_at": "2024-12-15T10:00:00Z"
+    }
+]
+```
+
+### 7.2 Get Department
+
+```http
+GET /api/v1/departments/{department_id}?tenant_id={tenant_id}
+Authorization: Bearer {token}
+```
+
+### 7.3 Create Department
+
+```http
+POST /api/v1/departments?tenant_id={tenant_id}
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+    "code": "DS",
+    "name": "Data Science",
+    "description": "Data science and analytics team",
+    "head_id": "uuid",
+    "is_active": true,
+    "display_order": 10
+}
+```
+
+### 7.4 Update Department
+
+```http
+PUT /api/v1/departments/{department_id}?tenant_id={tenant_id}
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+    "name": "Data Science & Analytics",
+    "description": "Updated description"
+}
+```
+
+### 7.5 Delete Department
+
+Soft-deletes a department (sets `is_active=false`). Returns error if employees are assigned.
+
+```http
+DELETE /api/v1/departments/{department_id}?tenant_id={tenant_id}
+Authorization: Bearer {token}
+```
+
+---
+
+## 8. Dashboard API
 
 ### 7.1 Employee Dashboard
 
