@@ -290,6 +290,7 @@ export default function Policies() {
       setIsCreateCustomClaimOpen(false);
       resetCustomClaimForm();
       queryClient.invalidateQueries({ queryKey: ['custom-claims'] });
+      queryClient.invalidateQueries({ queryKey: ['extracted-claims'] });
     },
     onError: (error: Error) => {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
@@ -305,6 +306,7 @@ export default function Policies() {
       resetCustomClaimForm();
       queryClient.invalidateQueries({ queryKey: ['custom-claims'] });
       queryClient.invalidateQueries({ queryKey: ['custom-claim', selectedCustomClaimId] });
+      queryClient.invalidateQueries({ queryKey: ['extracted-claims'] });
     },
     onError: (error: Error) => {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
@@ -316,6 +318,7 @@ export default function Policies() {
     onSuccess: () => {
       toast({ title: 'Success', description: 'Custom claim deleted successfully.' });
       queryClient.invalidateQueries({ queryKey: ['custom-claims'] });
+      queryClient.invalidateQueries({ queryKey: ['extracted-claims'] });
     },
     onError: (error: Error) => {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
@@ -327,6 +330,7 @@ export default function Policies() {
     onSuccess: () => {
       toast({ title: 'Success', description: 'Custom claim status updated.' });
       queryClient.invalidateQueries({ queryKey: ['custom-claims'] });
+      queryClient.invalidateQueries({ queryKey: ['extracted-claims'] });
     },
     onError: (error: Error) => {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
