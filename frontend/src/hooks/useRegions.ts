@@ -7,7 +7,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 
 // Build URL with query params
 const buildUrl = (baseUrl: string, params: Record<string, any>) => {
-    const url = new URL(baseUrl);
+    const url = new URL(baseUrl, window.location.origin);
     Object.keys(params).forEach(key => {
         if (params[key]) {
             url.searchParams.append(key, params[key]);
