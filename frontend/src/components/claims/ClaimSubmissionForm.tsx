@@ -153,6 +153,16 @@ export function ClaimSubmissionForm({ onClose }: ClaimSubmissionFormProps) {
 
     // For reimbursements: Step 2 is Details (validation)
     if (claimType === 'reimbursement' && currentStep === 2) {
+      // First check if file is uploaded - mandatory
+      if (uploadedFiles.length === 0) {
+        toast({
+          title: "Document Required",
+          description: "Please upload a receipt or invoice to continue. File upload is mandatory.",
+          variant: "destructive",
+        });
+        return;
+      }
+      
       const isValid = await form.trigger(["title", "amount", "date", "vendor"]);
       if (!isValid) {
         toast({

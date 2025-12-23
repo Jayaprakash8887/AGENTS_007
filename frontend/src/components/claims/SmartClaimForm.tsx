@@ -1839,6 +1839,21 @@ export function SmartClaimForm({
               </div>
             )}
 
+            {/* Overlay when no file uploaded - fields are disabled */}
+            {uploadedFiles.length === 0 && !isExtractingOCR && (
+              <div className="absolute inset-0 bg-background/60 backdrop-blur-[2px] z-10 flex flex-col items-center justify-center rounded-xl">
+                <div className="text-center p-4">
+                  <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-muted flex items-center justify-center">
+                    <FileText className="h-6 w-6 text-muted-foreground" />
+                  </div>
+                  <p className="text-sm font-medium text-foreground">Upload a document first</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Please upload a receipt or invoice above to enable form fields
+                  </p>
+                </div>
+              </div>
+            )}
+
             <div className="mb-6">
               <h3 className="text-lg font-semibold text-foreground">
                 Reimbursement Claim
@@ -1875,13 +1890,13 @@ export function SmartClaimForm({
                     setValue('category', value);
                     markFieldAsManual('category');
                   }}
-                  disabled={isExtractingOCR}
+                  disabled={isExtractingOCR || uploadedFiles.length === 0}
                 >
                   <SelectTrigger className={cn(
                     singleFormFieldSources.category === 'auto' && "bg-accent/5 border-accent/30",
-                    isExtractingOCR && "opacity-70"
+                    (isExtractingOCR || uploadedFiles.length === 0) && "opacity-70"
                   )}>
-                    <SelectValue placeholder={isExtractingOCR ? "Extracting from document..." : "Select category or upload document to auto-detect"} />
+                    <SelectValue placeholder={isExtractingOCR ? "Extracting from document..." : uploadedFiles.length === 0 ? "Upload document first" : "Select category or upload document to auto-detect"} />
                   </SelectTrigger>
                   <SelectContent>
                     {isLoadingCategories ? (
@@ -1915,6 +1930,7 @@ export function SmartClaimForm({
                 validationStatus={getValidationStatus("title")}
                 error={errors.title?.message}
                 onFieldEdit={() => markFieldAsManual('title')}
+                disabled={uploadedFiles.length === 0 || isExtractingOCR}
                 {...register("title")}
               />
 
@@ -1927,6 +1943,7 @@ export function SmartClaimForm({
                 validationStatus={getValidationStatus("amount")}
                 error={errors.amount?.message}
                 onFieldEdit={() => markFieldAsManual('amount')}
+                disabled={uploadedFiles.length === 0 || isExtractingOCR}
                 {...register("amount")}
               />
 
@@ -1948,10 +1965,12 @@ export function SmartClaimForm({
                   <PopoverTrigger asChild>
                     <Button
                       variant="outline"
+                      disabled={uploadedFiles.length === 0 || isExtractingOCR}
                       className={cn(
                         "w-full justify-start text-left font-normal",
                         !watchedFields.date && "text-muted-foreground",
-                        singleFormFieldSources.date === 'auto' && "bg-accent/5 border-accent/30"
+                        singleFormFieldSources.date === 'auto' && "bg-accent/5 border-accent/30",
+                        (uploadedFiles.length === 0 || isExtractingOCR) && "opacity-70"
                       )}
                     >
                       <Calendar className="mr-2 h-4 w-4" />
@@ -1981,6 +2000,7 @@ export function SmartClaimForm({
                 validationStatus={getValidationStatus("vendor")}
                 error={errors.vendor?.message}
                 onFieldEdit={() => markFieldAsManual('vendor')}
+                disabled={uploadedFiles.length === 0 || isExtractingOCR}
                 {...register("vendor")}
               />
 
@@ -1991,6 +2011,7 @@ export function SmartClaimForm({
                 validationStatus={getValidationStatus("transactionRef")}
                 error={errors.transactionRef?.message}
                 onFieldEdit={() => markFieldAsManual('transactionRef')}
+                disabled={uploadedFiles.length === 0 || isExtractingOCR}
                 {...register("transactionRef")}
               />
 
@@ -2004,8 +2025,12 @@ export function SmartClaimForm({
                 <Select
                   value={watchedFields.projectCode}
                   onValueChange={(value) => setValue("projectCode", value)}
+                  disabled={uploadedFiles.length === 0 || isExtractingOCR}
                 >
-                  <SelectTrigger className="bg-accent/5 border-accent/30">
+                  <SelectTrigger className={cn(
+                    "bg-accent/5 border-accent/30",
+                    (uploadedFiles.length === 0 || isExtractingOCR) && "opacity-70"
+                  )}>
                     <SelectValue placeholder={isLoadingProjects ? "Loading projects..." : (employeeProjects.length === 0 ? "No projects assigned" : "Select project")} />
                   </SelectTrigger>
                   <SelectContent>
@@ -2038,6 +2063,7 @@ export function SmartClaimForm({
                   validationStatus={getValidationStatus("description")}
                   error={errors.description?.message}
                   onFieldEdit={() => markFieldAsManual('description')}
+                  disabled={uploadedFiles.length === 0 || isExtractingOCR}
                   {...register("description")}
                 />
               </div>
