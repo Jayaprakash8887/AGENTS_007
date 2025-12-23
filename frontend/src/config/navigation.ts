@@ -166,19 +166,23 @@ export function getNavigationForRole(role: UserRole): NavItem[] {
     return systemAdminNavigation;
   }
 
-  // Admin users see both employee navigation AND admin-only navigation
-  // They are also employees who can raise claims
+  // Helper to check if user has access to an item
+  // All users implicitly have 'employee' role, so they can access employee items
+  const hasAccess = (item: NavItem) => {
+    if (!item.roles) return true; // No role restriction
+    // User has access if their role is in the list OR if 'employee' is in the list (all users are employees)
+    return item.roles.includes(role) || item.roles.includes('employee');
+  };
+
+  // Admin users see main navigation AND admin-only navigation
   if (role === 'admin') {
-    // Get employee-level navigation (Dashboard, My Claims, New Claim)
-    const employeeNav = mainNavigation.filter(
-      (item) => !item.roles || item.roles.includes('employee')
-    );
-    // Combine with admin-only navigation
-    return [...employeeNav, ...adminOnlyNavigation];
+    const adminNav = mainNavigation.filter(hasAccess);
+    return [...adminNav, ...adminOnlyNavigation];
   }
 
-  const filterByRole = (items: NavItem[]) =>
-    items.filter((item) => !item.roles || item.roles.includes(role));
+  // For all other roles (manager, hr, finance, employee)
+  // They get access to items for their role + employee items
+  const filterByRole = (items: NavItem[]) => items.filter(hasAccess);
 
   return [...filterByRole(mainNavigation), ...filterByRole(adminNavigation)];
 }
