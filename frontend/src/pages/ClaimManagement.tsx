@@ -124,9 +124,10 @@ export default function ClaimManagement() {
     const { data: regions } = useRegions();
     const { formatCurrency } = useFormatting();
 
+    // Use region code as value (backend stores codes), but show name as label
     const regionOptions = [
         { value: '', label: 'All Regions' },
-        ...(regions || []).map(r => ({ value: r.name, label: r.name }))
+        ...(regions || []).map(r => ({ value: r.code, label: r.name }))
     ];
 
     const [searchTerm, setSearchTerm] = useState('');

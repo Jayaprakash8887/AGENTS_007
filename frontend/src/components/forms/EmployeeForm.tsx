@@ -257,7 +257,7 @@ export function EmployeeForm({
               <FormItem>
                 <FormLabel>Region / Location (Optional)</FormLabel>
                 <MultiSelect
-                  options={regions?.filter(r => r.isActive).map(r => ({ label: r.name, value: r.name })) || []}
+                  options={regions?.filter(r => r.isActive).map(r => ({ label: r.name, value: r.code })) || []}
                   selected={field.value as string[] || []}
                   onChange={field.onChange}
                   placeholder="Select regions..."

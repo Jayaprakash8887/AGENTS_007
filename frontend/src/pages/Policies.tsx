@@ -99,9 +99,10 @@ export default function Policies() {
   const { data: regionList = [] } = useRegions();
 
   // Map regions to options format for MultiSelect
+  // Use region code as value (backend expects codes), but show name as label
   const regionOptions = [
     { value: 'GLOBAL', label: 'Global (All Regions)' },
-    ...regionList.map(r => ({ value: r.name, label: r.name }))
+    ...regionList.map(r => ({ value: r.code, label: r.name }))
   ];
 
   const [isUploadOpen, setIsUploadOpen] = useState(false);
