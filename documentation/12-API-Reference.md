@@ -649,6 +649,205 @@ GET /api/v1/settings/session-timeout/available
 
 ---
 
+## 10.5 Approval Skip Rules API
+
+Configure rules to skip approval levels for designated employees (CXOs, executives).
+
+### 10.5.1 List Approval Skip Rules
+
+```http
+GET /api/v1/approval-skip-rules/
+Authorization: Bearer {token}
+```
+
+**Query Parameters:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `is_active` | boolean | Filter by active status (optional) |
+| `match_type` | string | Filter by match type: `designation` or `email` (optional) |
+
+**Response:**
+```json
+{
+    "items": [
+        {
+            "id": "uuid",
+            "tenant_id": "uuid",
+            "rule_name": "CEO Fast Track",
+            "description": "Skip all approvals for CEO",
+            "match_type": "designation",
+            "designations": ["CEO"],
+            "emails": [],
+            "skip_manager_approval": true,
+            "skip_hr_approval": true,
+            "skip_finance_approval": true,
+            "max_amount_threshold": null,
+            "category_codes": [],
+            "priority": 1,
+            "is_active": true,
+            "created_at": "2024-12-20T10:30:00Z",
+            "updated_at": "2024-12-20T10:30:00Z"
+        }
+    ],
+    "total": 1
+}
+```
+
+### 10.5.2 Create Approval Skip Rule
+
+```http
+POST /api/v1/approval-skip-rules/
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+    "rule_name": "VP Manager Skip",
+    "description": "Skip manager approval for VPs",
+    "match_type": "designation",
+    "designations": ["VP", "SVP", "EVP"],
+    "skip_manager_approval": true,
+    "skip_hr_approval": false,
+    "skip_finance_approval": false,
+    "max_amount_threshold": 50000,
+    "category_codes": [],
+    "priority": 10,
+    "is_active": true
+}
+```
+
+**Request Body:**
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `rule_name` | string | Yes | Unique name for the rule (per tenant) |
+| `description` | string | No | Human-readable description |
+| `match_type` | string | Yes | `designation` or `email` |
+| `designations` | array | No* | List of designation codes to match |
+| `emails` | array | No* | List of email addresses to match |
+| `skip_manager_approval` | boolean | No | Skip manager level (default: false) |
+| `skip_hr_approval` | boolean | No | Skip HR level (default: false) |
+| `skip_finance_approval` | boolean | No | Skip finance level (default: false) |
+| `max_amount_threshold` | number | No | Max claim amount for rule to apply (null = no limit) |
+| `category_codes` | array | No | Claim categories this applies to (empty = all) |
+| `priority` | integer | No | Lower = higher priority (default: 100) |
+| `is_active` | boolean | No | Enable/disable rule (default: true) |
+
+*Required based on match_type: designations required if match_type is "designation", emails required if match_type is "email"
+
+**Response:** `201 Created`
+```json
+{
+    "id": "uuid",
+    "rule_name": "VP Manager Skip",
+    "match_type": "designation",
+    "designations": ["VP", "SVP", "EVP"],
+    "skip_manager_approval": true,
+    "skip_hr_approval": false,
+    "skip_finance_approval": false,
+    "max_amount_threshold": 50000,
+    "priority": 10,
+    "is_active": true,
+    "created_at": "2024-12-20T10:30:00Z"
+}
+```
+
+### 10.5.3 Get Approval Skip Rule
+
+```http
+GET /api/v1/approval-skip-rules/{rule_id}
+Authorization: Bearer {token}
+```
+
+**Response:** `200 OK` - Same structure as create response
+
+### 10.5.4 Update Approval Skip Rule
+
+```http
+PUT /api/v1/approval-skip-rules/{rule_id}
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+    "rule_name": "VP Manager Skip Updated",
+    "max_amount_threshold": 75000,
+    "priority": 5
+}
+```
+
+**Response:** `200 OK` - Updated rule object
+
+### 10.5.5 Delete Approval Skip Rule
+
+```http
+DELETE /api/v1/approval-skip-rules/{rule_id}
+Authorization: Bearer {token}
+```
+
+**Response:** `204 No Content`
+
+### 10.5.6 Check Applicable Rules for User
+
+Check which approval skip rules apply to a specific user.
+
+```http
+GET /api/v1/approval-skip-rules/check/{user_id}
+Authorization: Bearer {token}
+```
+
+**Query Parameters:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `amount` | number | Claim amount to check against thresholds (optional) |
+| `category` | string | Claim category code (optional) |
+
+**Response:**
+```json
+{
+    "user_id": "uuid",
+    "user_email": "ceo@company.com",
+    "user_designation": "CEO",
+    "applicable_rules": [
+        {
+            "rule_id": "uuid",
+            "rule_name": "CEO Fast Track",
+            "skip_manager_approval": true,
+            "skip_hr_approval": true,
+            "skip_finance_approval": true,
+            "priority": 1
+        }
+    ],
+    "effective_skips": {
+        "skip_manager": true,
+        "skip_hr": true,
+        "skip_finance": true
+    }
+}
+```
+
+### 10.5.7 Bulk Update Rule Status
+
+Enable or disable multiple rules at once.
+
+```http
+PATCH /api/v1/approval-skip-rules/bulk-status
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+    "rule_ids": ["uuid1", "uuid2"],
+    "is_active": false
+}
+```
+
+**Response:** `200 OK`
+```json
+{
+    "updated_count": 2,
+    "rules": [...]
+}
+```
+
+---
+
 ## 11. Error Responses
 
 ### 11.1 Error Format

@@ -751,6 +751,92 @@ CREATE INDEX idx_webhook_logs_created ON webhook_delivery_logs(created_at DESC);
 CREATE INDEX idx_webhook_logs_status ON webhook_delivery_logs(status);
 ```
 
+### 3.17 Approval Skip Rules
+
+Stores configurable rules for skipping approval levels based on employee designation or email (for CXOs, executives, etc.).
+
+```sql
+CREATE TABLE approval_skip_rules (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    
+    -- Rule identification
+    rule_name VARCHAR(100) NOT NULL,
+    description TEXT,
+    
+    -- Match criteria: 'designation' or 'email'
+    match_type VARCHAR(20) NOT NULL CHECK (match_type IN ('designation', 'email')),
+    
+    -- Designations to match (e.g., ['CEO', 'CTO', 'CFO'])
+    designations TEXT[] DEFAULT '{}',
+    
+    -- Emails to match (e.g., ['ceo@company.com'])
+    emails TEXT[] DEFAULT '{}',
+    
+    -- Which approval levels to skip
+    skip_manager_approval BOOLEAN DEFAULT FALSE,
+    skip_hr_approval BOOLEAN DEFAULT FALSE,
+    skip_finance_approval BOOLEAN DEFAULT FALSE,
+    
+    -- Optional constraints
+    max_amount_threshold DECIMAL(15, 2),  -- NULL means no limit
+    category_codes TEXT[] DEFAULT '{}',   -- Empty array means all categories
+    
+    -- Rule priority (lower = higher priority, checked first)
+    priority INTEGER DEFAULT 100,
+    
+    -- Status
+    is_active BOOLEAN DEFAULT TRUE,
+    
+    -- Audit fields
+    created_by UUID REFERENCES users(id),
+    updated_by UUID REFERENCES users(id),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    
+    -- Constraints
+    CONSTRAINT unique_rule_name_per_tenant UNIQUE (tenant_id, rule_name)
+);
+
+CREATE INDEX idx_approval_skip_rules_tenant ON approval_skip_rules(tenant_id);
+CREATE INDEX idx_approval_skip_rules_active ON approval_skip_rules(tenant_id, is_active);
+CREATE INDEX idx_approval_skip_rules_priority ON approval_skip_rules(tenant_id, priority);
+CREATE INDEX idx_approval_skip_rules_match_type ON approval_skip_rules(match_type);
+```
+
+**Usage Examples:**
+
+```sql
+-- Create CEO skip rule
+INSERT INTO approval_skip_rules (
+    tenant_id, rule_name, description, match_type,
+    designations, skip_manager_approval, skip_hr_approval, skip_finance_approval, priority
+) VALUES (
+    '269102b7-21a1-4353-972b-98e98f446083',
+    'CEO Fast Track',
+    'Skip all approvals for CEO',
+    'designation',
+    ARRAY['CEO'],
+    true, true, true,
+    1
+);
+
+-- Create VP skip rule with amount limit
+INSERT INTO approval_skip_rules (
+    tenant_id, rule_name, description, match_type,
+    designations, skip_manager_approval, max_amount_threshold, priority
+) VALUES (
+    '269102b7-21a1-4353-972b-98e98f446083',
+    'VP Manager Skip',
+    'Skip manager approval for VPs (claims under 50000)',
+    'designation',
+    ARRAY['VP', 'SVP', 'EVP'],
+    true,
+    50000,
+    10
+);
+```
+
 ---
 
 ## 4. Performance Indexes

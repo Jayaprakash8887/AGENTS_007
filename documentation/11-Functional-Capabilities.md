@@ -178,6 +178,110 @@ Fixed-amount claims that don't require receipts.
 | **Settle** | Process payment | Mark as SETTLED |
 | **Reject** | Financial issues | Claim rejected |
 
+### 4.5 Approval Skip Rules (CXO/Executive Fast-Track)
+
+This feature allows administrators to configure rules that automatically skip certain approval levels for designated employees (e.g., CXOs, executives, VPs). This enables faster reimbursement processing for senior leadership.
+
+**Use Cases:**
+- Skip manager approval for C-suite executives (CEO, CTO, CFO, etc.)
+- Skip all approvals for board members with pre-approved expense budgets
+- Fast-track specific individuals by email address
+
+**Configuration Location:**
+- Admin Dashboard → Settings → Approval Skip Rules
+
+**Rule Types:**
+
+| Match Type | Description | Example |
+|------------|-------------|---------|
+| **Designation** | Match by job title/designation code | `['CEO', 'CTO', 'CFO', 'VP']` |
+| **Email** | Match by specific email addresses | `['ceo@company.com', 'cto@company.com']` |
+
+**Skip Options:**
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| Skip Manager Approval | Bypass manager review | `false` |
+| Skip HR Approval | Bypass HR review | `false` |
+| Skip Finance Approval | Bypass finance review | `false` |
+
+**Optional Constraints:**
+
+| Constraint | Description |
+|------------|-------------|
+| Max Amount Threshold | Rule only applies to claims below this amount (NULL = no limit) |
+| Category Codes | Specific categories this rule applies to (empty = all categories) |
+| Priority | Lower number = higher priority, checked first (1-100 recommended) |
+
+**Workflow with Skip Rules:**
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│               CLAIM WITH APPROVAL SKIP RULES                                 │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  SUBMITTED ──▶ AI_PROCESSING ──▶ Check Skip Rules                           │
+│                                         │                                    │
+│                      ┌──────────────────┴──────────────────┐                │
+│                      ▼                                      ▼                │
+│              Rule Matches                            No Rule Match           │
+│              (e.g., CEO)                            (Normal Flow)            │
+│                      │                                      │                │
+│           ┌──────────┼──────────┐                          │                │
+│           ▼          ▼          ▼                          ▼                │
+│      Skip Mgr   Skip HR   Skip Fin           PENDING_MANAGER                │
+│           │          │          │                          │                │
+│           ▼          ▼          ▼                          ▼                │
+│      Goes directly to next non-skipped level        Normal workflow         │
+│                      │                                                       │
+│                      ▼                                                       │
+│              FINANCE_APPROVED (if all skipped)                              │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Example Configurations:**
+
+1. **CEO Full Skip:**
+   - Rule Name: `CEO Fast Track`
+   - Match Type: `designation`
+   - Designations: `['CEO']`
+   - Skip Manager: ✅
+   - Skip HR: ✅
+   - Skip Finance: ✅
+
+2. **VPs Skip Manager Only:**
+   - Rule Name: `VP Manager Skip`
+   - Match Type: `designation`
+   - Designations: `['VP', 'SVP', 'EVP']`
+   - Skip Manager: ✅
+   - Skip HR: ❌
+   - Skip Finance: ❌
+   - Max Amount: `50000`
+
+3. **Specific Executive:**
+   - Rule Name: `Board Member Express`
+   - Match Type: `email`
+   - Emails: `['board.member@company.com']`
+   - Skip Manager: ✅
+   - Skip HR: ✅
+   - Skip Finance: ❌
+
+**API Endpoints:**
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/v1/approval-skip-rules/` | List all rules for tenant |
+| POST | `/api/v1/approval-skip-rules/` | Create new rule |
+| GET | `/api/v1/approval-skip-rules/{id}` | Get specific rule |
+| PUT | `/api/v1/approval-skip-rules/{id}` | Update rule |
+| DELETE | `/api/v1/approval-skip-rules/{id}` | Delete rule |
+| GET | `/api/v1/approval-skip-rules/check/{user_id}` | Check applicable rules for user |
+
+**Database Table:**
+- Table name: `approval_skip_rules`
+- Migration: `003_create_approval_skip_rules.sql`
+
 ---
 
 ## 5. AI-Powered Features

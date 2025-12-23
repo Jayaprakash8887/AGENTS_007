@@ -73,7 +73,16 @@ echo -e "${BLUE}🗄️  Initializing database...${NC}"
 $DOCKER_COMPOSE run --rm backend python -c "from database import init_db; init_db()"
 
 echo ""
-echo -e "${BLUE}📊 Creating test data...${NC}"
+echo -e "${BLUE}� Running database migrations...${NC}"
+for migration in backend/migrations/*.sql; do
+    if [ -f "$migration" ]; then
+        echo -e "   Running $(basename $migration)..."
+        docker exec -i reimbursement_db psql -U reimbursement_user -d reimbursement_db < "$migration" 2>/dev/null || true
+    fi
+done
+
+echo ""
+echo -e "${BLUE}�📊 Creating test data...${NC}"
 $DOCKER_COMPOSE run --rm backend python create_test_data.py
 
 echo ""

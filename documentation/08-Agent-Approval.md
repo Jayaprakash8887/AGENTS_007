@@ -136,6 +136,124 @@ The approval agent reads tenant-specific settings from the database:
 
 ---
 
+## 4.3 Approval Skip Rules (CXO/Executive Fast-Track)
+
+In addition to auto-approval based on confidence scores, the system supports **Approval Skip Rules** that allow administrators to configure rules for skipping approval levels based on employee designation or email.
+
+### Purpose
+
+- Enable faster reimbursement processing for senior executives (CXOs, VPs)
+- Reduce unnecessary approval overhead for trusted employees
+- Maintain audit trail while streamlining workflow
+
+### How It Works
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│               APPROVAL SKIP RULES CHECK (Before Standard Routing)            │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  Claim Submitted by Employee                                                │
+│       │                                                                     │
+│       ▼                                                                     │
+│  Check approval_skip_rules table (ordered by priority)                      │
+│       │                                                                     │
+│       ▼                                                                     │
+│  Any matching rule found?                                                   │
+│  ├── Match by designation: employee.designation IN rule.designations       │
+│  └── Match by email: employee.email IN rule.emails                         │
+│       │                                                                     │
+│       ├── NO MATCH ──▶ Standard routing (Section 4.1/4.2)                  │
+│       │                                                                     │
+│       └── MATCH FOUND                                                      │
+│             │                                                               │
+│             ▼                                                               │
+│  Check constraints:                                                         │
+│  ├── amount <= max_amount_threshold? (NULL = no limit)                     │
+│  └── category IN category_codes? (empty = all categories)                  │
+│       │                                                                     │
+│       ├── CONSTRAINTS FAIL ──▶ Standard routing                            │
+│       │                                                                     │
+│       └── CONSTRAINTS PASS ──▶ Apply skip rule                             │
+│             │                                                               │
+│             ├── skip_manager_approval = true ──▶ Skip PENDING_MANAGER      │
+│             ├── skip_hr_approval = true ──▶ Skip PENDING_HR                │
+│             └── skip_finance_approval = true ──▶ Skip PENDING_FINANCE      │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Rule Configuration
+
+| Field | Description |
+|-------|-------------|
+| `match_type` | `designation` or `email` |
+| `designations` | Array of designation codes (e.g., `['CEO', 'CTO', 'VP']`) |
+| `emails` | Array of email addresses |
+| `skip_manager_approval` | Skip manager level if true |
+| `skip_hr_approval` | Skip HR level if true |
+| `skip_finance_approval` | Skip finance level if true |
+| `max_amount_threshold` | Max claim amount for rule (NULL = unlimited) |
+| `category_codes` | Specific categories (empty = all) |
+| `priority` | Lower = higher priority (1-100) |
+
+### Example Rules
+
+**1. CEO Full Skip (Priority 1):**
+```python
+{
+    "match_type": "designation",
+    "designations": ["CEO"],
+    "skip_manager_approval": True,
+    "skip_hr_approval": True,
+    "skip_finance_approval": True,
+    "max_amount_threshold": None  # No limit
+}
+# Result: CEO claims go directly to FINANCE_APPROVED
+```
+
+**2. VP Manager Skip with Limit (Priority 10):**
+```python
+{
+    "match_type": "designation", 
+    "designations": ["VP", "SVP", "EVP"],
+    "skip_manager_approval": True,
+    "skip_hr_approval": False,
+    "skip_finance_approval": False,
+    "max_amount_threshold": 50000
+}
+# Result: VP claims under ₹50,000 skip manager, still go to HR/Finance
+```
+
+**3. Board Member by Email (Priority 5):**
+```python
+{
+    "match_type": "email",
+    "emails": ["board.member@company.com"],
+    "skip_manager_approval": True,
+    "skip_hr_approval": True,
+    "skip_finance_approval": False
+}
+# Result: Specific person's claims skip manager and HR
+```
+
+### Integration with Standard Routing
+
+1. **Skip rules are checked FIRST** before any standard routing logic
+2. If no skip rule matches, standard routing (Section 4.1/4.2) applies
+3. Skip rules **do not** bypass AI validation or fraud detection
+4. All skipped approvals are logged for audit compliance
+
+### Database Table
+
+See `approval_skip_rules` table in [Database Schema](15-Database-Schema.md#317-approval-skip-rules)
+
+### API Endpoints
+
+See [API Reference - Approval Skip Rules](12-API-Reference.md#105-approval-skip-rules-api)
+
+---
+
 ## 5. Implementation
 
 ### 5.1 ApprovalAgent Class
