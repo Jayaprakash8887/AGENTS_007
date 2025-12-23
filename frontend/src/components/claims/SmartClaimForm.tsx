@@ -309,7 +309,7 @@ export function SmartClaimForm({
       }
 
       const response = await fetch(
-        `http://localhost:8000/api/v1/claims/check-duplicate?${params}`,
+        `/api/v1/claims/check-duplicate?${params}`,
         { method: 'POST' }
       );
 
@@ -395,7 +395,7 @@ export function SmartClaimForm({
         }
 
         const response = await fetch(
-          `http://localhost:8000/api/v1/claims/check-duplicate?${params}`,
+          `/api/v1/claims/check-duplicate?${params}`,
           { method: 'POST' }
         );
 
@@ -699,7 +699,7 @@ export function SmartClaimForm({
       const employeeRegion = user?.region || 'INDIA';
 
       // Use absolute URL to backend API with region and tenant_id parameters
-      const API_BASE_URL = 'http://localhost:8000/api/v1';
+      const API_BASE_URL = '/api/v1';
       const tenantId = user?.tenantId || '';
       const response = await fetch(`${API_BASE_URL}/documents/ocr?employee_region=${encodeURIComponent(employeeRegion)}&tenant_id=${encodeURIComponent(tenantId)}`, {
         method: 'POST',

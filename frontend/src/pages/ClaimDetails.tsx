@@ -197,7 +197,7 @@ export default function ClaimDetails() {
   const confirmAction = async () => {
     if (!id || !actionDialog.action) return;
 
-    const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
     const action = actionDialog.action;
 
     try {
@@ -292,7 +292,7 @@ export default function ClaimDetails() {
     if (!id || !claim) return;
     setIsSaving(true);
 
-    const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 
     try {
       // Build the update payload

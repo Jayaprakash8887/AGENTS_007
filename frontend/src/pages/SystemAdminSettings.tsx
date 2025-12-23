@@ -30,7 +30,7 @@ import {
     DEFAULT_PLATFORM_SETTINGS,
 } from '@/components/settings/system';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 
 // Fetch system info
 async function fetchSystemInfo(): Promise<SystemInfo> {

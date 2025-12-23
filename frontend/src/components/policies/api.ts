@@ -7,7 +7,7 @@ import type {
     CustomClaimListItem,
 } from './types';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 
 // Policy API Functions
 export async function fetchPolicies(tenantId?: string, region?: string): Promise<PolicyUploadListItem[]> {
