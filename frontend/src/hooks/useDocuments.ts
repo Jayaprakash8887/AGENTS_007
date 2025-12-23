@@ -10,7 +10,7 @@ function transformDocument(doc: any): ClaimDocument {
     id: doc.id,
     name: doc.filename || doc.name || 'Document',
     filename: doc.filename,
-    url: doc.download_url || `/api/v1/documents/${doc.id}/view`,
+    url: doc.download_url || `${API_BASE_URL}/documents/${doc.id}/view`,
     type: doc.file_type || doc.type || 'UNKNOWN',
     size: doc.file_size || doc.size || 0,
     uploadedAt: doc.uploaded_at ? new Date(doc.uploaded_at) : new Date(),
