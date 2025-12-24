@@ -94,22 +94,65 @@ services:
     ports:
       - "8000:8000"
     environment:
-      # Use PgBouncer for connection pooling (port 6432)
+      # Database (using PgBouncer for connection pooling)
       DATABASE_URL: postgresql://reimbursement_user:reimbursement_pass@pgbouncer:6432/reimbursement_db
-      # Direct PostgreSQL connection (fallback, port 5432)
-      # DATABASE_URL: postgresql://reimbursement_user:reimbursement_pass@postgres:5432/reimbursement_db
       MONGODB_URI: postgresql://reimbursement_user:reimbursement_pass@pgbouncer:6432/reimbursement_db
+      # Redis & Celery
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
+      # Application
+      APP_ENV: ${APP_ENV:-development}
+      DEBUG: ${DEBUG:-True}
       SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-jwt-secret-key-change-in-production}
+      # Google AI / Gemini
       GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash-exp}
+      GEMINI_TEMPERATURE: ${GEMINI_TEMPERATURE:-0.7}
+      GEMINI_MAX_TOKENS: ${GEMINI_MAX_TOKENS:-5000}
+      # Storage provider configuration
+      STORAGE_PROVIDER: ${STORAGE_PROVIDER:-local}
+      GCP_PROJECT_ID: ${GCP_PROJECT_ID:-}
+      GCP_BUCKET_NAME: ${GCP_BUCKET_NAME:-}
       GCP_CREDENTIALS_PATH: /app/secrets/gcp-service-account.json
+      # OCR Configuration
+      ENABLE_OCR: ${ENABLE_OCR:-True}
+      OCR_ENGINE: ${OCR_ENGINE:-tesseract}
+      OCR_LANG: ${OCR_LANG:-en}
+      OCR_USE_LLM_FALLBACK: ${OCR_USE_LLM_FALLBACK:-True}
+      OCR_LLM_FALLBACK_THRESHOLD: ${OCR_LLM_FALLBACK_THRESHOLD:-0.9}
+      # CORS
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://localhost:3000,http://localhost:8080}
+      CORS_ALLOW_CREDENTIALS: ${CORS_ALLOW_CREDENTIALS:-True}
+      # Email/SMTP Configuration
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_TLS: ${SMTP_TLS:-True}
+      # Feature Flags
+      ENABLE_AI_ANALYSIS: ${ENABLE_AI_ANALYSIS:-True}
+      ENABLE_DUPLICATE_DETECTION: ${ENABLE_DUPLICATE_DETECTION:-True}
+      ENABLE_NOTIFICATIONS: ${ENABLE_NOTIFICATIONS:-True}
+      ENABLE_EMAIL_NOTIFICATIONS: ${ENABLE_EMAIL_NOTIFICATIONS:-True}
+      ENABLE_AUDIT_LOGGING: ${ENABLE_AUDIT_LOGGING:-True}
+      # Multi-tenant
+      MULTI_TENANT_ENABLED: ${MULTI_TENANT_ENABLED:-True}
+      # Rate Limiting
+      RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-True}
+      RATE_LIMIT_REQUESTS: ${RATE_LIMIT_REQUESTS:-100}
+      RATE_LIMIT_WINDOW: ${RATE_LIMIT_WINDOW:-60}
+      # File Upload
+      MAX_UPLOAD_SIZE: ${MAX_UPLOAD_SIZE:-52428800}
+      ALLOWED_EXTENSIONS: ${ALLOWED_EXTENSIONS:-.pdf,.png,.jpg,.jpeg,.gif,.webp}
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      # Keycloak
       KEYCLOAK_SERVER_URL: http://keycloak:8080
-      APP_ENV: development
-      DEBUG: "True"
-      CORS_ORIGINS: http://localhost:5173,http://localhost:3000
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-reimbursement}
+      KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-reimbursement-app}
     depends_on:
       pgbouncer:
         condition: service_healthy
@@ -137,6 +180,12 @@ services:
       SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-jwt-secret-key-change-in-production}
       GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash-exp}
+      GEMINI_TEMPERATURE: ${GEMINI_TEMPERATURE:-0.7}
+      GEMINI_MAX_TOKENS: ${GEMINI_MAX_TOKENS:-5000}
+      STORAGE_PROVIDER: ${STORAGE_PROVIDER:-local}
+      GCP_PROJECT_ID: ${GCP_PROJECT_ID:-}
+      GCP_BUCKET_NAME: ${GCP_BUCKET_NAME:-}
       GCP_CREDENTIALS_PATH: /app/secrets/gcp-service-account.json
       APP_ENV: development
     depends_on:
@@ -165,6 +214,12 @@ services:
       SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-jwt-secret-key-change-in-production}
       GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash-exp}
+      GEMINI_TEMPERATURE: ${GEMINI_TEMPERATURE:-0.7}
+      GEMINI_MAX_TOKENS: ${GEMINI_MAX_TOKENS:-5000}
+      STORAGE_PROVIDER: ${STORAGE_PROVIDER:-local}
+      GCP_PROJECT_ID: ${GCP_PROJECT_ID:-}
+      GCP_BUCKET_NAME: ${GCP_BUCKET_NAME:-}
       GCP_CREDENTIALS_PATH: /app/secrets/gcp-service-account.json
       APP_ENV: development
     depends_on:
@@ -194,6 +249,12 @@ services:
       SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-jwt-secret-key-change-in-production}
       GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash-exp}
+      GEMINI_TEMPERATURE: ${GEMINI_TEMPERATURE:-0.7}
+      GEMINI_MAX_TOKENS: ${GEMINI_MAX_TOKENS:-5000}
+      STORAGE_PROVIDER: ${STORAGE_PROVIDER:-local}
+      GCP_PROJECT_ID: ${GCP_PROJECT_ID:-}
+      GCP_BUCKET_NAME: ${GCP_BUCKET_NAME:-}
       GCP_CREDENTIALS_PATH: /app/secrets/gcp-service-account.json
       APP_ENV: development
     depends_on:
