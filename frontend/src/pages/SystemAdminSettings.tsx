@@ -49,7 +49,7 @@ export default function SystemAdminSettings() {
     const [platformSettings, setPlatformSettings] = useState<PlatformSettings>(DEFAULT_PLATFORM_SETTINGS);
 
     // Fetch tenants for cache management
-    const { data: tenants } = useTenants('');
+    const { data: tenants } = useTenants(false);
     const { data: designations } = useDesignations();
 
     // Fetch system info for database status
