@@ -28,6 +28,8 @@ from services.storage import upload_to_gcs
 from services.duplicate_detection import check_duplicate_claim, check_batch_duplicates
 from services.ai_analysis import generate_ai_analysis, generate_policy_checks
 from services.security import audit_logger, get_client_ip
+from services.email_service import get_email_service
+from config import get_settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -35,6 +37,154 @@ router = APIRouter()
 # Ensure upload directory exists
 UPLOAD_DIR = Path(os.environ.get("UPLOAD_DIR", "./uploads"))
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+# Get settings for email notifications
+_settings = get_settings()
+
+
+async def _send_claim_notification(
+    notification_type: str,
+    claim: Claim,
+    db: AsyncSession,
+    **kwargs
+):
+    """
+    Send email notification for claim events.
+    
+    notification_type: 'submitted', 'returned', 'rejected', 'settled'
+    """
+    try:
+        # Check if SMTP is configured
+        if not _settings.SMTP_HOST or not _settings.SMTP_USER:
+            logger.debug("SMTP not configured, skipping email notification")
+            return
+        
+        email_service = get_email_service()
+        login_url = _settings.FRONTEND_URL or "http://localhost:8080"
+        
+        # Get employee email
+        emp_result = await db.execute(select(User).where(User.id == claim.employee_id))
+        employee = emp_result.scalar_one_or_none()
+        
+        if not employee or not employee.email:
+            logger.warning(f"Cannot send notification: employee not found or no email for claim {claim.claim_number}")
+            return
+        
+        if notification_type == 'submitted':
+            # Send notification to the next approver
+            approver_email = kwargs.get('approver_email')
+            approver_name = kwargs.get('approver_name', 'Approver')
+            
+            if approver_email:
+                email_service.send_claim_submitted_notification(
+                    to_email=approver_email,
+                    approver_name=approver_name,
+                    employee_name=employee.full_name or employee.username,
+                    claim_number=claim.claim_number,
+                    amount=float(claim.amount),
+                    category=claim.category,
+                    description=claim.description or '',
+                    login_url=login_url
+                )
+                logger.info(f"Sent claim submitted notification to {approver_email} for claim {claim.claim_number}")
+        
+        elif notification_type == 'returned':
+            return_reason = kwargs.get('return_reason', 'Please review and correct')
+            returned_by = kwargs.get('returned_by', 'Approver')
+            
+            email_service.send_claim_returned_notification(
+                to_email=employee.email,
+                employee_name=employee.full_name or employee.username,
+                claim_number=claim.claim_number,
+                amount=float(claim.amount),
+                return_reason=return_reason,
+                returned_by=returned_by,
+                login_url=login_url
+            )
+            logger.info(f"Sent claim returned notification to {employee.email} for claim {claim.claim_number}")
+        
+        elif notification_type == 'rejected':
+            rejection_reason = kwargs.get('rejection_reason', 'Claim does not meet policy requirements')
+            rejected_by = kwargs.get('rejected_by', 'Approver')
+            
+            email_service.send_claim_rejected_notification(
+                to_email=employee.email,
+                employee_name=employee.full_name or employee.username,
+                claim_number=claim.claim_number,
+                amount=float(claim.amount),
+                rejection_reason=rejection_reason,
+                rejected_by=rejected_by,
+                login_url=login_url
+            )
+            logger.info(f"Sent claim rejected notification to {employee.email} for claim {claim.claim_number}")
+        
+        elif notification_type == 'settled':
+            payment_reference = kwargs.get('payment_reference')
+            payment_method = kwargs.get('payment_method')
+            settled_date = kwargs.get('settled_date')
+            
+            email_service.send_claim_settled_notification(
+                to_email=employee.email,
+                employee_name=employee.full_name or employee.username,
+                claim_number=claim.claim_number,
+                amount=float(claim.amount),
+                payment_reference=payment_reference,
+                payment_method=payment_method,
+                settled_date=settled_date,
+                login_url=login_url
+            )
+            logger.info(f"Sent claim settled notification to {employee.email} for claim {claim.claim_number}")
+            
+    except Exception as e:
+        logger.error(f"Failed to send email notification for claim {claim.claim_number}: {str(e)}")
+
+
+async def _get_next_approver(db: AsyncSession, claim: Claim, employee: User) -> tuple:
+    """
+    Get the next approver for a claim based on its status.
+    Returns (email, name) tuple or (None, None) if not found.
+    """
+    try:
+        status = claim.status
+        
+        if status == "PENDING_MANAGER":
+            # Get employee's manager
+            if employee.manager_id:
+                mgr_result = await db.execute(select(User).where(User.id == employee.manager_id))
+                manager = mgr_result.scalar_one_or_none()
+                if manager and manager.email:
+                    return (manager.email, manager.full_name or manager.username)
+        
+        elif status == "PENDING_HR":
+            # Get any HR user in the same tenant
+            hr_result = await db.execute(
+                select(User).where(
+                    User.tenant_id == claim.tenant_id,
+                    User.is_active == True,
+                    User.roles.contains(["HR"])
+                ).limit(1)
+            )
+            hr_user = hr_result.scalar_one_or_none()
+            if hr_user and hr_user.email:
+                return (hr_user.email, hr_user.full_name or hr_user.username)
+        
+        elif status == "PENDING_FINANCE":
+            # Get any Finance user in the same tenant
+            fin_result = await db.execute(
+                select(User).where(
+                    User.tenant_id == claim.tenant_id,
+                    User.is_active == True,
+                    User.roles.contains(["FINANCE"])
+                ).limit(1)
+            )
+            fin_user = fin_result.scalar_one_or_none()
+            if fin_user and fin_user.email:
+                return (fin_user.email, fin_user.full_name or fin_user.username)
+        
+        return (None, None)
+    except Exception as e:
+        logger.error(f"Error getting next approver: {str(e)}")
+        return (None, None)
 
 
 def _map_category(category_str: str) -> str:
@@ -562,6 +712,18 @@ async def create_batch_claims_with_document(
         
         await db.commit()
         logger.info(f"Created {len(created_claims)} document records linked to claims")
+    
+    # Send email notifications to approvers for each created claim
+    for claim in created_claims:
+        approver_email, approver_name = await _get_next_approver(db, claim, employee)
+        if approver_email:
+            await _send_claim_notification(
+                'submitted',
+                claim,
+                db,
+                approver_email=approver_email,
+                approver_name=approver_name
+            )
     
     return BatchClaimResponse(
         success=True,
@@ -1192,7 +1354,14 @@ async def return_to_employee(
         ip_address=get_client_ip(request)
     )
     
-    # TODO: Send notification to employee
+    # Send email notification to employee
+    await _send_claim_notification(
+        'returned',
+        claim,
+        db,
+        return_reason=return_data.return_reason,
+        returned_by=return_data.approver_name or comment_role
+    )
     
     return claim
 
@@ -1442,6 +1611,24 @@ async def reject_claim(
         ip_address=get_client_ip(request)
     )
     
+    # Determine who rejected for email notification
+    role_map = {
+        "PENDING_MANAGER": "MANAGER",
+        "PENDING_HR": "HR",
+        "PENDING_FINANCE": "FINANCE"
+    }
+    rejected_by = (reject_data.approver_name if reject_data else None) or role_map.get(previous_status, "Approver")
+    rejection_reason = (reject_data.comment if reject_data else None) or "Claim does not meet policy requirements"
+    
+    # Send email notification to employee
+    await _send_claim_notification(
+        'rejected',
+        claim,
+        db,
+        rejection_reason=rejection_reason,
+        rejected_by=rejected_by
+    )
+    
     return claim
 
 
@@ -1532,6 +1719,16 @@ async def settle_claim(
             "claimed_amount": float(claim.amount) if claim.amount else None
         },
         ip_address=get_client_ip(request)
+    )
+    
+    # Send email notification to employee about payment
+    await _send_claim_notification(
+        'settled',
+        claim,
+        db,
+        payment_reference=settlement_data.payment_reference,
+        payment_method=settlement_data.payment_method,
+        settled_date=settlement_time.strftime('%B %d, %Y')
     )
     
     return claim

@@ -161,6 +161,9 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str = "dev-password"
     SMTP_FROM: str = "dev@localhost"
     
+    # Frontend URL (for email links)
+    FRONTEND_URL: str = "http://localhost:8080"
+    
     # External Integrations
     HRMS_ENABLED: bool = False
     HRMS_API_URL: Optional[str] = None
