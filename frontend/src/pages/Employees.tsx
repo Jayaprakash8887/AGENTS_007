@@ -491,14 +491,14 @@ export default function Employees() {
               isLoading={updateEmployee.isPending}
               currentEmployeeId={selectedEmployee.id}
               defaultValues={{
-                employeeId: selectedEmployee.employeeId,
+                employeeId: selectedEmployee.employeeId || '',
                 firstName: selectedEmployee.firstName || selectedEmployee.name?.split(' ')[0] || '',
                 lastName: selectedEmployee.lastName || selectedEmployee.name?.split(' ')[1] || '',
-                email: selectedEmployee.email,
+                email: selectedEmployee.email || '',
                 phone: selectedEmployee.phone || '',
                 mobile: selectedEmployee.mobile || '',
                 address: selectedEmployee.address || '',
-                department: selectedEmployee.department,
+                department: selectedEmployee.department || '',
                 designation: selectedEmployee.designation || '',
                 region: Array.isArray(selectedEmployee.region) ? selectedEmployee.region : (selectedEmployee.region ? [selectedEmployee.region] : []),
                 dateOfJoining: selectedEmployee.joinDate || '',
