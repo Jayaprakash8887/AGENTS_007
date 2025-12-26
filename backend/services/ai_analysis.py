@@ -206,7 +206,8 @@ def generate_policy_checks(
     policy_limit: Optional[float] = None,
     submission_window_days: Optional[int] = None,
     is_potential_duplicate: bool = False,
-    policy_effective_from: Optional[date] = None
+    policy_effective_from: Optional[date] = None,
+    fiscal_year_start: str = "apr"  # Month code like 'jan', 'apr', etc.
 ) -> Dict[str, Any]:
     """
     Generate policy compliance checks for a claim.
@@ -365,6 +366,69 @@ def generate_policy_checks(
     if dup_status == "pass":
         passed_count += 1
     elif dup_status == "warning":
+        passed_count += 0.5
+    
+    # 7. Financial Year Check
+    # Check if claim date falls within current financial year based on tenant settings
+    fy_status = "warning"
+    fy_message = "Could not validate financial year"
+    
+    if parsed_claim_date:
+        # Month name to number mapping
+        month_to_number = {
+            "jan": 1, "january": 1, "feb": 2, "february": 2, "mar": 3, "march": 3,
+            "apr": 4, "april": 4, "may": 5, "jun": 6, "june": 6, "jul": 7, "july": 7,
+            "aug": 8, "august": 8, "sep": 9, "september": 9, "oct": 10, "october": 10,
+            "nov": 11, "november": 11, "dec": 12, "december": 12,
+        }
+        fiscal_start_month = month_to_number.get(fiscal_year_start.lower(), 4)  # Default to April
+        
+        today = date.today()
+        current_year = today.year
+        current_month = today.month
+        
+        # Determine which fiscal year we're currently in
+        if current_month >= fiscal_start_month:
+            fy_start_year = current_year
+        else:
+            fy_start_year = current_year - 1
+        
+        fy_end_year = fy_start_year + 1
+        
+        # Calculate FY start and end dates
+        fy_start = date(fy_start_year, fiscal_start_month, 1)
+        
+        # Calculate FY end (last day of month before fiscal start)
+        fy_end_month = fiscal_start_month - 1 if fiscal_start_month > 1 else 12
+        fy_end_year_actual = fy_start_year if fiscal_start_month == 1 else fy_end_year
+        
+        # Get last day of month
+        if fy_end_month == 12:
+            fy_end = date(fy_end_year_actual, 12, 31)
+        else:
+            import calendar
+            last_day = calendar.monthrange(fy_end_year_actual, fy_end_month)[1]
+            fy_end = date(fy_end_year_actual, fy_end_month, last_day)
+        
+        fy_label = f"FY {fy_start_year}-{str(fy_end_year)[-2:]}"
+        
+        if fy_start <= parsed_claim_date <= fy_end:
+            fy_status = "pass"
+            fy_message = f"Claim is within current {fy_label}"
+        else:
+            fy_status = "fail"
+            fy_message = f"Claim date {parsed_claim_date} is outside current {fy_label} ({fy_start} to {fy_end})"
+    
+    checks.append({
+        "id": "financial_year",
+        "label": "Current financial year",
+        "status": fy_status,
+        "message": fy_message
+    })
+    total_count += 1
+    if fy_status == "pass":
+        passed_count += 1
+    elif fy_status == "warning":
         passed_count += 0.5
     
     # Calculate compliance score (0-100)

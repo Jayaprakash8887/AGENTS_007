@@ -78,6 +78,7 @@ import {
     BrandingSettings,
     Designation
 } from '@/hooks/useSystemAdmin';
+import { useFormatting } from '@/hooks/useFormatting';
 
 function TenantFormDialog({
     open,
@@ -907,6 +908,7 @@ export default function Tenants() {
     const [showInactive, setShowInactive] = useState(false);
     const [createDialogOpen, setCreateDialogOpen] = useState(false);
     const [editTenant, setEditTenant] = useState<Tenant | undefined>();
+    const { formatDate } = useFormatting();
 
     const { data: tenants, isLoading, error } = useTenants(showInactive);
     const updateTenant = useUpdateTenant();
@@ -1052,7 +1054,7 @@ export default function Tenants() {
                                             )}
                                         </TableCell>
                                         <TableCell>
-                                            {new Date(tenant.created_at).toLocaleDateString()}
+                                            {formatDate(tenant.created_at)}
                                         </TableCell>
                                         <TableCell className="text-right">
                                             <div className="flex items-center justify-end gap-1">

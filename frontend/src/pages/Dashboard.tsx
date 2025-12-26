@@ -6,7 +6,8 @@ import { RecentActivity } from '@/components/dashboard/RecentActivity';
 import { AISuggestionsCard } from '@/components/dashboard/AISuggestionsCard';
 import { AllowanceOverviewCards, AllowancePolicyAlerts } from '@/components/dashboard/AllowanceWidgets';
 import { useAuth } from '@/contexts/AuthContext';
-import { useDashboardSummary, useClaimsByStatus, useHRMetrics, useAdminStats, formatCurrency } from '@/hooks/useDashboard';
+import { useDashboardSummary, useClaimsByStatus, useHRMetrics, useAdminStats } from '@/hooks/useDashboard';
+import { useFormatting } from '@/hooks/useFormatting';
 import { useTenants, useDesignations } from '@/hooks/useSystemAdmin';
 import { CardSkeleton } from '@/components/ui/loading-skeleton';
 import { Badge } from '@/components/ui/badge';
@@ -15,6 +16,7 @@ import { Badge } from '@/components/ui/badge';
 function EmployeeDashboard({ userName, employeeId, tenantId }: { userName: string; employeeId: string; tenantId?: string }) {
   const { data: summary, isLoading: summaryLoading } = useDashboardSummary(employeeId, tenantId);
   const { data: claimsByStatus, isLoading: statusLoading } = useClaimsByStatus(employeeId, tenantId);
+  const { formatCurrency } = useFormatting();
 
   // Pending = any claim that is NOT Approved, Rejected, Settled, or Returned
   const excludedFromPending = ['FINANCE_APPROVED', 'REJECTED', 'SETTLED', 'RETURNED_TO_EMPLOYEE'];
@@ -139,6 +141,7 @@ function EmployeeDashboard({ userName, employeeId, tenantId }: { userName: strin
 function ManagerDashboard({ userName, employeeId, tenantId }: { userName: string; employeeId: string; tenantId?: string }) {
   const { data: summary, isLoading: summaryLoading } = useDashboardSummary(undefined, tenantId);
   const { data: claimsByStatus, isLoading: statusLoading } = useClaimsByStatus(undefined, tenantId);
+  const { formatCurrency } = useFormatting();
 
   const pendingApprovals = claimsByStatus?.find(c => c.status === 'PENDING_MANAGER')?.count || 0;
   const teamClaimsThisMonth = summary?.approved_this_month || 0;
@@ -235,6 +238,7 @@ function ManagerDashboard({ userName, employeeId, tenantId }: { userName: string
 function HRDashboard({ userName, employeeId, tenantId }: { userName: string; employeeId: string; tenantId?: string }) {
   const { data: hrMetrics, isLoading: hrMetricsLoading } = useHRMetrics(tenantId);
   const { data: claimsByStatus, isLoading: statusLoading } = useClaimsByStatus(undefined, tenantId);
+  const { formatCurrency } = useFormatting();
 
   const hrPending = hrMetrics?.hr_pending || 0;
   const totalEmployees = hrMetrics?.total_employees || 0;
@@ -334,6 +338,7 @@ function HRDashboard({ userName, employeeId, tenantId }: { userName: string; emp
 function FinanceDashboard({ userName, employeeId, tenantId }: { userName: string; employeeId: string; tenantId?: string }) {
   const { data: summary, isLoading: summaryLoading } = useDashboardSummary(undefined, tenantId);
   const { data: claimsByStatus, isLoading: statusLoading } = useClaimsByStatus(undefined, tenantId);
+  const { formatCurrency } = useFormatting();
 
   const financePending = claimsByStatus?.find(c => c.status === 'PENDING_FINANCE')?.count || 0;
   const approved = claimsByStatus?.find(c => c.status === 'FINANCE_APPROVED')?.count || 0;
@@ -431,6 +436,7 @@ function AdminDashboard({ userName, employeeId, tenantId }: { userName: string; 
   const { data: summary, isLoading: summaryLoading } = useDashboardSummary(undefined, tenantId);
   const { data: claimsByStatus, isLoading: statusLoading } = useClaimsByStatus(undefined, tenantId);
   const { data: adminStats, isLoading: adminStatsLoading } = useAdminStats(tenantId);
+  const { formatCurrency } = useFormatting();
 
   const totalClaims = summary?.total_claims || 0;
   const pendingTotal = summary?.pending_claims || 0;

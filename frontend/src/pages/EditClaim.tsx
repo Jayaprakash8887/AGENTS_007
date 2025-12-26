@@ -44,7 +44,7 @@ export default function EditClaim() {
   const updateClaim = useUpdateClaim();
   const createCommentMutation = useCreateComment();
   const { user } = useAuth();
-  const { formatCurrency, formatDateTime } = useFormatting();
+  const { formatCurrency, formatDateTime, checkFinancialYear } = useFormatting();
   
   // Fetch reimbursement categories for policy validation
   const { data: reimbursementCategories = [] } = useReimbursementsByRegion(user?.region);
@@ -164,6 +164,21 @@ export default function EditClaim() {
   const policyChecks = useMemo(() => {
     const allDocuments = documents.length > 0 ? documents : (claim?.documents || []);
     
+    // Financial year validation
+    let fyStatus: 'pass' | 'fail' | 'warning' | 'checking' = 'checking';
+    let fyMessage = 'Enter date to check financial year';
+    
+    if (formData.claim_date) {
+      const fyCheck = checkFinancialYear(formData.claim_date);
+      if (fyCheck.isCurrentFY) {
+        fyStatus = 'pass';
+        fyMessage = `Within current ${fyCheck.fyLabel}`;
+      } else {
+        fyStatus = 'fail';
+        fyMessage = `Outside current ${fyCheck.fyLabel}`;
+      }
+    }
+    
     return [
       {
         id: "category",
@@ -194,6 +209,12 @@ export default function EditClaim() {
           : "No documents attached",
       },
       {
+        id: "financial_year",
+        label: "Current financial year",
+        status: fyStatus,
+        message: fyMessage,
+      },
+      {
         id: "description",
         label: "Description provided",
         status: formData.description && formData.description.length > 10 
@@ -204,7 +225,7 @@ export default function EditClaim() {
           : "Add a detailed description",
       },
     ];
-  }, [claim, formData, amountValidation, dateValidation, documents]);
+  }, [claim, formData, amountValidation, dateValidation, documents, checkFinancialYear]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

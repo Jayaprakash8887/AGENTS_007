@@ -73,6 +73,7 @@ import type {
     ERPConfigCreate,
     CommunicationConfigCreate,
 } from '@/hooks/useIntegrations';
+import { useFormatting } from '@/hooks/useFormatting';
 import { WEBHOOK_EVENTS } from './types';
 
 interface IntegrationsTabProps {
@@ -80,6 +81,8 @@ interface IntegrationsTabProps {
 }
 
 export function IntegrationsTab({ tenantId }: IntegrationsTabProps) {
+    const { formatDate, formatDateTime } = useFormatting();
+    
     // Integration hooks
     const { data: apiKeys, isLoading: isLoadingApiKeys } = useApiKeys(tenantId);
     const { data: webhooks, isLoading: isLoadingWebhooks } = useWebhooks(tenantId);
@@ -233,8 +236,8 @@ export function IntegrationsTab({ tenantId }: IntegrationsTabProps) {
                                             <div className="space-y-1">
                                                 <p className="font-medium">{key.name}</p>
                                                 <p className="text-xs text-muted-foreground">
-                                                    Created: {new Date(key.created_at).toLocaleDateString()}
-                                                    {key.last_used_at && ` • Last used: ${new Date(key.last_used_at).toLocaleDateString()}`}
+                                                    Created: {formatDate(key.created_at)}
+                                                    {key.last_used_at && ` • Last used: ${formatDate(key.last_used_at)}`}
                                                 </p>
                                                 <div className="flex gap-1">
                                                     {key.permissions?.map((perm) => (
@@ -566,7 +569,7 @@ export function IntegrationsTab({ tenantId }: IntegrationsTabProps) {
                                         <p className="font-medium">HRMS Configuration</p>
                                         <p className="text-sm text-muted-foreground">
                                             Provider: {hrmsConfig.provider?.replace('_', ' ').toUpperCase()}
-                                            {hrmsConfig.last_sync_at && ` • Last sync: ${new Date(hrmsConfig.last_sync_at).toLocaleString()}`}
+                                            {hrmsConfig.last_sync_at && ` • Last sync: ${formatDateTime(hrmsConfig.last_sync_at)}`}
                                         </p>
                                     </div>
                                     <Badge variant={hrmsConfig.is_active ? "default" : "secondary"}>
@@ -695,7 +698,7 @@ export function IntegrationsTab({ tenantId }: IntegrationsTabProps) {
                                         <p className="font-medium">ERP Configuration</p>
                                         <p className="text-sm text-muted-foreground">
                                             Provider: {erpConfig.provider?.toUpperCase()}
-                                            {erpConfig.last_export_at && ` • Last export: ${new Date(erpConfig.last_export_at).toLocaleString()}`}
+                                            {erpConfig.last_export_at && ` • Last export: ${formatDateTime(erpConfig.last_export_at)}`}
                                         </p>
                                     </div>
                                     <Badge variant={erpConfig.is_active ? "default" : "secondary"}>

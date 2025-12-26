@@ -55,6 +55,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
+import { useFormatting } from '@/hooks/useFormatting';
 import {
   useApprovalSkipRules,
   useCreateApprovalSkipRule,
@@ -97,6 +98,7 @@ const defaultFormData: ApprovalSkipRuleFormData = {
 export function ApprovalSkipRulesManager() {
   const { user } = useAuth();
   const tenantId = user?.tenantId || '';
+  const { formatCurrency, getCurrencySymbol } = useFormatting();
   
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingRule, setEditingRule] = useState<ApprovalSkipRule | null>(null);
@@ -337,7 +339,7 @@ export function ApprovalSkipRulesManager() {
                     </div>
                     {rule.max_amount_threshold && (
                       <div className="text-xs text-muted-foreground">
-                        Max: ₹{rule.max_amount_threshold.toLocaleString()}
+                        Max: {formatCurrency(rule.max_amount_threshold)}
                       </div>
                     )}
                   </TableCell>
@@ -601,7 +603,7 @@ export function ApprovalSkipRulesManager() {
                 <Label>Optional Constraints</Label>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
-                    <Label htmlFor="max_amount">Maximum Amount (₹)</Label>
+                    <Label htmlFor="max_amount">Maximum Amount ({getCurrencySymbol()})</Label>
                     <Input
                       id="max_amount"
                       type="number"

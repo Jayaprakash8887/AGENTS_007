@@ -333,11 +333,11 @@ export default function Settlements() {
             <p className="text-sm text-muted-foreground">
               You are about to settle {selectedIds.length} claim(s) totaling{' '}
               <span className="font-semibold text-foreground">
-                $
-                {mockSettlements
-                  .filter((s) => selectedIds.includes(s.id))
-                  .reduce((sum, s) => sum + s.amount, 0)
-                  .toLocaleString()}
+                {formatCurrency(
+                  mockSettlements
+                    .filter((s) => selectedIds.includes(s.id))
+                    .reduce((sum, s) => sum + s.amount, 0)
+                )}
               </span>
             </p>
             <div className="space-y-2">

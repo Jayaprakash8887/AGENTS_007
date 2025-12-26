@@ -988,7 +988,7 @@ export default function Policies() {
                       </TableCell>
                       <TableCell>
                         {claim.max_amount
-                          ? `${claim.currency} ${claim.max_amount.toLocaleString()}`
+                          ? formatCurrency(claim.max_amount, claim.currency)
                           : 'No limit'}
                       </TableCell>
                       <TableCell>
@@ -1804,15 +1804,15 @@ export default function Policies() {
                 <div className="grid grid-cols-3 gap-4 text-sm">
                   <div>
                     <Label className="text-muted-foreground text-xs">Min Amount</Label>
-                    <p>{selectedCustomClaim.min_amount ? `${selectedCustomClaim.currency} ${selectedCustomClaim.min_amount.toLocaleString()}` : 'No minimum'}</p>
+                    <p>{selectedCustomClaim.min_amount ? formatCurrency(selectedCustomClaim.min_amount, selectedCustomClaim.currency) : 'No minimum'}</p>
                   </div>
                   <div>
                     <Label className="text-muted-foreground text-xs">Max Amount</Label>
-                    <p>{selectedCustomClaim.max_amount ? `${selectedCustomClaim.currency} ${selectedCustomClaim.max_amount.toLocaleString()}` : 'No limit'}</p>
+                    <p>{selectedCustomClaim.max_amount ? formatCurrency(selectedCustomClaim.max_amount, selectedCustomClaim.currency) : 'No limit'}</p>
                   </div>
                   <div>
                     <Label className="text-muted-foreground text-xs">Default Amount</Label>
-                    <p>{selectedCustomClaim.default_amount ? `${selectedCustomClaim.currency} ${selectedCustomClaim.default_amount.toLocaleString()}` : 'N/A'}</p>
+                    <p>{selectedCustomClaim.default_amount ? formatCurrency(selectedCustomClaim.default_amount, selectedCustomClaim.currency) : 'N/A'}</p>
                   </div>
                 </div>
               </div>
@@ -1833,7 +1833,7 @@ export default function Policies() {
                   </div>
                   <div>
                     <Label className="text-muted-foreground text-xs">Approval Above</Label>
-                    <p>{selectedCustomClaim.requires_approval_above ? `${selectedCustomClaim.currency} ${selectedCustomClaim.requires_approval_above.toLocaleString()}` : 'N/A'}</p>
+                    <p>{selectedCustomClaim.requires_approval_above ? formatCurrency(selectedCustomClaim.requires_approval_above, selectedCustomClaim.currency) : 'N/A'}</p>
                   </div>
                   <div>
                     <Label className="text-muted-foreground text-xs">Submission Window</Label>

@@ -74,6 +74,14 @@ export interface ExtractedClaim {
   fieldSources: FieldSources;
 }
 
+// Policy check interface - exported for use in parent components
+export interface PolicyCheckItem {
+  id: string;
+  label: string;
+  status: 'pass' | 'fail' | 'warning' | 'checking';
+  message: string;
+}
+
 interface SmartClaimFormProps {
   category?: Category;
   form: UseFormReturn<ClaimFormData>;
@@ -82,6 +90,7 @@ interface SmartClaimFormProps {
   onMultipleClaimsExtracted?: (claims: ExtractedClaim[]) => void;
   onClaimsUpdated?: (claims: ExtractedClaim[]) => void; // Called when user edits any claim field
   onSingleFormFieldSourcesChange?: (sources: FieldSources) => void; // Called when single form field sources change
+  onPolicyChecksChange?: (checks: PolicyCheckItem[]) => void; // Called when policy checks change
   // For preserving OCR processing state across step navigation
   lastProcessedFileId?: string | null;
   onLastProcessedFileIdChange?: (id: string | null) => void;
@@ -94,6 +103,7 @@ export function SmartClaimForm({
   onMultipleClaimsExtracted,
   onClaimsUpdated,
   onSingleFormFieldSourcesChange,
+  onPolicyChecksChange,
   lastProcessedFileId: parentLastProcessedFileId,
   onLastProcessedFileIdChange,
 }: SmartClaimFormProps) {
@@ -104,7 +114,7 @@ export function SmartClaimForm({
   const { user } = useAuth();
 
   // Get formatting functions based on tenant settings
-  const { formatCurrency, formatDate, getCurrencySymbol, getDateFnsFormat } = useFormatting();
+  const { formatCurrency, formatDate, getCurrencySymbol, getDateFnsFormat, checkFinancialYear } = useFormatting();
 
   // Fetch reimbursement categories filtered by user's region
   const { data: reimbursementCategories = [], isLoading: isLoadingCategories } = useReimbursementsByRegion(user?.region);
@@ -1260,6 +1270,14 @@ export function SmartClaimForm({
 
   // Perform actual policy validations against the selected category's policy
   const amountValidation = useMemo(() => {
+    // Show checking state while OCR is extracting
+    if (isExtractingOCR) {
+      return {
+        status: 'checking' as const,
+        message: "Analyzing document for amount..."
+      };
+    }
+
     if (watchedFields.category === 'other' || !selectedCategoryPolicy) {
       return {
         status: 'warning' as const,
@@ -1290,9 +1308,17 @@ export function SmartClaimForm({
         ? `Amount ${formatCurrency(claimAmount)} within policy limit of ${formatCurrency(maxAmount)}`
         : "Amount verified - no policy limit defined"
     };
-  }, [watchedFields.amount, watchedFields.category, selectedCategoryPolicy, formatCurrency]);
+  }, [watchedFields.amount, watchedFields.category, selectedCategoryPolicy, formatCurrency, isExtractingOCR]);
 
   const dateValidation = useMemo(() => {
+    // Show checking state while OCR is extracting
+    if (isExtractingOCR) {
+      return {
+        status: 'checking' as const,
+        message: "Analyzing document for date..."
+      };
+    }
+
     if (watchedFields.category === 'other' || !selectedCategoryPolicy) {
       return {
         status: 'warning' as const,
@@ -1331,7 +1357,38 @@ export function SmartClaimForm({
       status: 'pass' as const,
       message: "Date verified - no submission window restriction"
     };
-  }, [watchedFields.date, watchedFields.category, selectedCategoryPolicy]);
+  }, [watchedFields.date, watchedFields.category, selectedCategoryPolicy, isExtractingOCR]);
+
+  // Financial year validation
+  const financialYearValidation = useMemo(() => {
+    // Show checking state while OCR is extracting
+    if (isExtractingOCR) {
+      return {
+        status: 'checking' as const,
+        message: "Analyzing document for date..."
+      };
+    }
+
+    if (!watchedFields.date) {
+      return {
+        status: 'checking' as const,
+        message: "Enter date to check financial year"
+      };
+    }
+
+    const fyCheck = checkFinancialYear(watchedFields.date);
+    if (fyCheck.isCurrentFY) {
+      return {
+        status: 'pass' as const,
+        message: `Within current ${fyCheck.fyLabel}`
+      };
+    }
+
+    return {
+      status: 'fail' as const,
+      message: `Outside current ${fyCheck.fyLabel} - expense from previous financial year`
+    };
+  }, [watchedFields.date, checkFinancialYear, isExtractingOCR]);
 
   const policyChecks = [
     {
@@ -1361,6 +1418,12 @@ export function SmartClaimForm({
       message: dateValidation.message,
     },
     {
+      id: "financial_year",
+      label: "Current financial year",
+      status: financialYearValidation.status,
+      message: financialYearValidation.message,
+    },
+    {
       id: "docs",
       label: "Required documents",
       status: uploadedFiles.length > 0 ? "pass" as const : "warning" as const,
@@ -1383,6 +1446,13 @@ export function SmartClaimForm({
             : "Enter amount and date to check"),
     },
   ];
+
+  // Notify parent of policy checks changes
+  useEffect(() => {
+    if (onPolicyChecksChange) {
+      onPolicyChecksChange(policyChecks);
+    }
+  }, [policyChecks, onPolicyChecksChange]);
 
   // Function to compute policy checks for a single receipt (multi-receipt mode)
   const getReceiptPolicyChecks = useCallback((claim: ExtractedClaim): PolicyCheck[] => {
@@ -1435,6 +1505,21 @@ export function SmartClaimForm({
       }
     }
 
+    // Financial Year validation for this receipt
+    let fyStatus: 'pass' | 'fail' | 'warning' | 'checking' = 'checking';
+    let fyMessage = 'Enter date to check financial year';
+
+    if (claim.date) {
+      const fyCheck = checkFinancialYear(claim.date);
+      if (fyCheck.isCurrentFY) {
+        fyStatus = 'pass';
+        fyMessage = `Within current ${fyCheck.fyLabel}`;
+      } else {
+        fyStatus = 'fail';
+        fyMessage = `Outside current ${fyCheck.fyLabel} - claim date is from a previous financial year`;
+      }
+    }
+
     return [
       {
         id: 'category',
@@ -1459,6 +1544,18 @@ export function SmartClaimForm({
         message: dateMessage,
       },
       {
+        id: 'required_docs',
+        label: 'Required documents',
+        status: claim.file ? 'pass' : 'warning',
+        message: claim.file ? '1 document(s) uploaded' : 'Upload receipt document',
+      },
+      {
+        id: 'financial_year',
+        label: 'Current financial year',
+        status: fyStatus,
+        message: fyMessage,
+      },
+      {
         id: 'duplicate',
         label: 'No duplicate claims',
         status: duplicateCheck.isChecking
@@ -1475,7 +1572,7 @@ export function SmartClaimForm({
               : 'Enter amount and date to check'),
       },
     ];
-  }, [reimbursementCategories, receiptDuplicateChecks]);
+  }, [reimbursementCategories, receiptDuplicateChecks, checkFinancialYear, formatCurrency]);
 
   // Compute all receipt policy checks for the summary
   const allReceiptPolicyChecks = useMemo(() => {

@@ -77,7 +77,7 @@ const PAYMENT_METHOD_COLORS: Record<string, string> = {
 export default function Reports() {
   const [dateRange, setDateRange] = useState('6m');
   const [period, setPeriod] = useState('month');
-  const { formatCurrency } = useFormatting();
+  const { formatCurrency, formatDate } = useFormatting();
 
   // Fetch data from APIs
   const { data: financeMetrics, isLoading: loadingMetrics } = useFinanceMetrics(undefined, period);
@@ -585,7 +585,7 @@ export default function Reports() {
                           {formatCurrency(claim.amount)}
                         </TableCell>
                         <TableCell className="text-muted-foreground">
-                          {claim.approved_date ? new Date(claim.approved_date).toLocaleDateString() : '-'}
+                          {formatDate(claim.approved_date)}
                         </TableCell>
                         <TableCell>
                           <Badge 

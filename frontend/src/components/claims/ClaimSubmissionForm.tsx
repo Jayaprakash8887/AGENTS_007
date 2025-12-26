@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { CategoryGrid, Category } from "./CategoryGrid";
-import { SmartClaimForm, ExtractedClaim, FieldSources } from "./SmartClaimForm";
+import { SmartClaimForm, ExtractedClaim, FieldSources, PolicyCheckItem } from "./SmartClaimForm";
 import { ClaimReview } from "./ClaimReview";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -86,6 +86,8 @@ export function ClaimSubmissionForm({ onClose }: ClaimSubmissionFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   // Track last processed file ID at parent level to prevent re-processing when navigating back
   const [lastProcessedFileId, setLastProcessedFileId] = useState<string | null>(null);
+  // Track policy checks from SmartClaimForm to display in ClaimReview
+  const [policyChecks, setPolicyChecks] = useState<PolicyCheckItem[]>([]);
   const { user } = useAuth();
   const createBatchClaimsWithDocument = useCreateBatchClaimsWithDocument();
   
@@ -323,7 +325,7 @@ export function ClaimSubmissionForm({ onClose }: ClaimSubmissionFormProps) {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="sticky top-0 z-50 border-b border-border bg-card/95 backdrop-blur">
+      <header className="sticky top-0 z-40 border-b border-border bg-card/95 backdrop-blur">
         <div className="container mx-auto flex h-16 items-center justify-between px-4">
           <div className="flex items-center gap-4">
             <Button variant="ghost" size="icon" onClick={onClose}>
@@ -472,6 +474,7 @@ export function ClaimSubmissionForm({ onClose }: ClaimSubmissionFormProps) {
             onSingleFormFieldSourcesChange={(sources) => {
               setSingleFormFieldSources(sources);
             }}
+            onPolicyChecksChange={setPolicyChecks}
             lastProcessedFileId={lastProcessedFileId}
             onLastProcessedFileIdChange={setLastProcessedFileId}
           />
@@ -657,6 +660,7 @@ export function ClaimSubmissionForm({ onClose }: ClaimSubmissionFormProps) {
             formData={watchedFormValues}
             files={uploadedFiles}
             multipleClaims={extractedMultipleClaims.length > 1 ? extractedMultipleClaims : undefined}
+            policyChecks={policyChecks}
           />
         )}
 

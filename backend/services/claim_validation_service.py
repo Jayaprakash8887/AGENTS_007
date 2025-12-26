@@ -21,6 +21,29 @@ logger = logging.getLogger(__name__)
 class ClaimValidationService:
     def __init__(self, db: Session):
         self.db = db
+    
+    def _get_tenant_fiscal_year_start(self, tenant_id: UUID) -> str:
+        """
+        Get the fiscal year start month for a tenant.
+        Returns month code like 'jan', 'apr', etc. Default is 'apr'.
+        """
+        from models import SystemSettings
+        from sqlalchemy import and_
+        
+        try:
+            setting = self.db.query(SystemSettings).filter(
+                and_(
+                    SystemSettings.setting_key == "fiscal_year_start",
+                    SystemSettings.tenant_id == tenant_id
+                )
+            ).first()
+            
+            if setting and setting.setting_value:
+                return setting.setting_value.lower().strip()
+            return "apr"  # Default to April
+        except Exception as e:
+            logger.warning(f"Failed to get fiscal year start for tenant {tenant_id}: {e}")
+            return "apr"
 
     async def validate_claim(self, request: ClaimValidationRequest) -> ClaimValidationResponse:
         """
@@ -72,13 +95,17 @@ class ClaimValidationService:
             "vendor": request.additional_data.get("vendor") if request.additional_data else None,
         }
         
+        # Get tenant's fiscal year start
+        fiscal_year_start = self._get_tenant_fiscal_year_start(request.tenant_id)
+        
         policy_checks = generate_policy_checks(
             claim_data=claim_data,
             has_document=request.has_receipt,
             policy_limit=policy_limit,
             submission_window_days=submission_window,
             is_potential_duplicate=is_potential_duplicate,
-            policy_effective_from=policy_effective_from
+            policy_effective_from=policy_effective_from,
+            fiscal_year_start=fiscal_year_start
         )
         
         # 4. Filter and map checks to ValidationCheckResult

@@ -226,6 +226,34 @@ def _map_category(category_str: str) -> str:
     return category_str.upper()
 
 
+def _get_tenant_fiscal_year_start(tenant_id: UUID) -> str:
+    """
+    Get the fiscal year start month for a tenant.
+    Returns month code like 'jan', 'apr', etc. Default is 'apr'.
+    """
+    from database import SyncSessionLocal
+    from models import SystemSettings
+    from sqlalchemy import and_
+    
+    sync_db = SyncSessionLocal()
+    try:
+        setting = sync_db.query(SystemSettings).filter(
+            and_(
+                SystemSettings.setting_key == "fiscal_year_start",
+                SystemSettings.tenant_id == tenant_id
+            )
+        ).first()
+        
+        if setting and setting.setting_value:
+            return setting.setting_value.lower().strip()
+        return "apr"  # Default to April
+    except Exception as e:
+        logger.warning(f"Failed to get fiscal year start for tenant {tenant_id}: {e}")
+        return "apr"
+    finally:
+        sync_db.close()
+
+
 def _get_initial_claim_status(
     tenant_id: UUID,
     employee_email: str,
@@ -398,6 +426,9 @@ async def create_batch_claims(
         )
         claim_payload["ai_analysis"] = ai_analysis
         
+        # Get tenant's fiscal year start for policy checks
+        fiscal_year_start = _get_tenant_fiscal_year_start(employee.tenant_id)
+        
         # Generate policy compliance checks
         policy_checks = generate_policy_checks(
             claim_data={
@@ -411,7 +442,8 @@ async def create_batch_claims(
             has_document=False,
             policy_limit=None,  # TODO: Get from policy_categories table
             submission_window_days=15,
-            is_potential_duplicate=is_potential_dup
+            is_potential_duplicate=is_potential_dup,
+            fiscal_year_start=fiscal_year_start
         )
         claim_payload["policy_checks"] = policy_checks
         
@@ -636,6 +668,9 @@ async def create_batch_claims_with_document(
         )
         claim_payload["ai_analysis"] = ai_analysis
         
+        # Get tenant's fiscal year start for policy checks
+        fiscal_year_start = _get_tenant_fiscal_year_start(employee.tenant_id)
+        
         # Generate policy compliance checks
         policy_checks = generate_policy_checks(
             claim_data={
@@ -649,7 +684,8 @@ async def create_batch_claims_with_document(
             has_document=has_doc,
             policy_limit=None,  # TODO: Get from policy_categories table
             submission_window_days=15,
-            is_potential_duplicate=is_potential_dup
+            is_potential_duplicate=is_potential_dup,
+            fiscal_year_start=fiscal_year_start
         )
         claim_payload["policy_checks"] = policy_checks
         
