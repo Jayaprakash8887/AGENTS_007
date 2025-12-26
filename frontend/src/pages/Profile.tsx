@@ -46,8 +46,6 @@ export default function Profile() {
   // Notification preferences state
   const [emailNotifications, setEmailNotifications] = useState(true);
   const [pushNotifications, setPushNotifications] = useState(true);
-  const [claimUpdates, setClaimUpdates] = useState(true);
-  const [approvalReminders, setApprovalReminders] = useState(true);
   const [isSavingNotifications, setIsSavingNotifications] = useState(false);
   
   // Password change state
@@ -492,32 +490,6 @@ export default function Profile() {
                     <Switch
                       checked={pushNotifications}
                       onCheckedChange={setPushNotifications}
-                    />
-                  </div>
-                  <Separator />
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-0.5">
-                      <Label>Claim Status Updates</Label>
-                      <p className="text-sm text-muted-foreground">
-                        Get notified when your claims are processed
-                      </p>
-                    </div>
-                    <Switch
-                      checked={claimUpdates}
-                      onCheckedChange={setClaimUpdates}
-                    />
-                  </div>
-                  <Separator />
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-0.5">
-                      <Label>Approval Reminders</Label>
-                      <p className="text-sm text-muted-foreground">
-                        Remind about pending approvals
-                      </p>
-                    </div>
-                    <Switch
-                      checked={approvalReminders}
-                      onCheckedChange={setApprovalReminders}
                     />
                   </div>
                   <Separator />
