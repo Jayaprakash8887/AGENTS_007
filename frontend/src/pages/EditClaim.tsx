@@ -35,6 +35,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useFormatting } from '@/hooks/useFormatting';
 import { toast } from '@/hooks/use-toast';
 import { useReimbursementsByRegion } from '@/hooks/usePolicies';
+import { useEmployeeProjectHistory } from '@/hooks/useEmployees';
 import { PolicyChecks } from '@/components/claims/PolicyChecks';
 import {
   Select,
@@ -59,6 +60,30 @@ export default function EditClaim() {
   // Fetch reimbursement categories for policy validation
   const { data: reimbursementCategories = [] } = useReimbursementsByRegion(user?.region);
   
+  // Fetch employee's project history
+  const { data: projectHistory, isLoading: isLoadingProjects } = useEmployeeProjectHistory(user?.id);
+  
+  // Map project history to dropdown format
+  const employeeProjects = useMemo(() => {
+    return projectHistory?.map(allocation => ({
+      id: allocation.project_id,
+      projectCode: allocation.project_code,
+      projectName: allocation.project_name,
+      status: allocation.status,
+    })) || [];
+  }, [projectHistory]);
+  
+  // Create category options with 'Other' at the end
+  const categoryOptions = useMemo(() => {
+    const apiCategories = reimbursementCategories.map(cat => ({
+      value: cat.category_code.toLowerCase(),
+      label: cat.category_name,
+      categoryCode: cat.category_code,
+    }));
+    // Add 'Other' category at the end
+    return [...apiCategories, { value: 'other', label: 'Other', categoryCode: 'OTHER' }];
+  }, [reimbursementCategories]);
+  
   const [formData, setFormData] = useState({
     amount: '',
     claim_date: '',
@@ -82,15 +107,14 @@ export default function EditClaim() {
   // Initialize form data when claim loads
   useEffect(() => {
     if (claim) {
-      const payload = claim.claimPayload || {};
       setFormData({
         amount: claim.amount?.toString() || '',
         claim_date: formatDateForInput(claim.claimDate),
         description: claim.description || '',
-        category: claim.category || '',
-        title: payload.title || claim.title || '',
-        project_code: payload.project_code || '',
-        transaction_ref: payload.transaction_ref || '',
+        category: claim.category?.toLowerCase() || '',
+        title: claim.title || '',
+        project_code: claim.projectCode || '',
+        transaction_ref: claim.transactionRef || '',
       });
     }
   }, [claim]);
@@ -431,9 +455,9 @@ export default function EditClaim() {
                       <SelectValue placeholder="Select category" />
                     </SelectTrigger>
                     <SelectContent>
-                      {reimbursementCategories.map((cat) => (
-                        <SelectItem key={cat.category_code} value={cat.category_code}>
-                          {cat.category_name}
+                      {categoryOptions.map((cat) => (
+                        <SelectItem key={cat.categoryCode} value={cat.value}>
+                          {cat.label}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -505,18 +529,37 @@ export default function EditClaim() {
                   <Label htmlFor="project_code" className="flex items-center">
                     <Folder className="h-4 w-4 mr-2" />
                     Project Code
-                    {getDataSourceBadge(editedFields.has('project_code') ? 'manual' : 'manual')}
+                    {getDataSourceBadge(editedFields.has('project_code') ? 'manual' : 'auto')}
                   </Label>
-                  <Input
-                    id="project_code"
-                    type="text"
+                  <Select
                     value={formData.project_code}
-                    onChange={(e) => {
-                      setFormData(prev => ({ ...prev, project_code: e.target.value }));
+                    onValueChange={(value) => {
+                      setFormData(prev => ({ ...prev, project_code: value }));
                       setEditedFields(prev => new Set(prev).add('project_code'));
                     }}
-                    placeholder="Enter project code"
-                  />
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={isLoadingProjects ? "Loading projects..." : (employeeProjects.length === 0 ? "No projects assigned" : "Select project")} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {employeeProjects.length > 0 ? (
+                        employeeProjects.map((project) => (
+                          <SelectItem key={project.id} value={project.projectCode}>
+                            <div className="flex items-center gap-2">
+                              <span>{project.projectCode} - {project.projectName}</span>
+                              {project.status !== 'ACTIVE' && (
+                                <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                                  {project.status}
+                                </span>
+                              )}
+                            </div>
+                          </SelectItem>
+                        ))
+                      ) : (
+                        <div className="px-2 py-1.5 text-sm text-muted-foreground">No projects assigned</div>
+                      )}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 {/* Transaction Ref ID */}
