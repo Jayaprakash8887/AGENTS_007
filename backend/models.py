@@ -307,7 +307,7 @@ class User(Base):
     hashed_password = Column(String(255), nullable=False)
     
     # Profile / Employee Info
-    employee_code = Column(String(50), unique=True)  # e.g., EMP001
+    employee_code = Column(String(50))  # e.g., EMP001 - unique per tenant (see __table_args__)
     first_name = Column(String(100))
     last_name = Column(String(100))
     full_name = Column(String(255))  # Computed or manual
@@ -358,6 +358,8 @@ class User(Base):
         Index("idx_users_employee_code", "employee_code"),
         Index("idx_users_department", "department"),
         Index("idx_users_manager", "manager_id"),
+        # Composite unique constraint: employee_code is unique per tenant
+        UniqueConstraint("tenant_id", "employee_code", name="uq_users_tenant_employee_code"),
     )
     
     @property

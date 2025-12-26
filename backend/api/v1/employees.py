@@ -133,17 +133,26 @@ async def create_employee(
     db: Session = Depends(get_sync_db)
 ):
     """Create a new employee (creates a User with employee data)"""
-    # Check if employee_code already exists
+    # tenant_id is required - must be provided in the request
+    if not employee_data.tenant_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="tenant_id is required when creating an employee"
+        )
+    employee_tenant_id = employee_data.tenant_id
+    
+    # Check if employee_code already exists within the same tenant
     existing = db.query(User).filter(
+        User.tenant_id == employee_tenant_id,
         User.employee_code == employee_data.employee_id
     ).first()
     if existing:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Employee with ID {employee_data.employee_id} already exists"
+            detail=f"Employee with ID {employee_data.employee_id} already exists in this tenant"
         )
     
-    # Check if email already exists
+    # Check if email already exists (email is globally unique)
     existing_email = db.query(User).filter(
         User.email == employee_data.email
     ).first()
@@ -227,8 +236,9 @@ async def bulk_import_employees(
     
     for emp_data in import_data.employees:
         try:
-            # Check if employee_code already exists
+            # Check if employee_code already exists within the same tenant
             existing = db.query(User).filter(
+                User.tenant_id == import_data.tenant_id,
                 User.employee_code == emp_data.employee_id
             ).first()
             if existing:
@@ -236,12 +246,12 @@ async def bulk_import_employees(
                     employee_id=emp_data.employee_id,
                     email=emp_data.email,
                     success=False,
-                    error=f"Employee ID {emp_data.employee_id} already exists"
+                    error=f"Employee ID {emp_data.employee_id} already exists in this tenant"
                 ))
                 failed_count += 1
                 continue
             
-            # Check if email already exists
+            # Check if email already exists (email is globally unique)
             existing_email = db.query(User).filter(
                 User.email == emp_data.email
             ).first()
@@ -340,6 +350,19 @@ async def update_employee(
     
     old_employee_code = user.employee_code
     old_email = user.email
+    
+    # Check if new employee_code conflicts with another user in the same tenant
+    if employee_data.employee_id != old_employee_code:
+        existing = db.query(User).filter(
+            User.tenant_id == user.tenant_id,
+            User.employee_code == employee_data.employee_id,
+            User.id != employee_id
+        ).first()
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Employee with ID {employee_data.employee_id} already exists in this tenant"
+            )
     
     # Update fields
     user.employee_code = employee_data.employee_id
