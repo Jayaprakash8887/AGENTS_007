@@ -267,7 +267,10 @@ function BrandingFileUpload({ fileType, spec, currentUrl, tenantId, onUploadSucc
 // API functions
 async function fetchGeneralSettings(tenantId?: string): Promise<GeneralSettings> {
   const params = tenantId ? `?tenant_id=${tenantId}` : '';
-  const response = await fetch(`${API_BASE_URL}/settings/general${params}`);
+  const token = localStorage.getItem('access_token');
+  const response = await fetch(`${API_BASE_URL}/settings/general${params}`, {
+    headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+  });
   if (!response.ok) {
     throw new Error('Failed to fetch settings');
   }
@@ -275,7 +278,10 @@ async function fetchGeneralSettings(tenantId?: string): Promise<GeneralSettings>
 }
 
 async function fetchAllSettingsOptions(): Promise<AllSettingsOptions> {
-  const response = await fetch(`${API_BASE_URL}/settings/options/all`);
+  const token = localStorage.getItem('access_token');
+  const response = await fetch(`${API_BASE_URL}/settings/options/all`, {
+    headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+  });
   if (!response.ok) {
     throw new Error('Failed to fetch settings options');
   }
@@ -284,10 +290,12 @@ async function fetchAllSettingsOptions(): Promise<AllSettingsOptions> {
 
 async function updateGeneralSettings(settings: Partial<GeneralSettings>, tenantId?: string): Promise<GeneralSettings> {
   const params = tenantId ? `?tenant_id=${tenantId}` : '';
+  const token = localStorage.getItem('access_token');
   const response = await fetch(`${API_BASE_URL}/settings/general${params}`, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
     },
     body: JSON.stringify(settings),
   });

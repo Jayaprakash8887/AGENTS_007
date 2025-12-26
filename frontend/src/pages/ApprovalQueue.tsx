@@ -138,7 +138,10 @@ export default function ApprovalQueue() {
 
       const response = await fetch(endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(localStorage.getItem('access_token') ? { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` } : {}),
+        },
         body: JSON.stringify(body),
       });
 

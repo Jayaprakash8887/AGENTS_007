@@ -2,6 +2,20 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 
+// Auth helpers
+function getAuthHeaders(): HeadersInit {
+    const token = localStorage.getItem('access_token');
+    return token ? { 'Authorization': `Bearer ${token}` } : {};
+}
+
+function getAuthHeadersWithJson(): HeadersInit {
+    const token = localStorage.getItem('access_token');
+    return {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    };
+}
+
 export interface Department {
     id: string;
     tenant_id: string;
@@ -44,7 +58,9 @@ async function fetchDepartments(tenantId?: string, includeInactive = false): Pro
     }
     params.append('include_counts', 'true');
 
-    const response = await fetch(`${API_BASE_URL}/departments?${params}`);
+    const response = await fetch(`${API_BASE_URL}/departments?${params}`, {
+        headers: getAuthHeaders(),
+    });
     if (!response.ok) {
         throw new Error('Failed to fetch departments');
     }
@@ -55,7 +71,7 @@ async function fetchDepartments(tenantId?: string, includeInactive = false): Pro
 async function createDepartment(tenantId: string, data: DepartmentCreate): Promise<Department> {
     const response = await fetch(`${API_BASE_URL}/departments?tenant_id=${tenantId}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeadersWithJson(),
         body: JSON.stringify(data),
     });
     if (!response.ok) {
@@ -70,7 +86,7 @@ async function updateDepartment(id: string, data: DepartmentUpdate, tenantId?: s
     const params = tenantId ? `?tenant_id=${tenantId}` : '';
     const response = await fetch(`${API_BASE_URL}/departments/${id}${params}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeadersWithJson(),
         body: JSON.stringify(data),
     });
     if (!response.ok) {
@@ -85,6 +101,7 @@ async function deleteDepartment(id: string, tenantId?: string): Promise<void> {
     const params = tenantId ? `?tenant_id=${tenantId}` : '';
     const response = await fetch(`${API_BASE_URL}/departments/${id}${params}`, {
         method: 'DELETE',
+        headers: getAuthHeaders(),
     });
     if (!response.ok) {
         const error = await response.json();

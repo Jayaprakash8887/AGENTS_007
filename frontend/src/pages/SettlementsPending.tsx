@@ -123,7 +123,10 @@ export default function SettlementsPending() {
 
         const response = await fetch(`${API_BASE_URL}/claims/${claimId}/settle?tenant_id=${tenantId}`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            ...(localStorage.getItem('access_token') ? { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` } : {}),
+          },
           body: JSON.stringify({
             claim_id: claimId,
             payment_reference: settlementData.transactionId,

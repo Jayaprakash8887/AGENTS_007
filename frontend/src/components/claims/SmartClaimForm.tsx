@@ -312,7 +312,10 @@ export function SmartClaimForm({
 
       const response = await fetch(
         `${API_BASE_URL}/claims/check-duplicate?${params}`,
-        { method: 'POST' }
+        { 
+          method: 'POST',
+          headers: localStorage.getItem('access_token') ? { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` } : {},
+        }
       );
 
       if (response.ok) {
@@ -398,7 +401,10 @@ export function SmartClaimForm({
 
         const response = await fetch(
           `${API_BASE_URL}/claims/check-duplicate?${params}`,
-          { method: 'POST' }
+          { 
+            method: 'POST',
+            headers: localStorage.getItem('access_token') ? { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` } : {},
+          }
         );
 
         if (response.ok) {
@@ -706,8 +712,10 @@ export function SmartClaimForm({
 
       // Use absolute URL to backend API with region and tenant_id parameters
       const tenantId = user?.tenantId || '';
+      const token = localStorage.getItem('access_token');
       const response = await fetch(`${API_BASE_URL}/documents/ocr?employee_region=${encodeURIComponent(employeeRegion)}&tenant_id=${encodeURIComponent(tenantId)}`, {
         method: 'POST',
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
         body: formData,
       });
 

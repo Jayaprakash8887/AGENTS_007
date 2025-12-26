@@ -273,9 +273,13 @@ export default function Employees() {
 
       // Call bulk import API
       const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
+      const token = localStorage.getItem('access_token');
       const response = await fetch(`${API_BASE_URL}/employees/bulk`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           tenant_id: tenantId,
           employees: employees,

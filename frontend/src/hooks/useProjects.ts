@@ -4,12 +4,28 @@ import { useAuth } from '@/contexts/AuthContext';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 
+// Auth helpers
+function getAuthHeaders(): HeadersInit {
+  const token = localStorage.getItem('access_token');
+  return token ? { 'Authorization': `Bearer ${token}` } : {};
+}
+
+function getAuthHeadersWithJson(): HeadersInit {
+  const token = localStorage.getItem('access_token');
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+  };
+}
+
 // API functions
 async function fetchProjects(tenantId?: string): Promise<Project[]> {
   const url = tenantId
     ? `${API_BASE_URL}/projects/?tenant_id=${tenantId}`
     : `${API_BASE_URL}/projects/`;
-  const response = await fetch(url);
+  const response = await fetch(url, {
+    headers: getAuthHeaders(),
+  });
   if (!response.ok) {
     throw new Error('Failed to fetch projects');
   }
@@ -33,7 +49,9 @@ async function fetchProjects(tenantId?: string): Promise<Project[]> {
 }
 
 async function fetchProjectById(id: string): Promise<Project | undefined> {
-  const response = await fetch(`${API_BASE_URL}/projects/${id}`);
+  const response = await fetch(`${API_BASE_URL}/projects/${id}`, {
+    headers: getAuthHeaders(),
+  });
   if (!response.ok) {
     if (response.status === 404) return undefined;
     throw new Error('Failed to fetch project');
@@ -59,9 +77,7 @@ async function fetchProjectById(id: string): Promise<Project | undefined> {
 async function createProject(project: Omit<Project, 'id'>): Promise<Project> {
   const response = await fetch(`${API_BASE_URL}/projects/`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: getAuthHeadersWithJson(),
     body: JSON.stringify({
       project_code: project.code,
       project_name: project.name,
@@ -139,9 +155,7 @@ export function useCreateProject() {
 async function updateProject(id: string, project: Partial<Project>): Promise<Project> {
   const response = await fetch(`${API_BASE_URL}/projects/${id}`, {
     method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: getAuthHeadersWithJson(),
     body: JSON.stringify({
       project_code: project.code,
       project_name: project.name,
@@ -211,7 +225,9 @@ async function fetchAllProjectMembers(tenantId?: string): Promise<ProjectMember[
   const url = tenantId
     ? `${API_BASE_URL}/projects/members/all?tenant_id=${tenantId}`
     : `${API_BASE_URL}/projects/members/all`;
-  const response = await fetch(url);
+  const response = await fetch(url, {
+    headers: getAuthHeaders(),
+  });
   if (!response.ok) {
     throw new Error('Failed to fetch all project members');
   }

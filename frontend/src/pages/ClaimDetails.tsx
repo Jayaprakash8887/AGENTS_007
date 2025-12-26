@@ -229,7 +229,10 @@ export default function ClaimDetails() {
 
       const response = await fetch(endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(localStorage.getItem('access_token') ? { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` } : {}),
+        },
         body: JSON.stringify(body),
       });
 
@@ -337,7 +340,10 @@ export default function ClaimDetails() {
         `${API_BASE_URL}/claims/${id}/hr-edit?tenant_id=${user?.tenantId || ''}`,
         {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            ...(localStorage.getItem('access_token') ? { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` } : {}),
+          },
           body: JSON.stringify(updatePayload),
         }
       );

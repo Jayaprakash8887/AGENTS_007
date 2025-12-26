@@ -3,6 +3,12 @@ import { useAuth } from '@/contexts/AuthContext';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 
+// Auth helper
+function getAuthHeaders(): HeadersInit {
+  const token = localStorage.getItem('access_token');
+  return token ? { 'Authorization': `Bearer ${token}` } : {};
+}
+
 // Extracted claim category from API (includes both PolicyCategory and CustomClaim)
 export interface ExtractedClaimCategory {
   id: string;
@@ -35,7 +41,7 @@ async function fetchExtractedClaims(tenantId?: string): Promise<ExtractedClaimCa
   if (tenantId) params.append('tenant_id', tenantId);
 
   const url = `${API_BASE_URL}/policies/extracted-claims${params.toString() ? '?' + params.toString() : ''}`;
-  const response = await fetch(url);
+  const response = await fetch(url, { headers: getAuthHeaders() });
   if (!response.ok) {
     throw new Error('Failed to fetch extracted claims');
   }

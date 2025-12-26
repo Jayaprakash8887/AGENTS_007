@@ -46,6 +46,8 @@ export default function Profile() {
   // Notification preferences state
   const [emailNotifications, setEmailNotifications] = useState(true);
   const [pushNotifications, setPushNotifications] = useState(true);
+  const [claimUpdates, setClaimUpdates] = useState(true);
+  const [approvalReminders, setApprovalReminders] = useState(true);
   const [isSavingNotifications, setIsSavingNotifications] = useState(false);
   
   // Password change state
@@ -69,7 +71,10 @@ export default function Profile() {
     // Check if avatar upload is enabled (cloud storage configured)
     const checkCloudStorageStatus = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/auth/cloud-storage-status`);
+        const token = localStorage.getItem('access_token');
+        const response = await fetch(`${API_BASE_URL}/auth/cloud-storage-status`, {
+          headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+        });
         if (response.ok) {
           const data = await response.json();
           setIsAvatarUploadEnabled(data.avatar_upload_enabled);
@@ -208,9 +213,13 @@ export default function Profile() {
     setIsSavingNotifications(true);
     try {
       // Save to backend (notification preferences API)
+      const token = localStorage.getItem('access_token');
       const response = await fetch(`${API_BASE_URL}/employees/${user.id}/preferences`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           email_notifications: emailNotifications,
           push_notifications: pushNotifications,

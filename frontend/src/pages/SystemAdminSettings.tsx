@@ -34,7 +34,10 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 
 // Fetch system info
 async function fetchSystemInfo(): Promise<SystemInfo> {
-    const response = await fetch(`${API_BASE_URL}/system/info`);
+    const token = localStorage.getItem('access_token');
+    const response = await fetch(`${API_BASE_URL}/system/info`, {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+    });
     if (!response.ok) {
         throw new Error('Failed to fetch system info');
     }

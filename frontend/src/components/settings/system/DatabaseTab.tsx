@@ -66,9 +66,13 @@ export function DatabaseTab({
         setIsClearingCache(tenantId || 'all-tenants');
         try {
             if (tenantId) {
+                const token = localStorage.getItem('access_token');
                 await fetch(`${API_BASE_URL}/cache/invalidate/all`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+                    },
                 });
                 toast.success(`Cache cleared for tenant: ${tenantName}`);
             } else {

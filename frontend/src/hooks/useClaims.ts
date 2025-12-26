@@ -4,6 +4,20 @@ import { useAuth } from '@/contexts/AuthContext';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 
+// Auth helpers
+function getAuthHeaders(): HeadersInit {
+  const token = localStorage.getItem('access_token');
+  return token ? { 'Authorization': `Bearer ${token}` } : {};
+}
+
+function getAuthHeadersWithJson(): HeadersInit {
+  const token = localStorage.getItem('access_token');
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+  };
+}
+
 // API functions
 async function fetchClaims(tenantId?: string, userId?: string, role?: string): Promise<Claim[]> {
   const params = new URLSearchParams();
@@ -16,7 +30,9 @@ async function fetchClaims(tenantId?: string, userId?: string, role?: string): P
     params.append('role', role);
   }
   const url = `${API_BASE_URL}/claims/${params.toString() ? '?' + params.toString() : ''}`;
-  const response = await fetch(url);
+  const response = await fetch(url, {
+    headers: getAuthHeaders(),
+  });
   if (!response.ok) {
     throw new Error('Failed to fetch claims');
   }
@@ -85,7 +101,9 @@ function mapBackendStatus(backendStatus: string): ClaimStatus {
 }
 
 async function fetchClaimById(id: string, tenantId: string): Promise<Claim | undefined> {
-  const response = await fetch(`${API_BASE_URL}/claims/${id}?tenant_id=${tenantId}`);
+  const response = await fetch(`${API_BASE_URL}/claims/${id}?tenant_id=${tenantId}`, {
+    headers: getAuthHeaders(),
+  });
   if (!response.ok) {
     if (response.status === 404) return undefined;
     throw new Error('Failed to fetch claim');
@@ -169,9 +187,7 @@ function buildApprovalHistory(claim: any, payload: any): any[] {
 async function updateClaimStatus(id: string, status: ClaimStatus, tenantId: string): Promise<Claim> {
   const response = await fetch(`${API_BASE_URL}/claims/${id}?tenant_id=${tenantId}`, {
     method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: getAuthHeadersWithJson(),
     body: JSON.stringify({ status: status.toUpperCase() }),
   });
 
@@ -298,9 +314,7 @@ export interface BatchClaimResponse {
 async function createBatchClaims(batch: BatchClaimCreate): Promise<BatchClaimResponse> {
   const response = await fetch(`${API_BASE_URL}/claims/batch`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: getAuthHeadersWithJson(),
     body: JSON.stringify(batch),
   });
 
@@ -326,6 +340,7 @@ async function createBatchClaimsWithDocument(data: BatchClaimWithDocumentCreate)
 
   const response = await fetch(`${API_BASE_URL}/claims/batch-with-document`, {
     method: 'POST',
+    headers: getAuthHeaders(),
     body: formData,  // No Content-Type header - browser sets it with boundary
   });
 
@@ -367,6 +382,7 @@ export function useCreateBatchClaimsWithDocument() {
 async function deleteClaim(claimId: string, tenantId: string): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/claims/${claimId}?tenant_id=${tenantId}`, {
     method: 'DELETE',
+    headers: getAuthHeaders(),
   });
 
   if (!response.ok) {
@@ -399,9 +415,7 @@ export interface ClaimUpdateData {
 async function updateClaim(claimId: string, data: ClaimUpdateData, tenantId: string): Promise<Claim> {
   const response = await fetch(`${API_BASE_URL}/claims/${claimId}?tenant_id=${tenantId}`, {
     method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: getAuthHeadersWithJson(),
     body: JSON.stringify(data),
   });
 

@@ -9,6 +9,12 @@ import { useCallback, useMemo } from 'react';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 
+// Auth helper
+function getAuthHeaders(): HeadersInit {
+  const token = localStorage.getItem('access_token');
+  return token ? { 'Authorization': `Bearer ${token}` } : {};
+}
+
 // Types
 interface GeneralSettings {
   timezone: string;
@@ -49,7 +55,9 @@ const NUMBER_FORMAT_LOCALES: Record<string, string> = {
 // Fetch settings
 async function fetchGeneralSettings(tenantId?: string): Promise<GeneralSettings> {
   const params = tenantId ? `?tenant_id=${tenantId}` : '';
-  const response = await fetch(`${API_BASE_URL}/settings/general${params}`);
+  const response = await fetch(`${API_BASE_URL}/settings/general${params}`, {
+    headers: getAuthHeaders(),
+  });
   if (!response.ok) {
     throw new Error('Failed to fetch settings');
   }

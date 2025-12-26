@@ -3,12 +3,28 @@ import type { ApprovalSkipRule, ApprovalSkipResult } from '@/types';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 
+// Auth helpers
+function getAuthHeaders(): HeadersInit {
+  const token = localStorage.getItem('access_token');
+  return token ? { 'Authorization': `Bearer ${token}` } : {};
+}
+
+function getAuthHeadersWithJson(): HeadersInit {
+  const token = localStorage.getItem('access_token');
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+  };
+}
+
 // API Functions
 const fetchApprovalSkipRules = async (tenantId: string, includeInactive = false): Promise<ApprovalSkipRule[]> => {
   const params = new URLSearchParams({ tenant_id: tenantId });
   if (includeInactive) params.append('include_inactive', 'true');
   
-  const response = await fetch(`${API_BASE_URL}/approval-skip-rules/?${params}`);
+  const response = await fetch(`${API_BASE_URL}/approval-skip-rules/?${params}`, {
+    headers: getAuthHeaders(),
+  });
   if (!response.ok) {
     throw new Error('Failed to fetch approval skip rules');
   }
@@ -17,7 +33,9 @@ const fetchApprovalSkipRules = async (tenantId: string, includeInactive = false)
 
 const fetchApprovalSkipRule = async (ruleId: string, tenantId: string): Promise<ApprovalSkipRule> => {
   const params = new URLSearchParams({ tenant_id: tenantId });
-  const response = await fetch(`${API_BASE_URL}/approval-skip-rules/${ruleId}?${params}`);
+  const response = await fetch(`${API_BASE_URL}/approval-skip-rules/${ruleId}?${params}`, {
+    headers: getAuthHeaders(),
+  });
   if (!response.ok) {
     throw new Error('Failed to fetch approval skip rule');
   }
@@ -28,7 +46,7 @@ const createApprovalSkipRule = async (tenantId: string, data: Partial<ApprovalSk
   const params = new URLSearchParams({ tenant_id: tenantId });
   const response = await fetch(`${API_BASE_URL}/approval-skip-rules/?${params}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeadersWithJson(),
     body: JSON.stringify(data),
   });
   if (!response.ok) {
@@ -46,7 +64,7 @@ const updateApprovalSkipRule = async (
   const params = new URLSearchParams({ tenant_id: tenantId });
   const response = await fetch(`${API_BASE_URL}/approval-skip-rules/${ruleId}?${params}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeadersWithJson(),
     body: JSON.stringify(data),
   });
   if (!response.ok) {
@@ -60,6 +78,7 @@ const deleteApprovalSkipRule = async (ruleId: string, tenantId: string): Promise
   const params = new URLSearchParams({ tenant_id: tenantId });
   const response = await fetch(`${API_BASE_URL}/approval-skip-rules/${ruleId}?${params}`, {
     method: 'DELETE',
+    headers: getAuthHeaders(),
   });
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
@@ -84,6 +103,7 @@ const checkApprovalSkip = async (
   
   const response = await fetch(`${API_BASE_URL}/approval-skip-rules/check?${params}`, {
     method: 'POST',
+    headers: getAuthHeaders(),
   });
   if (!response.ok) {
     throw new Error('Failed to check approval skip rules');
@@ -93,7 +113,9 @@ const checkApprovalSkip = async (
 
 const fetchAvailableDesignations = async (tenantId: string): Promise<{ code: string; name: string; level: number }[]> => {
   const params = new URLSearchParams({ tenant_id: tenantId });
-  const response = await fetch(`${API_BASE_URL}/approval-skip-rules/designations?${params}`);
+  const response = await fetch(`${API_BASE_URL}/approval-skip-rules/designations?${params}`, {
+    headers: getAuthHeaders(),
+  });
   if (!response.ok) {
     throw new Error('Failed to fetch designations');
   }

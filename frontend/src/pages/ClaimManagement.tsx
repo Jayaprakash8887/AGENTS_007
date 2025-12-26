@@ -76,7 +76,10 @@ interface ExtractedClaim {
 // API Functions
 async function fetchExtractedClaims(tenantId?: string): Promise<ExtractedClaim[]> {
     const params = tenantId ? `?tenant_id=${tenantId}` : '';
-    const response = await fetch(`${API_BASE_URL}/policies/extracted-claims${params}`);
+    const token = localStorage.getItem('access_token');
+    const response = await fetch(`${API_BASE_URL}/policies/extracted-claims${params}`, {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+    });
     if (!response.ok) {
         throw new Error('Failed to fetch extracted claims');
     }
@@ -85,9 +88,13 @@ async function fetchExtractedClaims(tenantId?: string): Promise<ExtractedClaim[]
 
 async function updateCategory(id: string, updates: Partial<ExtractedClaim>, tenantId?: string): Promise<ExtractedClaim> {
     const params = tenantId ? `?tenant_id=${tenantId}` : '';
+    const token = localStorage.getItem('access_token');
     const response = await fetch(`${API_BASE_URL}/policies/categories/${id}${params}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify(updates),
     });
     if (!response.ok) {
