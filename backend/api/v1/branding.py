@@ -249,13 +249,16 @@ def check_branding_access(current_user: Optional[User], tenant_id: UUID) -> None
             detail="Authentication required"
         )
     
+    # Get user's roles (it's an array)
+    user_roles = current_user.roles or []
+    
     # System Admin can modify any tenant
-    if current_user.role == 'system_admin':
+    if 'SYSTEM_ADMIN' in user_roles:
         return
     
     # Admin can only modify their own tenant
-    if current_user.role == 'admin':
-        if current_user.tenant_id != tenant_id:
+    if 'ADMIN' in user_roles:
+        if str(current_user.tenant_id) != str(tenant_id):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You can only modify branding for your own tenant"
