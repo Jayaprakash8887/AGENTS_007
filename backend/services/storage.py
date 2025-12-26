@@ -546,3 +546,106 @@ def get_blob_metadata(blob_name: str) -> Optional[dict]:
     except Exception as e:
         logger.error(f"Failed to get blob metadata: {e}")
         return None
+
+
+def upload_branding_to_cloud(
+    file_content: bytes,
+    tenant_id: str,
+    file_type: str,
+    original_filename: str,
+    content_type: Optional[str] = None
+) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Upload branding file (logo, favicon, etc.) to cloud storage.
+    
+    Args:
+        file_content: File content as bytes
+        tenant_id: Tenant ID for organizing files
+        file_type: Type of branding file (logo, logo_mark, favicon, login_background)
+        original_filename: Original filename from upload
+        content_type: MIME type of the file
+    
+    Returns:
+        Tuple of (public_url, blob_name) or (None, None) on failure
+    """
+    if not is_cloud_storage_configured():
+        logger.warning("Cloud storage not configured - branding upload will use local storage")
+        return None, None
+    
+    client, bucket = get_gcs_client()
+    
+    if not client or not bucket:
+        logger.error("GCS client not available for branding upload")
+        return None, None
+    
+    try:
+        # Generate unique blob name for branding files
+        file_extension = Path(original_filename).suffix.lower()
+        unique_id = str(uuid4())[:8]
+        unique_filename = f"{file_type}_{unique_id}{file_extension}"
+        
+        # Organize under tenant's branding folder
+        blob_name = f"tenants/{tenant_id}/branding/{unique_filename}"
+        
+        # Create blob and upload
+        blob = bucket.blob(blob_name)
+        
+        # Set content type
+        if content_type:
+            blob.content_type = content_type
+        
+        # Upload from bytes
+        blob.upload_from_string(file_content, content_type=content_type)
+        
+        # Make the blob publicly readable (branding assets need to be public)
+        blob.make_public()
+        
+        logger.info(f"Branding file uploaded to GCS: gs://{settings.GCP_BUCKET_NAME}/{blob_name}")
+        
+        # Return the public URL and blob name
+        public_url = blob.public_url
+        
+        return public_url, blob_name
+        
+    except Exception as e:
+        logger.error(f"Failed to upload branding to GCS: {e}")
+        return None, None
+
+
+def delete_branding_from_cloud(blob_name: str) -> bool:
+    """
+    Delete a branding file from cloud storage.
+    
+    Args:
+        blob_name: The blob name (path within bucket)
+    
+    Returns:
+        True on success, False on failure
+    """
+    if not blob_name:
+        return True
+    
+    if not is_cloud_storage_configured():
+        logger.warning("Cloud storage not configured - cannot delete from cloud")
+        return False
+    
+    client, bucket = get_gcs_client()
+    
+    if not client or not bucket:
+        logger.error("GCS client not available")
+        return False
+    
+    try:
+        blob = bucket.blob(blob_name)
+        
+        if blob.exists():
+            blob.delete()
+            logger.info(f"Deleted branding file from GCS: {blob_name}")
+        else:
+            logger.warning(f"Branding blob does not exist: {blob_name}")
+        
+        return True
+        
+    except Exception as e:
+        logger.error(f"Failed to delete branding from GCS: {e}")
+        return False
