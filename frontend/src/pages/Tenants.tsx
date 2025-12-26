@@ -527,13 +527,13 @@ function BrandingFileUpload({ fileType, spec, currentUrl, tenantId, onUploadSucc
                     <div className="flex items-center justify-center bg-muted/30 rounded-md p-4 min-h-[80px]">
                         {fileType === 'login_background' ? (
                             <img
-                                src={`'${currentUrl}`}
+                                src={currentUrl}
                                 alt={spec.name}
                                 className="max-h-20 max-w-full object-contain rounded"
                             />
                         ) : (
                             <img
-                                src={`'${currentUrl}`}
+                                src={currentUrl}
                                 alt={spec.name}
                                 className="max-h-16 max-w-full object-contain"
                             />
