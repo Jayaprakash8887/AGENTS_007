@@ -29,10 +29,9 @@ export const employeeSchema = z.object({
     .trim()
     .max(500, 'Address must be less than 500 characters')
     .optional(),
-  department: z.string()
-    .min(1, 'Department is required'),
-  designation: z.string().optional(),
-  region: z.array(z.string()).optional(),
+  department: z.string().optional(),
+  designation: z.string().min(1, 'Designation is required'),
+  region: z.array(z.string()).min(1, 'At least one region is required'),
   dateOfJoining: z.string().optional(),
   managerId: z.string().optional(),
   projectIds: z.string().optional(),

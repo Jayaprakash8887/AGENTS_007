@@ -42,8 +42,16 @@ interface Project {
   status: string;
 }
 
+interface Designation {
+  id: string;
+  name: string;
+  code: string;
+  is_active: boolean;
+}
+
 interface EmployeeFormProps {
   departments: string[];
+  designations: Designation[];
   managers?: { id: string; name: string }[];
   projects?: Project[];
   onSubmit: (data: EmployeeFormData) => void;
@@ -55,6 +63,7 @@ interface EmployeeFormProps {
 
 export function EmployeeForm({
   departments,
+  designations,
   managers = [],
   projects = [],
   onSubmit,
@@ -201,10 +210,21 @@ export function EmployeeForm({
             name="designation"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Designation (Optional)</FormLabel>
-                <FormControl>
-                  <Input placeholder="Senior Developer" {...field} />
-                </FormControl>
+                <FormLabel>Designation *</FormLabel>
+                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select designation" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {designations.filter(d => d.is_active).map((designation) => (
+                      <SelectItem key={designation.id} value={designation.name}>
+                        {designation.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <FormMessage />
               </FormItem>
             )}
@@ -227,7 +247,7 @@ export function EmployeeForm({
             name="department"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Department</FormLabel>
+                <FormLabel>Department (Optional)</FormLabel>
                 <Select onValueChange={field.onChange} defaultValue={field.value}>
                   <FormControl>
                     <SelectTrigger>
@@ -255,7 +275,7 @@ export function EmployeeForm({
             name="region"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Region / Location (Optional)</FormLabel>
+                <FormLabel>Region / Location *</FormLabel>
                 <MultiSelect
                   options={regions?.filter(r => r.isActive).map(r => ({ label: r.name, value: r.code })) || []}
                   selected={field.value as string[] || []}

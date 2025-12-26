@@ -3,6 +3,7 @@ import { Plus, Search, Upload, MoreHorizontal, Mail, Phone, Download, FileDown, 
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useDepartments } from '@/hooks/useDepartments';
+import { useDesignations } from '@/hooks/useSystemAdmin';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -88,6 +89,9 @@ export default function Employees() {
 
   // Get departments from API (tenant-specific)
   const { data: departmentsData } = useDepartments(tenantId);
+  
+  // Get designations from API (tenant-specific)
+  const { data: designationsData } = useDesignations(tenantId);
 
   // Map departments to array of names for filters and forms
   const departments = useMemo(() => {
@@ -98,6 +102,11 @@ export default function Employees() {
     }
     return departmentsData.map((d) => d.name);
   }, [departmentsData, employees]);
+  
+  // Get designations for forms
+  const designations = useMemo(() => {
+    return designationsData || [];
+  }, [designationsData]);
 
   const managers = useMemo(() => {
     if (!employees) return [];
@@ -450,6 +459,7 @@ export default function Employees() {
               </DialogHeader>
               <EmployeeForm
                 departments={departments}
+                designations={designations}
                 managers={managers}
                 projects={projects || []}
                 onSubmit={handleAddEmployee}
@@ -469,6 +479,7 @@ export default function Employees() {
           </DialogHeader>
           {selectedEmployee && (
             <EmployeeForm
+              designations={designations}
               departments={departments}
               managers={managers}
               projects={projects || []}

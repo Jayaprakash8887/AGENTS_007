@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useDepartments } from '@/hooks/useDepartments';
+import { useDesignations } from '@/hooks/useSystemAdmin';
 import { ArrowLeft, Mail, Phone, Calendar, MapPin, Briefcase, Edit2, UserCheck, FolderKanban } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -67,6 +68,8 @@ export default function EmployeeDetails() {
 
   // Get departments from API
   const { data: departmentsData } = useDepartments(tenantId);
+  const { data: designationsData } = useDesignations(tenantId);
+  
   const departments = useMemo(() => {
     if (!departmentsData || departmentsData.length === 0) {
       if (!allEmployees) return [];
@@ -74,6 +77,10 @@ export default function EmployeeDetails() {
     }
     return departmentsData.map((d) => d.name);
   }, [departmentsData, allEmployees]);
+  
+  const designations = useMemo(() => {
+    return designationsData || [];
+  }, [designationsData]);
 
   const handleUpdateEmployee = async (data: EmployeeFormData) => {
     if (!employee) return;
@@ -176,6 +183,7 @@ export default function EmployeeDetails() {
           </DialogHeader>
           <EmployeeForm
             departments={departments}
+            designations={designations}
             managers={managers}
             projects={allProjects || []}
             onSubmit={handleUpdateEmployee}

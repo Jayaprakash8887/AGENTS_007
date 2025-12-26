@@ -186,6 +186,7 @@ async def create_employee(
         address=employee_data.address,
         department=employee_data.department,
         designation=employee_data.designation,
+        region=employee_data.region,  # Region/location for policy applicability
         manager_id=UUID(employee_data.manager_id) if employee_data.manager_id else None,
         date_of_joining=employee_data.date_of_joining,
         user_data=user_data,
@@ -279,6 +280,7 @@ async def bulk_import_employees(
                 address=emp_data.address,
                 department=emp_data.department,
                 designation=emp_data.designation,
+                region=emp_data.region,  # Region/location for policy applicability
                 manager_id=UUID(emp_data.manager_id) if emp_data.manager_id else None,
                 date_of_joining=emp_data.date_of_joining,
                 user_data=user_data,

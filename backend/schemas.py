@@ -247,8 +247,8 @@ class EmployeeCreate(BaseModel):
     mobile: Optional[str] = None
     address: Optional[str] = None
     department: Optional[str] = None
-    designation: Optional[str] = None
-    region: Optional[List[str]] = None  # Region/location for policy applicability
+    designation: str  # Designation is required
+    region: List[str]  # Region/location is required for policy applicability
     date_of_joining: Optional[date] = None
     manager_id: Optional[str] = None
     project_ids: Optional[List[str]] = []
