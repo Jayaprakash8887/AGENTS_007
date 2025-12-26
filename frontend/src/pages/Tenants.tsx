@@ -53,6 +53,13 @@ import {
 } from '@/components/ui/tooltip';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
+import {
     useTenants,
     useCreateTenant,
     useUpdateTenant,
@@ -64,10 +71,12 @@ import {
     useDeleteBrandingFile,
     useUpdateBrandingColors,
     useUpdateBrandingSettings,
+    useDesignations,
     Tenant,
     TenantCreate,
     BrandingFileSpec,
-    BrandingSettings
+    BrandingSettings,
+    Designation
 } from '@/hooks/useSystemAdmin';
 
 function TenantFormDialog({
@@ -175,23 +184,30 @@ function TenantUsersDialog({ tenant }: { tenant: Tenant }) {
     const [open, setOpen] = useState(false);
     const [showAddAdmin, setShowAddAdmin] = useState(false);
     const [adminEmail, setAdminEmail] = useState('');
+    const [adminDesignation, setAdminDesignation] = useState('');
     
     const { data: admins, isLoading } = useTenantAdmins(tenant.id);
+    const { data: designations, isLoading: designationsLoading } = useDesignations(tenant.id);
     const createAdminMutation = useCreateTenantAdmin();
     const removeAdminMutation = useRemoveTenantAdmin();
 
     const handleAddAdmin = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!adminEmail.trim()) return;
+        if (!adminDesignation) {
+            return; // Designation is required
+        }
         
         try {
             const result = await createAdminMutation.mutateAsync({ 
                 tenantId: tenant.id, 
-                email: adminEmail.trim() 
+                email: adminEmail.trim(),
+                designation: adminDesignation
             });
             toast.success(result.message || 'Admin added successfully. Credentials sent via email.');
             setShowAddAdmin(false);
             setAdminEmail('');
+            setAdminDesignation('');
         } catch (error: any) {
             toast.error(error.message || 'Failed to add admin');
         }
@@ -212,6 +228,7 @@ function TenantUsersDialog({ tenant }: { tenant: Tenant }) {
             if (!isOpen) {
                 setShowAddAdmin(false);
                 setAdminEmail('');
+                setAdminDesignation('');
             }
         }}>
             <DialogTrigger asChild>
@@ -312,10 +329,38 @@ function TenantUsersDialog({ tenant }: { tenant: Tenant }) {
                                         Enter the email address for the new administrator. If the user doesn't exist, a new account will be created and login credentials will be sent to this email.
                                     </p>
                                 </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="admin-designation">Designation *</Label>
+                                    <Select
+                                        value={adminDesignation}
+                                        onValueChange={setAdminDesignation}
+                                        required
+                                    >
+                                        <SelectTrigger id="admin-designation">
+                                            <SelectValue placeholder="Select a designation" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {designationsLoading ? (
+                                                <SelectItem value="" disabled>Loading...</SelectItem>
+                                            ) : designations && designations.length > 0 ? (
+                                                designations.filter((d: Designation) => d.is_active).map((designation: Designation) => (
+                                                    <SelectItem key={designation.id} value={designation.name}>
+                                                        {designation.name}
+                                                    </SelectItem>
+                                                ))
+                                            ) : (
+                                                <SelectItem value="" disabled>No designations available</SelectItem>
+                                            )}
+                                        </SelectContent>
+                                    </Select>
+                                    <p className="text-xs text-muted-foreground">
+                                        Select the designation for this administrator.
+                                    </p>
+                                </div>
                                 <div className="flex gap-2">
                                     <Button 
                                         type="submit" 
-                                        disabled={createAdminMutation.isPending || !adminEmail.trim()}
+                                        disabled={createAdminMutation.isPending || !adminEmail.trim() || !adminDesignation}
                                     >
                                         {createAdminMutation.isPending ? 'Adding...' : 'Add Administrator'}
                                     </Button>
@@ -325,6 +370,7 @@ function TenantUsersDialog({ tenant }: { tenant: Tenant }) {
                                         onClick={() => {
                                             setShowAddAdmin(false);
                                             setAdminEmail('');
+                                            setAdminDesignation('');
                                         }}
                                     >
                                         Cancel

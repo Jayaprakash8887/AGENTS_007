@@ -189,11 +189,11 @@ async function getTenantAdmins(tenantId: string): Promise<any[]> {
     return response.json();
 }
 
-async function createTenantAdminByEmail(tenantId: string, email: string): Promise<any> {
+async function createTenantAdminByEmail(tenantId: string, email: string, designation?: string): Promise<any> {
     const response = await fetch(`${API_BASE_URL}/tenants/${tenantId}/admins`, {
         method: 'POST',
         headers: getAuthHeadersWithJson(),
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, designation }),
     });
     if (!response.ok) {
         const error = await response.json();
@@ -378,8 +378,8 @@ export function useTenantAdmins(tenantId?: string) {
 export function useCreateTenantAdmin() {
     const queryClient = useQueryClient();
     return useMutation({
-        mutationFn: ({ tenantId, email }: { tenantId: string; email: string }) =>
-            createTenantAdminByEmail(tenantId, email),
+        mutationFn: ({ tenantId, email, designation }: { tenantId: string; email: string; designation?: string }) =>
+            createTenantAdminByEmail(tenantId, email, designation),
         onSuccess: (_, variables) => {
             queryClient.invalidateQueries({ queryKey: ['tenant-admins', variables.tenantId] });
         },

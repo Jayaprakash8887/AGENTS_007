@@ -261,6 +261,7 @@ async def get_tenant_users(
 
 class AddAdminByEmailRequest(BaseModel):
     email: str
+    designation: Optional[str] = None  # Designation code or name
 
 
 def generate_temporary_password(length: int = 12) -> str:
@@ -330,6 +331,9 @@ async def create_tenant_admin_by_email(
         current_roles.append('ADMIN')
         # Normalize roles to ensure EMPLOYEE is always present
         existing_user.roles = normalize_user_roles(current_roles, is_tenant_user=True)
+        # Update designation if provided
+        if request.designation:
+            existing_user.designation = request.designation
         db.commit()
         db.refresh(existing_user)
         
@@ -349,6 +353,7 @@ async def create_tenant_admin_by_email(
             "last_name": existing_user.last_name,
             "full_name": existing_user.full_name,
             "roles": existing_user.roles,
+            "designation": existing_user.designation,
             "message": "Existing user promoted to administrator. Notification email sent.",
             "email_sent": True
         }
@@ -400,6 +405,7 @@ async def create_tenant_admin_by_email(
             tenant_id=tenant_id,
             roles=['EMPLOYEE', 'ADMIN'],  # EMPLOYEE is default for all tenant users
             hashed_password=hashed_password,
+            designation=request.designation,  # Save the designation
             is_active=True
         )
         
@@ -425,6 +431,7 @@ async def create_tenant_admin_by_email(
             "last_name": new_user.last_name,
             "full_name": new_user.full_name,
             "roles": new_user.roles,
+            "designation": new_user.designation,
             "message": "New administrator created successfully. Credentials sent via email.",
             "email_sent": True
         }
