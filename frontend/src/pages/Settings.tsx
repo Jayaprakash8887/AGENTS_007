@@ -338,15 +338,13 @@ export default function Settings() {
 
   // Update branding state when data loads
   useEffect(() => {
-    if (brandingData?.colors) {
+    if (brandingData?.branding) {
       setBrandingColors({
-        primary_color: brandingData.colors.primary_color || '#3B82F6',
-        secondary_color: brandingData.colors.secondary_color || '#10B981',
-        accent_color: brandingData.colors.accent_color || '#F59E0B',
+        primary_color: brandingData.branding.primary_color || '#3B82F6',
+        secondary_color: brandingData.branding.secondary_color || '#10B981',
+        accent_color: brandingData.branding.accent_color || '#F59E0B',
       });
-    }
-    if (brandingData?.settings) {
-      setBrandingTagline(brandingData.settings.tagline || '');
+      setBrandingTagline(brandingData.branding.company_tagline || '');
     }
   }, [brandingData]);
 
@@ -354,10 +352,10 @@ export default function Settings() {
   useEffect(() => {
     if (brandingData) {
       const colorsChanged = 
-        brandingColors.primary_color !== (brandingData.colors?.primary_color || '#3B82F6') ||
-        brandingColors.secondary_color !== (brandingData.colors?.secondary_color || '#10B981') ||
-        brandingColors.accent_color !== (brandingData.colors?.accent_color || '#F59E0B');
-      const taglineChanged = brandingTagline !== (brandingData.settings?.tagline || '');
+        brandingColors.primary_color !== (brandingData.branding?.primary_color || '#3B82F6') ||
+        brandingColors.secondary_color !== (brandingData.branding?.secondary_color || '#10B981') ||
+        brandingColors.accent_color !== (brandingData.branding?.accent_color || '#F59E0B');
+      const taglineChanged = brandingTagline !== (brandingData.branding?.company_tagline || '');
       setHasBrandingChanges(colorsChanged || taglineChanged);
     }
   }, [brandingColors, brandingTagline, brandingData]);
@@ -483,15 +481,13 @@ export default function Settings() {
 
   // Handle cancel branding changes
   const handleCancelBranding = () => {
-    if (brandingData?.colors) {
+    if (brandingData?.branding) {
       setBrandingColors({
-        primary_color: brandingData.colors.primary_color || '#3B82F6',
-        secondary_color: brandingData.colors.secondary_color || '#10B981',
-        accent_color: brandingData.colors.accent_color || '#F59E0B',
+        primary_color: brandingData.branding.primary_color || '#3B82F6',
+        secondary_color: brandingData.branding.secondary_color || '#10B981',
+        accent_color: brandingData.branding.accent_color || '#F59E0B',
       });
-    }
-    if (brandingData?.settings) {
-      setBrandingTagline(brandingData.settings.tagline || '');
+      setBrandingTagline(brandingData.branding.company_tagline || '');
     }
     setHasBrandingChanges(false);
   };
@@ -1082,16 +1078,21 @@ export default function Settings() {
                 </CardHeader>
                 <CardContent>
                   <div className="grid gap-6 md:grid-cols-2">
-                    {Object.entries(BRANDING_FILE_SPECS).map(([fileType, spec]) => (
-                      <BrandingFileUpload
-                        key={fileType}
-                        fileType={fileType}
-                        spec={spec}
-                        currentUrl={brandingData?.files?.[fileType as keyof typeof brandingData.files] || null}
-                        tenantId={user?.tenantId || ''}
-                        onUploadSuccess={() => refetchBranding()}
-                      />
-                    ))}
+                    {Object.entries(BRANDING_FILE_SPECS).map(([fileType, spec]) => {
+                      // Map fileType to branding field name
+                      const urlKey = `${fileType}_url` as keyof typeof brandingData.branding;
+                      const currentUrl = brandingData?.branding?.[urlKey] as string | null;
+                      return (
+                        <BrandingFileUpload
+                          key={fileType}
+                          fileType={fileType}
+                          spec={spec}
+                          currentUrl={currentUrl || null}
+                          tenantId={user?.tenantId || ''}
+                          onUploadSuccess={() => refetchBranding()}
+                        />
+                      );
+                    })}
                   </div>
                 </CardContent>
               </Card>

@@ -8,6 +8,7 @@ import {
   ChevronDown,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useBranding } from '@/contexts/BrandingContext';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
@@ -27,6 +28,10 @@ interface HeaderProps {
 
 export function Header({ onMenuClick }: HeaderProps) {
   const { user, logout } = useAuth();
+  const { branding } = useBranding();
+
+  // Use tenant logo if available, otherwise fall back to default
+  const logoUrl = branding?.logo_url || '/logo-horizontal.svg';
 
   return (
     <header className="sticky top-0 z-50 h-20 border-b border-border bg-card/95 backdrop-blur">
@@ -39,9 +44,9 @@ export function Header({ onMenuClick }: HeaderProps) {
 
           <Link to="/" className="flex items-center gap-3">
             <img 
-              src="/logo-horizontal.svg" 
-              alt="EasyQlaim" 
-              className="h-12"
+              src={logoUrl} 
+              alt="Logo" 
+              className="h-12 max-w-[200px] object-contain"
             />
           </Link>
         </div>
