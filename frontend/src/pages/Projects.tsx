@@ -165,9 +165,8 @@ export default function Projects() {
 
   const managers = useMemo(() => {
     if (!employees) return [];
-    return employees
-      .filter((e) => e.role === 'manager')
-      .map((e) => ({ id: e.id, name: e.name }));
+    // Show all employees in the Project Manager dropdown
+    return employees.map((e) => ({ id: e.id, name: e.name }));
   }, [employees]);
 
   const employeeMap = useMemo(() => {
